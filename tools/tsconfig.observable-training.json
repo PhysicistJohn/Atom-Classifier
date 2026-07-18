@@ -1,0 +1,27 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../.artifacts/observable-training",
+    "rootDir": "../..",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "train-observable-classifier.ts",
+    "observable-model-publication.ts",
+    "observable-training-build-attestation.ts",
+    "observable-training-attempt-cache.ts",
+    "observable-training-run-control.ts",
+    "observable-training-sampling.ts",
+    "observable-training-sampling-worker.ts",
+    "observable-training-sampling-worker-check.ts",
+    "observable-training-worker-client.ts",
+    "../src/observable-classifier-model.ts",
+    "../../TinySA/packages/analysis/src/bayesian-predictive.ts",
+    "../../TinySA/packages/analysis/src/observable-features.ts",
+    "../../TinySA/packages/contracts/src/index.ts",
+    "../../TinySA_SignalLab/src/classification-corpus.ts",
+    "../../TinySA_SignalLab/src/source-provenance.ts",
+    "../../TinySA_SignalLab/src/waveforms.ts"
+  ]
+}

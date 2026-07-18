@@ -1,0 +1,27 @@
+{
+  "name": "atomos-classifier",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@10.9.8",
+  "scripts": {
+    "train:signal-classifier": "node tools/run-observable-training.mjs train",
+    "check:signal-classifier-model": "node tools/run-observable-training.mjs check",
+    "check:observable-training-launcher": "node --test tools/run-observable-training.test.mjs",
+    "check:observable-training-worker": "tsup tools/observable-training-sampling-worker.ts tools/observable-training-sampling-worker-check.ts --format esm --out-dir .artifacts/observable-training-worker-test --platform node --no-splitting --treeshake --silent --clean && node .artifacts/observable-training-worker-test/observable-training-sampling-worker-check.js && npm run check:observable-training-launcher",
+    "check:signal-classifier": "tsup tools/validate-signal-lab-classifier.ts --format esm --out-dir dist/tools --platform node --silent && node dist/tools/validate-signal-lab-classifier.js",
+    "check:signal-classifier-publication": "node tools/verify-classifier-publication.mjs && node --test tools/verify-classifier-publication.test.mjs",
+    "typecheck:observable-training": "tsc -p tools/tsconfig.observable-training.json --noEmit",
+    "typecheck:observable-validation": "tsc -p tools/tsconfig.observable-validation.json --noEmit",
+    "typecheck": "npm run typecheck:observable-training && npm run typecheck:observable-validation",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run check:observable-training-worker && npm test && npm run check:signal-classifier-model && npm run check:signal-classifier && npm run check:signal-classifier-publication"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.13",
+    "tsup": "8.5.0",
+    "typescript": "5.9.2",
+    "vitest": "4.1.10"
+  }
+}

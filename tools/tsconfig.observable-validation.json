@@ -1,0 +1,28 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../.artifacts/observable-validation",
+    "rootDir": "../..",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "train-observable-classifier.ts",
+    "validate-signal-lab-classifier.ts",
+    "../src/**/*.ts",
+    "../../TinySA/packages/analysis/src/bayesian-predictive.ts",
+    "../../TinySA/packages/analysis/src/bayesian-agile-association.ts",
+    "../../TinySA/packages/analysis/src/bayesian-signal-detector.ts",
+    "../../TinySA/packages/analysis/src/detected-power-capture-receipt.ts",
+    "../../TinySA/packages/analysis/src/frequency-agile-geometry.ts",
+    "../../TinySA/packages/analysis/src/measurement-provenance.ts",
+    "../../TinySA/packages/analysis/src/multicomponent-swept-region.ts",
+    "../../TinySA/packages/analysis/src/observable-features.ts",
+    "../../TinySA/packages/analysis/src/observable-training-acquisition-geometry.ts",
+    "../../TinySA/packages/analysis/src/regular-spectral-component.ts",
+    "../../TinySA/packages/contracts/src/index.ts",
+    "../../TinySA_SignalLab/src/classification-corpus.ts",
+    "../../TinySA_SignalLab/src/source-provenance.ts",
+    "../../TinySA_SignalLab/src/waveforms.ts"
+  ]
+}
