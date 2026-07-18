@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Worker } from 'node:worker_threads';
-import type { ObservableTrainingAcquisitionRegime } from '../../TinySA/packages/analysis/src/observable-training-acquisition-geometry.js';
+import type { ObservableTrainingAcquisitionRegime } from '../../Atom-Atomizer/packages/analysis/src/observable-training-acquisition-geometry.js';
 import type {
   AttemptSamplingWorkItem,
   AttemptSamplingWorkRequest,

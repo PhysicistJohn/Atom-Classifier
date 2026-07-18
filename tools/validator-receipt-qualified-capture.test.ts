@@ -7,13 +7,13 @@ import {
   type Sweep,
   type WaveformClassificationEvidence,
   type ZeroSpanCapture,
-} from '../../TinySA/packages/contracts/src/index.js';
+} from '../../Atom-Atomizer/packages/contracts/src/index.js';
 import {
   createDetectedPowerCaptureReceipt,
   extractObservableFeatures,
   SignalDetector,
   SignalTracker,
-} from '../../TinySA/packages/analysis/src/index.js';
+} from '../../Atom-Atomizer/packages/analysis/src/index.js';
 import {
   classifyValidatorReceiptQualifiedObservation,
   extractValidatorReceiptQualifiedObservation,
@@ -60,6 +60,7 @@ describe('validator receipt-qualified capture path', () => {
     expect(observation.values).toEqual(capture.spectrumObservation.values);
     expect(observation.zeroSpanCaptureId).toBeUndefined();
     expect(observation.detectedPowerAcquisitionQualification).toBeUndefined();
+    expect(observation.detectedPowerSelectionCondition).toBeUndefined();
 
     let classifierEvidence: WaveformClassificationEvidence | undefined;
     const result = await classifyValidatorReceiptQualifiedObservation(
@@ -100,7 +101,7 @@ describe('validator receipt-qualified capture path', () => {
     );
     expect(classifierEvidence).toMatchObject({
       zeroSpan: { id: capture.zeroSpan.id },
-      detectedPowerCaptureReceipt: { schemaVersion: 3 },
+      detectedPowerCaptureReceipt: { schemaVersion: 4 },
       zeroSpanSpectrumSweepIds: capture.spectrumObservation.sweepIds,
     });
     expect(result.evidence).toMatchObject({
@@ -124,7 +125,9 @@ describe('validator receipt-qualified capture path', () => {
       views: ['scalar-spectrum', 'detected-power-envelope'] as const,
       zeroSpanCaptureId: capture.zeroSpan.id,
       detectedPowerAcquisitionQualification:
-        'receipt-verified-provenance-bound-first-runtime-admitted-strongest-current-physical-or-agile-member-single-capture-v4' as const,
+        'receipt-verified-provenance-bound-runtime-admitted-physical-capture-v5' as const,
+      detectedPowerSelectionCondition:
+        'automatic-current-source-sweep-integrated-excess-rank-0' as const,
     };
     expect(() => extractValidatorReceiptQualifiedObservation(
       capture,
@@ -143,7 +146,9 @@ describe('validator receipt-qualified capture path', () => {
               views: ['scalar-spectrum', 'detected-power-envelope'],
               zeroSpanCaptureId: capture.zeroSpan.id,
               detectedPowerAcquisitionQualification:
-                'receipt-verified-provenance-bound-first-runtime-admitted-strongest-current-physical-or-agile-member-single-capture-v4',
+                'receipt-verified-provenance-bound-runtime-admitted-physical-capture-v5',
+              detectedPowerSelectionCondition:
+                'automatic-current-source-sweep-integrated-excess-rank-0',
               features: {
                 ...result.evidence.features,
                 'envelope.validatorLeakSentinel': 1,

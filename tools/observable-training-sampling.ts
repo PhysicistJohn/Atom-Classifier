@@ -2,14 +2,15 @@ import { createHash } from 'node:crypto';
 import {
   synthesizeCanonicalObservation,
   type CanonicalClassificationScenario,
-} from '../../TinySA_SignalLab/src/classification-corpus.js';
+} from '../../Atom-SignalLab/src/classification-corpus.js';
 import {
   DETECTED_POWER_ACQUISITION_QUALIFICATION,
+  DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION,
   extractObservableFeatures,
   ObservableEvidenceUnavailableError,
   observableAssociationEvidenceIsCurrentlyQualified,
   type ObservableFeatureObservation,
-} from '../../TinySA/packages/analysis/src/observable-features.js';
+} from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 import { observableRepresentativeIsInClassDomain } from '../src/observable-hypothesis-domain.js';
 import {
   OBSERVABLE_TRAINING_SWEEP_POINTS,
@@ -23,7 +24,7 @@ import {
   type ObservableTrainingDetectedPowerClockContext,
   type ObservableTrainingDetectedPowerClockEvent,
   type ObservableTrainingSourceClockEvent,
-} from '../../TinySA/packages/analysis/src/observable-training-acquisition-geometry.js';
+} from '../../Atom-Atomizer/packages/analysis/src/observable-training-acquisition-geometry.js';
 import {
   classificationCaptureTargetProjections,
   classificationRepresentatives,
@@ -31,7 +32,7 @@ import {
   createDetectedPowerCaptureReceipt,
   SignalDetector,
   SignalTracker,
-} from '../../TinySA/packages/analysis/src/index.js';
+} from '../../Atom-Atomizer/packages/analysis/src/index.js';
 import {
   OBSERVABLE_EVIDENCE_CENSORING_POLICY,
   type ObservableLeafClass,
@@ -46,8 +47,8 @@ import {
   type SignalDetectionConfig,
   type Sweep,
   type ZeroSpanCapture,
-} from '../../TinySA/packages/contracts/src/index.js';
-import { CLASSIFICATION_CORPUS_VERSION } from '../../TinySA_SignalLab/src/classification-corpus.js';
+} from '../../Atom-Atomizer/packages/contracts/src/index.js';
+import { CLASSIFICATION_CORPUS_VERSION } from '../../Atom-SignalLab/src/classification-corpus.js';
 
 export const CLASSIFICATION_SWEEPS = 8;
 // Match the current owned live release gate. The earlier 24-opportunity model
@@ -462,7 +463,9 @@ function qualifiedEnvelopeFeatureSample(
       const envelopeAdmitted =
         envelopeFeatureObservation.zeroSpanCaptureId !== undefined
         && envelopeFeatureObservation.detectedPowerAcquisitionQualification
-          === DETECTED_POWER_ACQUISITION_QUALIFICATION;
+          === DETECTED_POWER_ACQUISITION_QUALIFICATION
+        && envelopeFeatureObservation.detectedPowerSelectionCondition
+          === DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION;
       if (frequencyAgileFixedTuneEnvelopeCensored === envelopeAdmitted) {
         throw new Error(
           'Qualified detected-power capture must be admitted as envelope evidence or explicitly censored for a fixed-tune agile association',
@@ -611,21 +614,20 @@ function readyConsecutiveSpectrumClassificationRepresentatives(
 function readyQualifiedEnvelopeCaptureTargetRepresentatives(
   tracks: readonly DetectedSignal[],
 ) {
-  return classificationCaptureTargetProjections(tracks)
-    .filter(({ projectedRepresentative }) =>
-      classificationSourceSweepIds(projectedRepresentative).length
-        >= CLASSIFICATION_SWEEPS)
-    .filter(({ projectedRepresentative }) =>
-      observableAssociationEvidenceIsCurrentlyQualified(
-        projectedRepresentative,
-      ))
-    .map(({ rawTarget, projectedRepresentative }) => ({
-      rawTarget,
-      detection: projectedRepresentative,
-      representativeKey: classificationRepresentativeKey(
-        projectedRepresentative,
-      ),
-    }));
+  const rankZero = classificationCaptureTargetProjections(tracks)[0];
+  if (!rankZero
+    || classificationSourceSweepIds(rankZero.projectedRepresentative).length
+      < CLASSIFICATION_SWEEPS
+    || !observableAssociationEvidenceIsCurrentlyQualified(
+      rankZero.projectedRepresentative,
+    )) return [];
+  return [{
+    rawTarget: rankZero.rawTarget,
+    detection: rankZero.projectedRepresentative,
+    representativeKey: classificationRepresentativeKey(
+      rankZero.projectedRepresentative,
+    ),
+  }];
 }
 
 function readyClassificationRepresentatives(
@@ -742,6 +744,7 @@ function assertCaptureReceiptMatchesSourceClock({
     && receipt.spectrumSweepIds.every((sweepId, index) =>
       sweepId === spectrumSweepIds[index]);
   if (receipt.capturePolicyId !== capturePolicyId
+    || receipt.schemaVersion !== 4
     || receipt.targetSelectionPolicyId !== captureEvent.targetSelectionPolicyId
     || captureEvent.targetSelectionPolicyId !== targetAttribution.targetSelectionPolicyId
     || receipt.selection.rawTargetId !== captureEvent.rawTargetId
@@ -753,6 +756,12 @@ function assertCaptureReceiptMatchesSourceClock({
     || receipt.projectedRepresentative.id !== detection.id
     || detection.id !== targetAttribution.projectedRepresentativeId
     || selectedCandidate === undefined
+    || receipt.selection.mode !== 'integrated-excess-current'
+    || receipt.selection.preferredRawTargetId !== undefined
+    || receipt.candidates[0] !== selectedCandidate
+    || selectedCandidate.rank !== 0
+    || selectedCandidate.runtimeAdmission.status !== 'admitted'
+    || selectedCandidate.currentSourceSweepId !== spectrumSweepIds[0]
     || selectedCandidate.projectedRepresentativeId
       !== targetAttribution.projectedRepresentativeId
     || captureEvent.representativeKey !== representativeKey

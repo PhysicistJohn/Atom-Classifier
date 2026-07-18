@@ -4,13 +4,14 @@ import type {
   Sweep,
   WaveformClassification,
   ZeroSpanCapture,
-} from '../../TinySA/packages/contracts/src/index.js';
+} from '../../Atom-Atomizer/packages/contracts/src/index.js';
 import {
   DETECTED_POWER_ACQUISITION_QUALIFICATION,
+  DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION,
   extractObservableFeatures,
   type ObservableFeatureObservation,
   type WaveformEvidence,
-} from '../../TinySA/packages/analysis/src/observable-features.js';
+} from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 
 const FREQUENCY_AGILE_ENVELOPE_CENSORING_LIMITATION =
   'frequency-agile-fixed-tune-envelope-censored' as const;
@@ -81,6 +82,8 @@ export function assertValidatorReceiptQualifiedObservation(
     || observation.zeroSpanCaptureId !== capture.zeroSpan.id
     || observation.detectedPowerAcquisitionQualification
       !== DETECTED_POWER_ACQUISITION_QUALIFICATION
+    || observation.detectedPowerSelectionCondition
+      !== DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION
     || !Object.keys(observation.values).some((name) => name.startsWith('envelope.'))
     || observation.limitations.includes(
       FREQUENCY_AGILE_ENVELOPE_CENSORING_LIMITATION,
@@ -117,6 +120,7 @@ function assertFrequencyAgileCaptureIsCensored(
   if (!sameStrings(observation.views, ['scalar-spectrum'])
     || observation.zeroSpanCaptureId !== undefined
     || observation.detectedPowerAcquisitionQualification !== undefined
+    || observation.detectedPowerSelectionCondition !== undefined
     || leakedEnvelopeFeature !== undefined
     || !observation.limitations.includes(
       FREQUENCY_AGILE_ENVELOPE_CENSORING_LIMITATION,
@@ -169,7 +173,9 @@ function assertClassificationMatchesObservation(
     || !Object.is(evidence.bandwidthHz, expected.bandwidthHz)
     || evidence.zeroSpanCaptureId !== expected.zeroSpanCaptureId
     || evidence.detectedPowerAcquisitionQualification
-      !== expected.detectedPowerAcquisitionQualification) {
+      !== expected.detectedPowerAcquisitionQualification
+    || evidence.detectedPowerSelectionCondition
+      !== expected.detectedPowerSelectionCondition) {
     throw new Error(
       'Validator receipt-qualified classifier result does not match the production observation path',
     );
@@ -179,6 +185,7 @@ function assertClassificationMatchesObservation(
       || Object.keys(featureValues).some((name) => name.startsWith('envelope.'))
       || evidence.zeroSpanCaptureId !== undefined
       || evidence.detectedPowerAcquisitionQualification !== undefined
+      || evidence.detectedPowerSelectionCondition !== undefined
       || evidence.limitations?.includes(
         FREQUENCY_AGILE_ENVELOPE_CENSORING_LIMITATION,
       ) !== true)) {

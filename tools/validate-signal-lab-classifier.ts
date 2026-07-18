@@ -21,26 +21,27 @@ import {
   type ObservableLeafClass,
 } from '../src/observable-classifier-model.js';
 import {
+  DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION,
   extractObservableFeatures,
   ObservableEvidenceUnavailableError,
   observableAssociationEvidenceIsCurrentlyQualified,
   type ObservableFeatureObservation,
-} from '../../TinySA/packages/analysis/src/observable-features.js';
+} from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 import { observableRepresentativeIsInClassDomain } from '../src/observable-hypothesis-domain.js';
 import {
   studentTModelTailProbability,
-} from '../../TinySA/packages/analysis/src/bayesian-predictive.js';
+} from '../../Atom-Atomizer/packages/analysis/src/bayesian-predictive.js';
 import {
   classificationCaptureTargetProjections,
   classificationRepresentatives,
   createDetectedPowerCaptureReceipt,
   SignalDetector,
   SignalTracker,
-} from '../../TinySA/packages/analysis/src/index.js';
+} from '../../Atom-Atomizer/packages/analysis/src/index.js';
 import {
   assertDetectedPowerCaptureReceiptMatches,
-} from '../../TinySA/packages/analysis/src/detected-power-capture-receipt.js';
-import { measurementIdentityKey } from '../../TinySA/packages/analysis/src/measurement-provenance.js';
+} from '../../Atom-Atomizer/packages/analysis/src/detected-power-capture-receipt.js';
+import { measurementIdentityKey } from '../../Atom-Atomizer/packages/analysis/src/measurement-provenance.js';
 import {
   independentlyReplayCaptureTargetProjections,
   type IndependentlyReplayedCaptureTargetProjection,
@@ -57,10 +58,10 @@ import {
   synthesizeCanonicalObservation,
   type CanonicalClassificationScenario,
   type ObservableSignalClass,
-} from '../../TinySA_SignalLab/src/classification-corpus.js';
+} from '../../Atom-SignalLab/src/classification-corpus.js';
 import {
   CANONIZED_REPLAY_DETECTED_POWER_SYNTHESIS_FILTER_WIDTH_HZ,
-} from '../../TinySA_SignalLab/src/waveforms.js';
+} from '../../Atom-SignalLab/src/waveforms.js';
 import {
   detectedPowerTimeseriesConfigurationSchema,
   projectDetectedPowerTuneHz,
@@ -72,7 +73,7 @@ import {
   type SignalDetectionConfig,
   type Sweep,
   type ZeroSpanCapture,
-} from '../../TinySA/packages/contracts/src/index.js';
+} from '../../Atom-Atomizer/packages/contracts/src/index.js';
 
 // Independent of both model fitting/calibration and the transition-model
 // design audit. Eight phase/noise shifts make the finite-acquisition coverage
@@ -156,13 +157,15 @@ const ROLLING_MINIMUM_PER_SCENARIO_KNOWN_COVERAGE = 0.9;
 const ROLLING_MINIMUM_PER_SCENARIO_HIERARCHICAL_ACCURACY = 0.9;
 const CLASSIFICATION_ADMISSIONS = 8;
 const PINNED_DETECTED_POWER_CAPTURE_POLICY_ID =
-  'capture-once-after-first-runtime-admitted-strongest-current-target-v2' as const;
+  'capture-once-after-rank-0-integrated-excess-current-target-runtime-admission-v3' as const;
 const PINNED_CAPTURE_TARGET_SELECTION_POLICY_ID =
-  'preferred-then-strongest-current-physical-or-qualified-agile-member-target-v3' as const;
+  'preferred-then-current-source-sweep-integrated-excess-power-physical-or-qualified-agile-member-target-v4' as const;
 const PINNED_CAPTURE_RUNTIME_ADMISSION_POLICY_ID =
   'exact-eight-sweep-pre-capture-observable-feature-admission-v1' as const;
 const PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION =
-  'receipt-verified-provenance-bound-first-runtime-admitted-strongest-current-physical-or-agile-member-single-capture-v4' as const;
+  'receipt-verified-provenance-bound-runtime-admitted-physical-capture-v5' as const;
+const PINNED_DETECTED_POWER_SELECTION_CONDITION =
+  DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION;
 const PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY = Object.freeze({
   id: 'frequency-agile-fixed-tune-envelope-censoring-v1',
   associationMode: 'frequency-agile-2g4-activity',
@@ -191,7 +194,7 @@ const FULL_BAND_2G4_OBSERVATION_OPPORTUNITIES = 96;
 const FULL_BAND_2G4_START_HZ = 2_402_000_000;
 const FULL_BAND_2G4_STOP_HZ = 2_480_000_000;
 const SELECTION_POLICY =
-  'independent-consecutive-spectrum-and-strongest-first-admission-qualified-envelope-branches-v8' as const;
+  'independent-consecutive-spectrum-and-integrated-excess-rank-0-runtime-admission-qualified-envelope-branches-v9' as const;
 const REPRESENTATIVE_WEIGHTING_POLICY =
   'view-matched-spectrum-event-envelope-causal-attempt-weighting-v4' as const;
 const LIKELIHOOD_POPULATION_POLICY =
@@ -218,7 +221,7 @@ const PINNED_CSMA_DECOMPOSED_SOURCE_SCENARIO_IDS = [
 const PINNED_TAIL_CALIBRATION_SCORE_UNIT =
   'one-independent-branch-acquisition-attempt-score-per-evidence-view-v4' as const;
 const PINNED_TAIL_CALIBRATION_SELECTION_POLICY =
-  'consecutive-spectrum-all-runtime-representatives-and-independent-qualified-envelope-sole-capture-v4' as const;
+  'consecutive-spectrum-all-runtime-representatives-and-independent-integrated-excess-rank-0-envelope-sole-capture-v5' as const;
 const PINNED_TAIL_CALIBRATION_AGGREGATION_POLICY =
   'consecutive-spectrum-branch-minimum-qualified-envelope-branch-sole-capture-v5' as const;
 const PINNED_TAIL_CALIBRATION_RUNTIME_INTERPRETATION_POLICY =
@@ -298,9 +301,9 @@ const PINNED_VALIDATION_QUALIFIED_ENVELOPE_TEMPORAL_SCHEDULE: PinnedTemporalSche
   sourcePlanSpectrumOpportunities: FULL_BAND_2G4_OBSERVATION_OPPORTUNITIES,
 } as const);
 const PINNED_SIGNAL_LAB_PRODUCTION_ACQUISITION_REGIME = Object.freeze({
-  id: 'signal-lab-recommended-span-grid-with-independent-production-branch-source-clocks-v4',
+  id: 'signal-lab-recommended-span-grid-with-independent-production-branch-source-clocks-v5',
   geometry: PINNED_SIGNAL_LAB_PRODUCTION_GEOMETRY,
-  branchPolicy: 'independent-no-auto-spectrum-and-qualified-first-admitted-envelope-sessions-v1',
+  branchPolicy: 'independent-no-auto-spectrum-and-qualified-rank-0-integrated-excess-envelope-sessions-v2',
   sourceClocks: Object.freeze({
     spectrum: Object.freeze({
       id: 'shared-monotonic-source-clock-v1',
@@ -440,8 +443,8 @@ const REPORT_TEMP_PATH = resolve(REPORT_DIRECTORY, 'report.json.tmp');
 const FAILED_REPORT_PATH = resolve(REPORT_DIRECTORY, 'report.failed.json');
 const FAILED_REPORT_TEMP_PATH = resolve(REPORT_DIRECTORY, 'report.failed.json.tmp');
 const VALIDATION_ACCEPTANCE_POLICY_ID = 'synthetic-observable-classifier-full-corpus-release-gates-v1';
-const PINNED_SIGNAL_LAB_COMMIT = '03bc13eb9d5efcfc5f2f9c1792042f670b71ef9a';
-const SIGNAL_LAB_REPOSITORY_ROOT = resolve('../TinySA_SignalLab');
+const PINNED_SIGNAL_LAB_COMMIT = 'e7d48afbce7165fa04fd551629891123f3b86d34';
+const SIGNAL_LAB_REPOSITORY_ROOT = resolve('../Atom-SignalLab');
 mkdirSync(REPORT_DIRECTORY, { recursive: true });
 for (const path of [REPORT_PATH, REPORT_TEMP_PATH, FAILED_REPORT_PATH, FAILED_REPORT_TEMP_PATH]) {
   rmSync(path, { force: true });
@@ -540,7 +543,7 @@ interface AdmissionAttempt {
   provenanceUnavailableWindowCount: number;
   detectedPowerCaptureCount: number;
   detectedPowerCaptureReceiptVerified: boolean;
-  detectedPowerCaptureReceiptSchemaVersion?: 3;
+  detectedPowerCaptureReceiptSchemaVersion?: 4;
   physicalCaptureId?: string;
   captureProjectionKind?: DetectedPowerCaptureProjectionKind;
   projectedAssociationMode?: NonNullable<DetectedSignal['associationMode']>;
@@ -551,6 +554,8 @@ interface AdmissionAttempt {
     typeof PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY_ID;
   detectedPowerAcquisitionQualification?:
     typeof PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION;
+  detectedPowerSelectionCondition?:
+    typeof PINNED_DETECTED_POWER_SELECTION_CONDITION;
   envelopeFeatureUnavailableCode?: ObservableEvidenceUnavailableError['code'];
   finalReadyRepresentativeCount: number;
   finalActiveRepresentativeCount: number;
@@ -600,7 +605,7 @@ interface ValidationCase {
   rawCaptureTargetState: 'candidate' | 'active';
   captureProjectionKind: DetectedPowerCaptureProjectionKind;
   physicalCaptureId: string;
-  detectedPowerCaptureReceiptSchemaVersion: 3;
+  detectedPowerCaptureReceiptSchemaVersion: 4;
   detectedPowerEvidenceDisposition: DetectedPowerEvidenceDisposition;
   envelopeEvidenceCensoringPolicyId?:
     typeof PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY_ID;
@@ -613,6 +618,8 @@ interface ValidationCase {
   zeroSpanCaptureId?: string;
   detectedPowerAcquisitionQualification?:
     typeof PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION;
+  detectedPowerSelectionCondition?:
+    typeof PINNED_DETECTED_POWER_SELECTION_CONDITION;
   views: ObservableFeatureObservation['views'];
   limitations: readonly string[];
   features: Readonly<Record<string, number>>;
@@ -995,6 +1002,13 @@ for (const scenario of validationScenarios) {
                   envelopeSelection.liveEnvelopeCapture.envelopeObservation
                     .detectedPowerAcquisitionQualification,
               }),
+          ...(envelopeSelection.liveEnvelopeCapture?.envelopeObservation
+            ?.detectedPowerSelectionCondition === undefined
+            ? {}
+            : {
+                detectedPowerSelectionCondition:
+                  PINNED_DETECTED_POWER_SELECTION_CONDITION,
+              }),
           ...(envelopeSelection.liveEnvelopeCapture?.unavailableCode === undefined
             ? {}
             : {
@@ -1146,6 +1160,8 @@ for (const scenario of validationScenarios) {
               || featureObservation.zeroSpanCaptureId !== undefined
               || featureObservation.detectedPowerAcquisitionQualification
                 !== undefined
+              || featureObservation.detectedPowerSelectionCondition
+                !== undefined
               || capture.envelopeEvidenceCensoringPolicyId
                 !== PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY_ID
             : capture.envelopeObservation !== featureObservation
@@ -1238,6 +1254,12 @@ for (const scenario of validationScenarios) {
               : {
                   detectedPowerAcquisitionQualification:
                     featureObservation.detectedPowerAcquisitionQualification,
+                }),
+            ...(featureObservation.detectedPowerSelectionCondition === undefined
+              ? {}
+              : {
+                  detectedPowerSelectionCondition:
+                    PINNED_DETECTED_POWER_SELECTION_CONDITION,
                 }),
             views: featureObservation.views,
             limitations: result.evidence.limitations ?? [],
@@ -1392,6 +1414,10 @@ const productionAcquisitionRegimePinsValid =
     ?.attributedSourceClockTraceAudit.serialization
     === 'canonical-attempt-id-branch-attributed-trace-and-capture-disposition-digest-v3'
   && BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.representativeWeightingPolicy === REPRESENTATIVE_WEIGHTING_POLICY
+  && BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerAcquisitionQualification
+    === PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION
+  && BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerSelectionCondition
+    === PINNED_DETECTED_POWER_SELECTION_CONDITION
   && JSON.stringify(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.productionAcquisitionRegimeHighSnrSeedCoveragePolicy)
     === JSON.stringify(PINNED_PRODUCTION_ACQUISITION_REGIME_HIGH_SNR_SEED_COVERAGE_POLICY)
   && JSON.stringify(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerSynthesisFilterPolicy)
@@ -2024,7 +2050,9 @@ const qualifiedCausalEnvelopeSamples = cases.filter((item) =>
   item.detectedPowerEvidenceDisposition === 'admitted-envelope'
   && item.views.includes('detected-power-envelope')
   && item.detectedPowerAcquisitionQualification
-    === PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION);
+    === PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION
+  && item.detectedPowerSelectionCondition
+    === PINNED_DETECTED_POWER_SELECTION_CONDITION);
 const censoredFrequencyAgileCaptureCases = cases.filter((item) =>
   item.detectedPowerEvidenceDisposition
     === 'censored-frequency-agile-spectrum-only');
@@ -2034,12 +2062,13 @@ const invalidCensoredFrequencyAgileCaptureCases =
     || item.captureProjectionKind !== 'current-qualified-agile-latest-member'
     || item.envelopeEvidenceCensoringPolicyId
       !== PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY_ID
-    || item.detectedPowerCaptureReceiptSchemaVersion !== 3
+    || item.detectedPowerCaptureReceiptSchemaVersion !== 4
     || !item.physicalCaptureId
     || item.views.length !== 1
     || item.views[0] !== 'scalar-spectrum'
     || item.zeroSpanCaptureId !== undefined
     || item.detectedPowerAcquisitionQualification !== undefined
+    || item.detectedPowerSelectionCondition !== undefined
     || !item.limitations.includes(
       PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_LIMITATION,
     ));
@@ -2047,28 +2076,36 @@ const invalidUncensoredEnvelopeCases = qualifiedCausalEnvelopeSamples.filter(
   (item) => item.envelopeEvidenceCensoringPolicyId !== undefined
     || !item.views.includes('detected-power-envelope')
     || item.zeroSpanCaptureId !== item.physicalCaptureId
-    || item.detectedPowerCaptureReceiptSchemaVersion !== 3,
+    || item.detectedPowerCaptureReceiptSchemaVersion !== 4
+    || item.detectedPowerSelectionCondition
+      !== PINNED_DETECTED_POWER_SELECTION_CONDITION,
 );
 const unqualifiedCausalEnvelopeSamples = cases.filter((item) =>
   item.detectedPowerEvidenceDisposition === 'admitted-envelope'
   && item.views.includes('detected-power-envelope')
-  && item.detectedPowerAcquisitionQualification
-    !== PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION);
+  && (item.detectedPowerAcquisitionQualification
+      !== PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION
+    || item.detectedPowerSelectionCondition
+      !== PINNED_DETECTED_POWER_SELECTION_CONDITION));
 const missingOrUnissuedReceiptEnvelopeSamples = cases.filter((item) =>
   item.zeroSpanCaptureId !== undefined
-  && item.detectedPowerAcquisitionQualification
-    !== PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION);
+  && (item.detectedPowerAcquisitionQualification
+      !== PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION
+    || item.detectedPowerSelectionCondition
+      !== PINNED_DETECTED_POWER_SELECTION_CONDITION));
 const missingOrUnissuedReceiptEnvelopeFeatureAttempts = admissionAttempts.filter((item) =>
   item.envelopeFeatureAvailable
-  && item.detectedPowerAcquisitionQualification
-    !== PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION);
+  && (item.detectedPowerAcquisitionQualification
+      !== PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION
+    || item.detectedPowerSelectionCondition
+      !== PINNED_DETECTED_POWER_SELECTION_CONDITION));
 const invalidCausalCaptureSemantics = admissionAttempts.filter((item) =>
   item.detectedPowerCaptureCount > 1
   || item.detectedPowerCaptureCount !== (item.admitted ? 1 : 0)
   || item.detectedPowerCaptureReceiptVerified
     !== (item.detectedPowerCaptureCount === 1)
   || (item.detectedPowerCaptureCount === 1
-    && (item.detectedPowerCaptureReceiptSchemaVersion !== 3
+    && (item.detectedPowerCaptureReceiptSchemaVersion !== 4
       || !item.physicalCaptureId
       || item.captureProjectionKind === undefined
       || item.projectedAssociationMode === undefined
@@ -2083,13 +2120,19 @@ const invalidCausalCaptureSemantics = admissionAttempts.filter((item) =>
         !== 'current-qualified-agile-latest-member'
       || item.projectedAssociationMode
         !== 'frequency-agile-2g4-activity'
-      || item.classificationEvidenceView !== 'spectrum-only'))
+      || item.classificationEvidenceView !== 'spectrum-only'
+      || item.detectedPowerAcquisitionQualification !== undefined
+      || item.detectedPowerSelectionCondition !== undefined))
   || (item.detectedPowerEvidenceDisposition === 'admitted-envelope'
     && (item.captureProjectionKind
         !== 'current-active-physical-representative'
       || item.projectedAssociationMode
         === 'frequency-agile-2g4-activity'
-      || item.classificationEvidenceView === 'spectrum-only')));
+      || item.classificationEvidenceView === 'spectrum-only'
+      || item.detectedPowerAcquisitionQualification
+        !== PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION
+      || item.detectedPowerSelectionCondition
+        !== PINNED_DETECTED_POWER_SELECTION_CONDITION)));
 const causalEnvelopeAvailabilityCells = admissionAttempts.map((item) => ({
   attemptId: item.attemptId,
   scenario: item.scenario,
@@ -2138,6 +2181,12 @@ const causalEnvelopeAvailabilityCells = admissionAttempts.map((item) => ({
     : {
         detectedPowerAcquisitionQualification:
           item.detectedPowerAcquisitionQualification,
+      }),
+  ...(item.detectedPowerSelectionCondition === undefined
+    ? {}
+    : {
+        detectedPowerSelectionCondition:
+          item.detectedPowerSelectionCondition,
       }),
   ...(item.envelopeFeatureUnavailableCode === undefined
     ? {}
@@ -2242,7 +2291,7 @@ function summarizeDetectedPowerCaptureOutcomes(
   return {
     physicalCaptureCount: selected.length,
     receiptQualifiedPhysicalCaptureCount: selected.filter((item) =>
-      item.detectedPowerCaptureReceiptSchemaVersion === 3
+      item.detectedPowerCaptureReceiptSchemaVersion === 4
       && Boolean(item.physicalCaptureId)).length,
     qualifiedEnvelopeSampleCount: qualifiedEnvelope.length,
     censoredDetectedPowerCaptureCount: censoredSpectrum.length,
@@ -2406,7 +2455,7 @@ const completeOnlineSpectrumPriorSensitivityAudit = auditPriorSensitivity(
 
 const report = {
   qualification: 'production-detector-conditioned-mixed-nuisance-shift-and-scenario-excluded-synthetic-only',
-  interpretation: 'This is development-regression evidence from re-simulated SignalLab scalar formulas. Every nuisance cell is acquired twice with fresh detector, tracker, history, and source-clock state. The App-compatible consecutive-spectrum branch begins at held-out source look 512, consumes only sequential swept spectra, and supplies every spectrum likelihood, rolling decision, association, proper-score, and spectrum-prior audit. The separately qualified envelope branch begins at held-out source look 524, triggers at most one physical detected-power acquisition immediately after its first runtime-admitted spectrum representative, continues later spectra at the next source look, and exclusively supplies timed and untimed envelope audits. No spectrum event from the envelope session enters a spectrum population. Evidence is restricted to the prefix available at each decision; no endpoint, future-look, or retrospective best-track selection is used. A separate audit proves declared absolute-look drift remains inside each scenario span. The fitted formulas, SNR grid, and acquisition geometry overlap development, so this is not untouched validation, physical receiver calibration, waveform conformance, emitter identity, or protocol validation.',
+  interpretation: 'This is development-regression evidence from re-simulated SignalLab scalar formulas. Every nuisance cell is acquired twice with fresh detector, tracker, history, and source-clock state. The App-compatible consecutive-spectrum branch begins at held-out source look 512, consumes only sequential swept spectra, and supplies every spectrum likelihood, rolling decision, association, proper-score, and spectrum-prior audit. The separately qualified envelope branch begins at held-out source look 524, ranks current physical targets by current-source-sweep integrated excess power, and permits at most one capture only when rank 0 passes runtime admission; a lower-ranked target is never substituted. It continues later spectra at the next source look and exclusively supplies timed and untimed envelope audits. No spectrum event from the envelope session enters a spectrum population. Evidence is restricted to the prefix available at each decision; no endpoint, future-look, or retrospective best-track selection is used. A separate audit proves declared absolute-look drift remains inside each scenario span. The fitted formulas, SNR grid, and acquisition geometry overlap development, so this is not untouched validation, physical receiver calibration, waveform conformance, emitter identity, or protocol validation.',
   selectionPolicy: SELECTION_POLICY,
   model: BAYESIAN_WAVEFORM_MODEL,
   priorSensitivity: {
@@ -2583,6 +2632,10 @@ const report = {
       PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY,
     detectionConfig: PRODUCTION_DETECTION_CONFIG,
     selectionPolicy: SELECTION_POLICY,
+    captureTargetSelectionPolicy:
+      PINNED_CAPTURE_TARGET_SELECTION_POLICY_ID,
+    automaticDetectedPowerSelectionCondition:
+      PINNED_DETECTED_POWER_SELECTION_CONDITION,
     representativeWeightingPolicy: REPRESENTATIVE_WEIGHTING_POLICY,
     representativeEligibilityPolicy: 'observation-only-hypothesis-domain-v5',
     samplingPartitionAudit: {
@@ -2657,7 +2710,7 @@ const report = {
       physicalDetectedPowerCaptureCount:
         physicalEnvelopeCaptureAttempts.length,
       receiptQualifiedPhysicalCaptureCount: cases.filter((item) =>
-        item.detectedPowerCaptureReceiptSchemaVersion === 3
+        item.detectedPowerCaptureReceiptSchemaVersion === 4
         && Boolean(item.physicalCaptureId)).length,
       qualifiedEnvelopeSampleCount: qualifiedCausalEnvelopeSamples.length,
       censoredDetectedPowerCaptureCount:
@@ -2688,6 +2741,10 @@ const report = {
       required: PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION,
       modelDeclared:
         BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerAcquisitionQualification,
+      automaticSelectionConditionRequired:
+        PINNED_DETECTED_POWER_SELECTION_CONDITION,
+      modelDeclaredSelectionCondition:
+        BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerSelectionCondition,
       qualifiedEnvelopeSamples: qualifiedCausalEnvelopeSamples.length,
       unqualifiedEnvelopeSamples: unqualifiedCausalEnvelopeSamples.length,
       missingOrUnissuedReceiptEnvelopeSamples:
@@ -2827,7 +2884,14 @@ const acceptanceFailures = [
     ? `validator report contains non-finite numbers before serialization: ${nonFiniteReportNumbers.slice(0, 50).join(', ')}${nonFiniteReportNumbers.length > 50 ? ` (+${nonFiniteReportNumbers.length - 50} more)` : ''}`
     : undefined,
   diagnosticScenarioIdSet.size > 0 ? 'diagnostic scenario subset is never an acceptance run' : undefined,
-  BAYESIAN_OBSERVABLE_MODEL.classModels.length !== 12 ? `expected 12 v8 model classes, observed ${BAYESIAN_OBSERVABLE_MODEL.classModels.length}` : undefined,
+  BAYESIAN_OBSERVABLE_MODEL.id !== 'bayesian-observable-equivalence-v9'
+    ? `expected v9 model identity, observed ${BAYESIAN_OBSERVABLE_MODEL.id}`
+    : undefined,
+  BAYESIAN_OBSERVABLE_MODEL.calibrationId
+      !== 'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v20'
+    ? `expected v20 calibration identity, observed ${BAYESIAN_OBSERVABLE_MODEL.calibrationId}`
+    : undefined,
+  BAYESIAN_OBSERVABLE_MODEL.classModels.length !== 12 ? `expected 12 v9 model classes, observed ${BAYESIAN_OBSERVABLE_MODEL.classModels.length}` : undefined,
   BAYESIAN_OBSERVABLE_MODEL.sourceCommit !== PINNED_SIGNAL_LAB_COMMIT ? `model source commit ${BAYESIAN_OBSERVABLE_MODEL.sourceCommit} does not match pinned ${PINNED_SIGNAL_LAB_COMMIT}` : undefined,
   BAYESIAN_OBSERVABLE_MODEL.corpusVersion !== CLASSIFICATION_CORPUS_VERSION ? `model corpus version ${BAYESIAN_OBSERVABLE_MODEL.corpusVersion} does not match checked-out ${CLASSIFICATION_CORPUS_VERSION}` : undefined,
   JSON.stringify(BAYESIAN_OBSERVABLE_MODEL.corpusSourceManifest) !== JSON.stringify(checkedOutCorpusSourceManifest)
@@ -2864,7 +2928,7 @@ const acceptanceFailures = [
     ? `validation qualified-envelope branch consumed ${validationQualifiedEnvelopeClockAudit.maximumDetectedPowerCapturesPerAttempt} detected-power captures in one attempt`
     : undefined,
   invalidCausalCaptureSemantics.length !== 0
-    ? `${invalidCausalCaptureSemantics.length} validation attempts violated capture-once-after-runtime-admission semantics`
+    ? `${invalidCausalCaptureSemantics.length} validation attempts violated rank-0 integrated-excess runtime-admission capture semantics`
     : undefined,
   unavailablePhysicalEnvelopeCaptureAttempts.length !== 0
     ? `${unavailablePhysicalEnvelopeCaptureAttempts.length} physical detected-power captures produced unavailable envelope evidence`
@@ -2885,6 +2949,10 @@ const acceptanceFailures = [
   BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerAcquisitionQualification
     !== PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION
     ? 'model does not declare the pinned receipt-verified detected-power acquisition qualification'
+    : undefined,
+  BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerSelectionCondition
+    !== PINNED_DETECTED_POWER_SELECTION_CONDITION
+    ? 'model does not declare the pinned automatic rank-0 integrated-excess selection condition'
     : undefined,
   qualifiedCausalEnvelopeSamples.length !== expectedCausalEnvelopeSamples
     || qualifiedCausalEnvelopeSamples.length
@@ -3551,7 +3619,7 @@ function acquireProductionAttempt(options: CausalProductionAttemptOptions): Prod
             || projection.projectionKind !== independent.projectionKind;
         })) {
         throw new Error(
-          `${context} shared detected-power target selection disagrees with the independent v3 physical/agile-member replay`,
+          `${context} shared detected-power target selection disagrees with the independent v4 integrated-excess physical/agile-member replay`,
         );
       }
     }
@@ -3561,7 +3629,7 @@ function acquireProductionAttempt(options: CausalProductionAttemptOptions): Prod
       rawTarget?: DetectedSignal;
       projectionKind?: DetectedPowerCaptureProjectionKind;
     }[] = branch === 'qualified-envelope'
-      ? captureTargetProjections
+      ? captureTargetProjections.slice(0, 1)
           .filter(({ projectedRepresentative }) =>
             classificationSourceSweepIds(projectedRepresentative).length
               >= CLASSIFICATION_ADMISSIONS)
@@ -3736,7 +3804,9 @@ function acquireProductionAttempt(options: CausalProductionAttemptOptions): Prod
           continue;
         }
         if (receiptQualifiedObservation.detectedPowerAcquisitionQualification
-          !== PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION) {
+          !== PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION
+          || receiptQualifiedObservation.detectedPowerSelectionCondition
+            !== PINNED_DETECTED_POWER_SELECTION_CONDITION) {
           throw new Error(`${context} causal detected-power capture was not admitted into its bound envelope view`);
         }
         liveEnvelopeCapture = {
@@ -3884,13 +3954,26 @@ function assertIndependentDetectedPowerCaptureReceipt({
     && receipt.candidates.every((candidate, rank) => {
       const projection: IndependentlyReplayedCaptureTargetProjection =
         independentlyRanked[rank]!;
-      const { rawTarget, projectedRepresentative, projectionKind } = projection;
+      const {
+        rawTarget,
+        projectedRepresentative,
+        projectionKind,
+        rankEvidence,
+      } = projection;
       const expectedRuntimeAdmission =
         expectedRuntimeAdmissionByRawTargetId.get(rawTarget.id);
       return candidate.rank === rank
         && candidate.inputOrdinal === inputOrdinalById.get(rawTarget.id)
         && candidate.rawTargetId === rawTarget.id
         && candidate.currentPeakDbm === rawTarget.peakDbm
+        && candidate.currentSourceSweepId === rankEvidence.sourceSweepId
+        && candidate.currentSupportStartHz === rankEvidence.supportStartHz
+        && candidate.currentSupportStopHz === rankEvidence.supportStopHz
+        && candidate.currentSupportCellCount === rankEvidence.supportCellCount
+        && candidate.currentRobustFloorDbm === rankEvidence.robustFloorDbm
+        && candidate.currentActualRbwHz === rankEvidence.actualRbwHz
+        && candidate.currentIntegratedExcessPowerMw
+          === rankEvidence.integratedExcessPowerMw
         && candidate.currentPeakHz === rawTarget.peakHz
         && candidate.currentStartHz === rawTarget.startHz
         && candidate.currentStopHz === rawTarget.stopHz
@@ -3915,7 +3998,7 @@ function assertIndependentDetectedPowerCaptureReceipt({
     });
   if (!candidateOrderMatches) {
     throw new Error(
-      `${context} detected-power receipt candidate evidence disagrees with the independent peak/key/ID ordering`,
+      `${context} detected-power receipt candidate evidence disagrees with the independent integrated-excess/key/ID ordering`,
     );
   }
   const sameSpectrumWindow = receipt.spectrumSweepIds.length === spectrumSweepIds.length
@@ -3925,13 +4008,7 @@ function assertIndependentDetectedPowerCaptureReceipt({
   const selectedCandidate = receipt.candidates.find(
     (candidate) => candidate.rawTargetId === receipt.selection.rawTargetId,
   );
-  const independentlySelectedProjection = independentlyRanked.find(
-    (projection) => projection.rawTarget.id === selectedRawTarget.id,
-  );
-  const firstIndependentlyAdmittedProjection = independentlyRanked.find(
-    (projection) => expectedRuntimeAdmissionByRawTargetId
-      .get(projection.rawTarget.id)?.status === 'admitted',
-  );
+  const automaticRankZeroProjection = independentlyRanked[0];
   const selectedAdmissionWindowMatches = selectedCandidate?.runtimeAdmission.status === 'admitted'
     && selectedCandidate.runtimeAdmission.spectrumSweepIds.length
       === spectrumSweepIds.length
@@ -3964,23 +4041,27 @@ function assertIndependentDetectedPowerCaptureReceipt({
     selectedRawTarget.peakHz,
     SIGNAL_LAB_SCALAR_FREQUENCY_RANGE_V1,
   );
-  if (receipt.schemaVersion !== 3
+  if (receipt.schemaVersion !== 4
     || receipt.capturePolicyId !== PINNED_DETECTED_POWER_CAPTURE_POLICY_ID
     || receipt.targetSelectionPolicyId
       !== PINNED_CAPTURE_TARGET_SELECTION_POLICY_ID
     || receipt.runtimeAdmissionPolicyId
       !== PINNED_CAPTURE_RUNTIME_ADMISSION_POLICY_ID
-    || receipt.selection.mode !== 'strongest-current'
+    || receipt.selection.mode !== 'integrated-excess-current'
     || receipt.selection.preferredRawTargetId !== undefined
-    || independentlySelectedProjection?.projectedRepresentative.id
+    || automaticRankZeroProjection?.rawTarget.id !== selectedRawTarget.id
+    || automaticRankZeroProjection?.projectedRepresentative.id
       !== selectedRepresentative.id
-    || independentlySelectedProjection?.projectionKind !== selectedProjectionKind
-    || firstIndependentlyAdmittedProjection?.rawTarget.id
-      !== selectedRawTarget.id
+    || automaticRankZeroProjection?.projectionKind !== selectedProjectionKind
+    || expectedRuntimeAdmissionByRawTargetId.get(selectedRawTarget.id)?.status
+      !== 'admitted'
     || receipt.selection.rawTargetId !== selectedRawTarget.id
     || receipt.selection.projectedRepresentativeId !== selectedRepresentative.id
     || selectedCandidate?.projectedRepresentativeId !== selectedRepresentative.id
+    || selectedCandidate?.rank !== 0
+    || receipt.candidates[0] !== selectedCandidate
     || selectedCandidate?.projectionKind !== selectedProjectionKind
+    || selectedCandidate?.currentSourceSweepId !== spectrumSweepIds[0]
     || !selectedAdmissionWindowMatches
     || !projectedRepresentativeSnapshotMatches
     || admittedTargetTuneHz !== independentlyProjectedTuneHz
@@ -4184,6 +4265,13 @@ function auditPriorSensitivity(
           ? {
               detectedPowerAcquisitionQualification:
                 item.detectedPowerAcquisitionQualification,
+            }
+          : {}),
+        ...('detectedPowerSelectionCondition' in item
+          && item.detectedPowerSelectionCondition !== undefined
+          ? {
+              detectedPowerSelectionCondition:
+                item.detectedPowerSelectionCondition,
             }
           : {}),
       };

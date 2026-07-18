@@ -3,6 +3,7 @@ import {
   BAYESIAN_WAVEFORM_MODEL,
   BayesianWaveformClassifier,
   empiricalSyntheticSupportRank,
+  selectObservableDecision,
 } from './bayesian-waveform-classifier.js';
 import { BAYESIAN_OBSERVABLE_MODEL } from './models/bayesian-observable.generated.js';
 import {
@@ -10,7 +11,7 @@ import {
   observableClassSupportsEvidenceView,
   observableModelComponents,
 } from './observable-classifier-model.js';
-import { SIGNAL_LAB_PRODUCTION_ACQUISITION_REGIME_METADATA } from '../../TinySA/packages/analysis/src/observable-training-acquisition-geometry.js';
+import { SIGNAL_LAB_PRODUCTION_ACQUISITION_REGIME_METADATA } from '../../Atom-Atomizer/packages/analysis/src/observable-training-acquisition-geometry.js';
 
 describe('synthetic support rank contract', () => {
   it('computes a smoothed lower-tail empirical rank with deterministic tie handling', () => {
@@ -46,11 +47,11 @@ describe('synthetic support rank contract', () => {
 
   it('pins the non-conformal statistical interpretation in the generated asset', () => {
     expect(BAYESIAN_OBSERVABLE_MODEL.calibrationId).toBe(
-      'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v19',
+      'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v20',
     );
     expect(BAYESIAN_OBSERVABLE_MODEL.calibrationId).not.toContain('conformal');
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationRepresentativeSelectionPolicy)
-      .toBe('consecutive-spectrum-all-runtime-representatives-and-independent-qualified-envelope-sole-capture-v4');
+      .toBe('consecutive-spectrum-all-runtime-representatives-and-independent-integrated-excess-rank-0-envelope-sole-capture-v5');
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationScoreUnit)
       .toBe('one-independent-branch-acquisition-attempt-score-per-evidence-view-v4');
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationRepresentativeAggregationPolicy)
@@ -62,11 +63,13 @@ describe('synthetic support rank contract', () => {
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.representativeEligibilityPolicy)
       .toBe('observation-only-hypothesis-domain-v5');
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerAcquisitionQualification)
-      .toBe('receipt-verified-provenance-bound-first-runtime-admitted-strongest-current-physical-or-agile-member-single-capture-v4');
+      .toBe('receipt-verified-provenance-bound-runtime-admitted-physical-capture-v5');
+    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerSelectionCondition)
+      .toBe('automatic-current-source-sweep-integrated-excess-rank-0');
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.acquisitionBranchPolicy)
-      .toBe('independent-no-auto-spectrum-and-qualified-first-admitted-envelope-sessions-v1');
+      .toBe('independent-no-auto-spectrum-and-qualified-rank-0-integrated-excess-envelope-sessions-v2');
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.selectionPolicy)
-      .toBe('independent-consecutive-spectrum-and-strongest-first-admission-qualified-envelope-branches-v8');
+      .toBe('independent-consecutive-spectrum-and-integrated-excess-rank-0-runtime-admission-qualified-envelope-branches-v9');
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.likelihoodPopulationPolicy)
       .toBe('independent-branch-view-matched-runtime-event-populations-v3');
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.frequencyAgileFixedTuneEnvelopeCensoringPolicy)
@@ -87,7 +90,7 @@ describe('synthetic support rank contract', () => {
       nodeVersion: '22.23.1',
       v8Version: '12.4.254.21-node.56',
     });
-    expect(BAYESIAN_OBSERVABLE_MODEL.id).toBe('bayesian-observable-equivalence-v8');
+    expect(BAYESIAN_OBSERVABLE_MODEL.id).toBe('bayesian-observable-equivalence-v9');
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.signalLabProductionAcquisitionRegime)
       .toEqual(SIGNAL_LAB_PRODUCTION_ACQUISITION_REGIME_METADATA);
     expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerSynthesisFilterPolicy).toEqual({
@@ -212,3 +215,79 @@ describe('generated model constructor admission', () => {
     }
   });
 });
+
+describe('posterior event arithmetic', () => {
+  it('keeps the live LTE Band 3 cellular union inside the probability space', () => {
+    // Exact leaf probabilities replayed from SignalLab sequence 3954 in the
+    // live scalar-lte-b3-1784363087146 failure. Every leaf was individually
+    // valid, but adding independently normalized LTE and NR events produced
+    // 1.0000000000000002 at the primary decision boundary.
+    const candidates = [
+      candidate('lte-fdd-like', 0.5364620990503566),
+      candidate('nr-fdd-like', 0.46353790094964487),
+      candidate('unknown-signal', 1.1361602155896544e-27),
+      candidate('cw-like', 5.144353888487742e-32),
+      candidate('am-dsb-full-carrier-like', 0),
+      candidate('fm-angle-modulated-like', 0),
+      candidate('gsm-like', 0),
+      candidate('lte-tdd-like', 0),
+      candidate('nr-tdd-like', 0),
+      candidate('wifi-hr-dsss-like', 0),
+      candidate('wifi-ofdm-like', 0),
+      candidate('bluetooth-like', 0),
+    ];
+
+    const decision = selectObservableDecision(candidates, {
+      centerHz: 1_840_000_249.2651205,
+      bandwidthHz: 17_572_383.07349682,
+      values: {},
+    }, 1);
+
+    expect(decision).toEqual({
+      label: 'cellular-ofdm-ambiguous',
+      probability: 1,
+    });
+    expect(decision.probability).toBeGreaterThanOrEqual(0);
+    expect(decision.probability).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('detected-power selection-condition contract', () => {
+  const qualifiedEnvelope = {
+    centerHz: 100,
+    bandwidthHz: 20,
+    values: { 'envelope.meanDbm': -50 },
+    views: ['scalar-spectrum', 'detected-power-envelope'] as const,
+    zeroSpanCaptureId: 'capture-1',
+    detectedPowerAcquisitionQualification:
+      'receipt-verified-provenance-bound-runtime-admitted-physical-capture-v5' as const,
+    limitations: [],
+  };
+
+  it('rejects a qualified envelope that omits its automatic/operator selection condition', () => {
+    expect(() => selectObservableDecision([], qualifiedEnvelope, 1))
+      .toThrow(/qualification and target-selection condition must be paired/i);
+  });
+
+  it('requires the preferred-target limitation exactly for operator-selected evidence', () => {
+    expect(() => selectObservableDecision([], {
+      ...qualifiedEnvelope,
+      detectedPowerSelectionCondition: 'operator-preferred-current-target',
+    }, 1)).toThrow(/qualification contradicts its envelope evidence/i);
+    expect(() => selectObservableDecision([], {
+      ...qualifiedEnvelope,
+      detectedPowerSelectionCondition:
+        'automatic-current-source-sweep-integrated-excess-rank-0',
+      limitations: ['zero-span-operator-preferred-target-selection'] as const,
+    }, 1)).toThrow(/qualification contradicts its envelope evidence/i);
+  });
+});
+
+function candidate(id: string, probability: number) {
+  return {
+    id,
+    probability,
+    logLikelihood: probability === 0 ? Number.NEGATIVE_INFINITY : Math.log(probability),
+    logJoint: probability === 0 ? Number.NEGATIVE_INFINITY : Math.log(probability),
+  };
+}

@@ -1,5 +1,5 @@
 import { BAYESIAN_WAVEFORM_MODEL, BayesianWaveformClassifier } from './bayesian-waveform-classifier.js';
-export type { WaveformEvidence } from '../../TinySA/packages/analysis/src/observable-features.js';
+export type { WaveformEvidence } from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 
 /**
  * Observable-model provenance only. SignalLab's live profile catalog belongs

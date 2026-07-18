@@ -16,34 +16,38 @@ jobs:
     timeout-minutes: 360
     defaults:
       run:
-        working-directory: AtomOS_Classifier
+        working-directory: Atom-Classifier
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          path: AtomOS_Classifier
+          path: Atom-Classifier
           persist-credentials: false
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          repository: PhysicistJohn/TinySA_Atomizer
-          path: TinySA
+          repository: PhysicistJohn/Atom-Atomizer
+          # Training/validation imports this exact committed analysis/contracts
+          # closure; do not silently follow a moving default branch.
+          ref: df6c2ee06003eae94b1e02b52fb50ed0082b3ea7
+          path: Atom-Atomizer
           token: ${{ secrets.CLASSIFIER_TINYSA_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          repository: PhysicistJohn/TinySA_SignalLab
+          repository: PhysicistJohn/Atom-SignalLab
           # Pinned to the exact commit the checked-in model's training corpus
           # came from -- this repo's reproduction/validation must match that
           # data exactly, independent of SignalLab's live/current state.
-          ref: 03bc13eb9d5efcfc5f2f9c1792042f670b71ef9a
-          path: TinySA_SignalLab
+          ref: e7d48afbce7165fa04fd551629891123f3b86d34
+          path: Atom-SignalLab
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.23.1
           cache: npm
           cache-dependency-path: |
-            AtomOS_Classifier/package-lock.json
-            TinySA/package-lock.json
+            Atom-Classifier/package-lock.json
+            Atom-Atomizer/package-lock.json
+            Atom-SignalLab/package-lock.json
       - name: Install exact npm
         run: npm install --global npm@10.9.8
       - name: Verify exact Node and npm versions
@@ -51,10 +55,13 @@ jobs:
         run: |
           test "$(node --version)" = "v22.23.1"
           test "$(npm --version)" = "10.9.8"
-      - name: Install TinySA (Atomizer) runtime dependencies
-        working-directory: TinySA
+      - name: Install Atomizer runtime dependencies
+        working-directory: Atom-Atomizer
         run: npm ci --omit=dev --ignore-scripts
-      - name: Install AtomOS_Classifier
+      - name: Install pinned SignalLab runtime dependencies
+        working-directory: Atom-SignalLab
+        run: npm ci --omit=dev --ignore-scripts
+      - name: Install Atom-Classifier
         run: npm ci
       - run: npm run typecheck
       - run: npm run check:observable-training-worker

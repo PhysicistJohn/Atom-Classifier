@@ -2,7 +2,7 @@ import {
   logSumExp,
   mixtureLogLikelihood,
   type PosteriorCandidate,
-} from '../../TinySA/packages/analysis/src/bayesian-predictive.js';
+} from '../../Atom-Atomizer/packages/analysis/src/bayesian-predictive.js';
 import {
   observableClassSupportsEvidenceView,
   observableModelComponents,
@@ -10,7 +10,7 @@ import {
   type ObservableClassifierModelAsset,
   type ObservableLeafClass,
 } from '../src/observable-classifier-model.js';
-import type { ObservableFeatureObservation } from '../../TinySA/packages/analysis/src/observable-features.js';
+import type { ObservableFeatureObservation } from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 import { observableRepresentativeIsInClassDomain } from '../src/observable-hypothesis-domain.js';
 import { BAYESIAN_OBSERVABLE_MODEL } from '../src/models/bayesian-observable.generated.js';
 

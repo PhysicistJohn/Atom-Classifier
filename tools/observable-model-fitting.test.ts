@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalClassificationScenario } from '../../TinySA_SignalLab/src/classification-corpus.js';
+import { canonicalClassificationScenario } from '../../Atom-SignalLab/src/classification-corpus.js';
 import {
   OBSERVABLE_LIKELIHOOD_COMPONENT_DECOMPOSITION_POLICY,
   componentSourceScenarioId,

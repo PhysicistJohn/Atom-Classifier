@@ -1,18 +1,20 @@
-import type { DetectedSignal, WaveformClassification } from '../../TinySA/packages/contracts/src/index.js';
+import type { DetectedSignal, WaveformClassification } from '../../Atom-Atomizer/packages/contracts/src/index.js';
 import {
   assertStudentTLikelihoodComponent,
   mixtureLogLikelihood,
   logSumExp,
   studentTModelTailProbability,
   type PosteriorCandidate,
-} from '../../TinySA/packages/analysis/src/bayesian-predictive.js';
+} from '../../Atom-Atomizer/packages/analysis/src/bayesian-predictive.js';
 import {
   DETECTED_POWER_ACQUISITION_QUALIFICATION,
+  DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION,
+  DETECTED_POWER_OPERATOR_SELECTION_CONDITION,
   extractObservableFeatures,
   ObservableEvidenceUnavailableError,
   type ObservableFeatureObservation,
   type WaveformEvidence,
-} from '../../TinySA/packages/analysis/src/observable-features.js';
+} from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 import {
   OBSERVABLE_EVIDENCE_CENSORING_POLICY,
   OBSERVABLE_EVIDENCE_VIEWS,
@@ -40,7 +42,7 @@ import {
   SIGNAL_LAB_PRODUCTION_ACQUISITION_GEOMETRY,
   SIGNAL_LAB_PRODUCTION_ACQUISITION_REGIME_METADATA,
   SIGNAL_LAB_PRODUCTION_TEMPORAL_SCHEDULE_PAIRS,
-} from '../../TinySA/packages/analysis/src/observable-training-acquisition-geometry.js';
+} from '../../Atom-Atomizer/packages/analysis/src/observable-training-acquisition-geometry.js';
 
 const EXPECTED_TRAINING_RUNTIME_IDENTITY = Object.freeze({
   policyId: 'exact-repository-node-version-v1',
@@ -158,6 +160,7 @@ export class BayesianWaveformClassifier {
         ...(observation.zeroSpanCaptureId ? { zeroSpanCaptureId: observation.zeroSpanCaptureId } : {}),
         ...(observation.detectedPowerAcquisitionQualification ? {
           detectedPowerAcquisitionQualification: observation.detectedPowerAcquisitionQualification,
+          detectedPowerSelectionCondition: observation.detectedPowerSelectionCondition,
         } : {}),
         views: observation.views,
         features: { ...observation.values, 'model.maximumKnownSyntheticSupportRank': knownSupportRank },
@@ -206,7 +209,8 @@ type DecisionObservation = Pick<ObservableFeatureObservation, 'centerHz' | 'band
     | 'limitations'
     | 'views'
     | 'zeroSpanCaptureId'
-    | 'detectedPowerAcquisitionQualification'>>;
+    | 'detectedPowerAcquisitionQualification'
+    | 'detectedPowerSelectionCondition'>>;
 
 export function selectObservableDecision(
   candidates: readonly PosteriorCandidate[],
@@ -228,7 +232,8 @@ export function knownModelSupportRank(
       | 'limitations'
       | 'views'
       | 'zeroSpanCaptureId'
-      | 'detectedPowerAcquisitionQualification'>>,
+      | 'detectedPowerAcquisitionQualification'
+      | 'detectedPowerSelectionCondition'>>,
 ): number {
   assertDetectedPowerEvidenceIsConsistent(observation);
   assertGeneratedModel();
@@ -257,7 +262,8 @@ type DetectedPowerQualificationObservation = Pick<ObservableFeatureObservation, 
     | 'limitations'
     | 'views'
     | 'zeroSpanCaptureId'
-    | 'detectedPowerAcquisitionQualification'>>;
+    | 'detectedPowerAcquisitionQualification'
+    | 'detectedPowerSelectionCondition'>>;
 
 /**
  * Envelope dimensions were calibrated only for the production causal capture
@@ -279,9 +285,24 @@ function assertDetectedPowerEvidenceIsConsistent(
     && observation.zeroSpanCaptureId.length > 0;
   const qualified = observation.detectedPowerAcquisitionQualification
     === DETECTED_POWER_ACQUISITION_QUALIFICATION;
+  const automaticSelection = observation.detectedPowerSelectionCondition
+    === DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION;
+  const operatorSelection = observation.detectedPowerSelectionCondition
+    === DETECTED_POWER_OPERATOR_SELECTION_CONDITION;
+  const preferredTargetLimitation = observation.limitations?.includes(
+    'zero-span-operator-preferred-target-selection',
+  ) ?? false;
 
   if (observation.detectedPowerAcquisitionQualification !== undefined && !qualified) {
     throw new Error('Observable detected-power evidence carries an unknown acquisition qualification');
+  }
+  if (observation.detectedPowerSelectionCondition !== undefined
+    && !automaticSelection
+    && !operatorSelection) {
+    throw new Error('Observable detected-power evidence carries an unknown target-selection condition');
+  }
+  if (qualified !== (automaticSelection || operatorSelection)) {
+    throw new Error('Observable detected-power acquisition qualification and target-selection condition must be paired');
   }
   if (!qualified) {
     if (hasEnvelopeFeatures || hasEnvelopeView || carriesCaptureId) {
@@ -304,7 +325,8 @@ function assertDetectedPowerEvidenceIsConsistent(
     || !envelopeFeaturesAreFinite
     || !exactQualifiedViews
     || !hasValidCaptureId
-    || contradictoryLimitation) {
+    || contradictoryLimitation
+    || (operatorSelection !== preferredTargetLimitation)) {
     throw new Error('Observable detected-power acquisition qualification contradicts its envelope evidence');
   }
 }
@@ -379,7 +401,17 @@ function selectDecision(
   }
   const lte = aggregate(candidates, ['lte-fdd-like', 'lte-tdd-like']);
   const nr = aggregate(candidates, ['nr-fdd-like', 'nr-tdd-like']);
-  const cellularOfdm = lte + nr;
+  // LTE and NR are disjoint leaves of one cellular-OFDM event. Compute that
+  // union against the posterior denominator once. Adding the two separately
+  // normalized event probabilities is algebraically equivalent over the
+  // reals, but their independently rounded denominators can differ by an ulp
+  // and make the later sum exceed one.
+  const cellularOfdm = aggregate(candidates, [
+    'lte-fdd-like',
+    'lte-tdd-like',
+    'nr-fdd-like',
+    'nr-tdd-like',
+  ]);
   const wifi = aggregate(candidates, ['wifi-hr-dsss-like', 'wifi-ofdm-like']);
   const topKnownIsCellularOfdm = topKnown.id === 'lte-fdd-like'
     || topKnown.id === 'lte-tdd-like'
@@ -461,7 +493,32 @@ function leafFamily(id: string): string {
 }
 
 function aggregate(candidates: readonly PosteriorCandidate[], ids: readonly ObservableLeafClass[]): number {
-  return ids.reduce((sum, id) => sum + probability(candidates, id), 0);
+  const selectedIds = new Set<string>(ids);
+  let selectedMass = 0;
+  let excludedMass = 0;
+  for (const candidate of candidates) {
+    if (!Number.isFinite(candidate.probability)
+      || candidate.probability < 0
+      || candidate.probability > 1) {
+      throw new Error('Observable posterior contains an invalid candidate probability');
+    }
+    if (selectedIds.has(candidate.id)) selectedMass += candidate.probability;
+    else excludedMass += candidate.probability;
+  }
+  const totalMass = selectedMass + excludedMass;
+  if (!Number.isFinite(totalMass)
+    || totalMass <= 0
+    || Math.abs(totalMass - 1) > 1e-9) {
+    throw new Error('Observable posterior failed to normalize before aggregation');
+  }
+  // Posterior leaves are IEEE-754 approximations. Summing a group whose true
+  // mass is one can produce 1 + a few ulps even though every leaf and the
+  // complete posterior passed normalization. Form the event probability as
+  // selected / (selected + complement): this is the Bayesian ratio being
+  // represented and is guaranteed to remain in [0, 1] for admitted
+  // non-negative mass. Do not clamp the renderer boundary; grossly invalid
+  // candidates still fail above.
+  return selectedMass / totalMass;
 }
 
 function probability(candidates: readonly PosteriorCandidate[], id: string): number {
@@ -499,7 +556,7 @@ function supportedDetectorConfiguration(detection: DetectedSignal): boolean {
     && config.releaseAfterMissedSweeps === 2;
 }
 
-export type { WaveformEvidence } from '../../TinySA/packages/analysis/src/observable-features.js';
+export type { WaveformEvidence } from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 export { observableClassDefinitions } from './observable-classifier-model.js';
 
 function assertGeneratedModel(): void {
@@ -513,9 +570,9 @@ function assertGeneratedModel(): void {
       `${SIGNAL_LAB_PRODUCTION_ACQUISITION_GEOMETRY.id}/${temporalSchedulePair.id}`),
   ];
   const trainingMatrixContract = BAYESIAN_OBSERVABLE_MODEL.trainingMatrix as ObservableClassifierModelAsset['trainingMatrix'];
-  if (BAYESIAN_OBSERVABLE_MODEL.id !== 'bayesian-observable-equivalence-v8'
-    || BAYESIAN_OBSERVABLE_MODEL.sourceCommit !== '03bc13eb9d5efcfc5f2f9c1792042f670b71ef9a'
-    || BAYESIAN_OBSERVABLE_MODEL.corpusSha256 !== '38288f0e0437dbb687674308afecb4f30adadc9e93ea7abad3b8bf13d80ec918'
+  if (BAYESIAN_OBSERVABLE_MODEL.id !== 'bayesian-observable-equivalence-v9'
+    || BAYESIAN_OBSERVABLE_MODEL.sourceCommit !== 'e7d48afbce7165fa04fd551629891123f3b86d34'
+    || BAYESIAN_OBSERVABLE_MODEL.corpusSha256 !== 'd68c151f6f284b14effd28bd3db2a696b095ed4fe72a4a206ccea22f54a10a48'
     || JSON.stringify(BAYESIAN_OBSERVABLE_MODEL.corpusSourceManifest?.artifacts.map((artifact) => artifact.path)) !== JSON.stringify([
       'package-lock.json',
       'package.json',
@@ -528,7 +585,7 @@ function assertGeneratedModel(): void {
     ])
     || BAYESIAN_OBSERVABLE_MODEL.preprocessing !== 'scalar-observable-features-v7'
     || BAYESIAN_OBSERVABLE_MODEL.priorId !== 'engineering-design-class-weights-v1'
-    || BAYESIAN_OBSERVABLE_MODEL.calibrationId !== 'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v19'
+    || BAYESIAN_OBSERVABLE_MODEL.calibrationId !== 'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v20'
     || !/^[a-f0-9]{64}$/.test(
       BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.attemptSamplingWorkerRuntimeSha256,
     )
@@ -561,9 +618,9 @@ function assertGeneratedModel(): void {
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.observationOpportunityHorizons?.standard !== 32
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.observationOpportunityHorizons.fullBand2g4 !== 96
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.acquisitionBranchPolicy
-      !== 'independent-no-auto-spectrum-and-qualified-first-admitted-envelope-sessions-v1'
+      !== 'independent-no-auto-spectrum-and-qualified-rank-0-integrated-excess-envelope-sessions-v2'
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.selectionPolicy
-      !== 'independent-consecutive-spectrum-and-strongest-first-admission-qualified-envelope-branches-v8'
+      !== 'independent-consecutive-spectrum-and-integrated-excess-rank-0-runtime-admission-qualified-envelope-branches-v9'
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.representativeWeightingPolicy !== 'view-matched-spectrum-event-envelope-causal-attempt-weighting-v4'
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.representativeEligibilityPolicy !== 'observation-only-hypothesis-domain-v5'
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.likelihoodPopulationPolicy
@@ -574,16 +631,18 @@ function assertGeneratedModel(): void {
       !== JSON.stringify(OBSERVABLE_EVIDENCE_CENSORING_POLICY)
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerAcquisitionQualification
       !== DETECTED_POWER_ACQUISITION_QUALIFICATION
+    || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerSelectionCondition
+      !== DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationScoreUnit
       !== 'one-independent-branch-acquisition-attempt-score-per-evidence-view-v4'
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationRepresentativeSelectionPolicy
-      !== 'consecutive-spectrum-all-runtime-representatives-and-independent-qualified-envelope-sole-capture-v4'
+      !== 'consecutive-spectrum-all-runtime-representatives-and-independent-integrated-excess-rank-0-envelope-sole-capture-v5'
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationRepresentativeAggregationPolicy
       !== 'consecutive-spectrum-branch-minimum-qualified-envelope-branch-sole-capture-v5'
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationRuntimeInterpretationPolicy
       !== 'spectrum-member-dominates-independent-branch-attempt-min-envelope-is-independent-sole-capture-v3'
     || BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationStatisticalInterpretation !== 'empirical-synthetic-reference-only-no-exchangeability-or-coverage-guarantee-v1') {
-    throw new Error('Observable model asset does not match the v8 production admission contract');
+    throw new Error('Observable model asset does not match the v9 production admission contract');
   }
   const samplingAudit = BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.causalSamplingAudit;
   const fittingCounts = BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.fittingCapturedEnvelopeCountsByScenario;
@@ -612,7 +671,7 @@ function assertGeneratedModel(): void {
     return partition.pairedNuisanceCellCount > 0
       && spectrum.detectedPowerCapturePolicyId === 'no-automatic-detected-power-capture-v1'
       && envelope.detectedPowerCapturePolicyId
-        === 'capture-once-after-first-runtime-admitted-strongest-current-target-v2'
+        === 'capture-once-after-rank-0-integrated-excess-current-target-runtime-admission-v3'
       && spectrum.attemptCount === partition.pairedNuisanceCellCount
       && envelope.attemptCount === partition.pairedNuisanceCellCount
       && spectrum.physicalDetectedPowerCaptureCount === 0

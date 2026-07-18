@@ -17,14 +17,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { canonicalClassificationScenarios } from '../../TinySA_SignalLab/src/classification-corpus.js';
+import { canonicalClassificationScenarios } from '../../Atom-SignalLab/src/classification-corpus.js';
 import {
   OBSERVABLE_TRAINING_BASELINE_QUALIFIED_ENVELOPE_TEMPORAL_SCHEDULE,
   OBSERVABLE_TRAINING_BASELINE_SPECTRUM_TEMPORAL_SCHEDULE,
   SIGNAL_LAB_PRODUCTION_ACQUISITION_GEOMETRY,
   SIGNAL_LAB_PRODUCTION_TEMPORAL_SCHEDULE_PAIRS,
   occupiedBandwidthRbwDivisorGeometry,
-} from '../../TinySA/packages/analysis/src/observable-training-acquisition-geometry.js';
+} from '../../Atom-Atomizer/packages/analysis/src/observable-training-acquisition-geometry.js';
 import { featureSamples } from './observable-training-sampling.js';
 import {
   ATTEMPT_SAMPLING_CACHE_MAX_COMPRESSED_CHUNK_BYTES,

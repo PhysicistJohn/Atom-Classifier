@@ -17,11 +17,11 @@
     "observable-training-sampling-worker-check.ts",
     "observable-training-worker-client.ts",
     "../src/observable-classifier-model.ts",
-    "../../TinySA/packages/analysis/src/bayesian-predictive.ts",
-    "../../TinySA/packages/analysis/src/observable-features.ts",
-    "../../TinySA/packages/contracts/src/index.ts",
-    "../../TinySA_SignalLab/src/classification-corpus.ts",
-    "../../TinySA_SignalLab/src/source-provenance.ts",
-    "../../TinySA_SignalLab/src/waveforms.ts"
+    "../../Atom-Atomizer/packages/analysis/src/bayesian-predictive.ts",
+    "../../Atom-Atomizer/packages/analysis/src/observable-features.ts",
+    "../../Atom-Atomizer/packages/contracts/src/index.ts",
+    "../../Atom-SignalLab/src/classification-corpus.ts",
+    "../../Atom-SignalLab/src/source-provenance.ts",
+    "../../Atom-SignalLab/src/waveforms.ts"
   ]
 }

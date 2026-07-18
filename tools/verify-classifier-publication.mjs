@@ -8,19 +8,19 @@ import { fileURLToPath } from 'node:url';
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // The model and its manifest live in this repo (src/models); only the
 // published-claims docs they're checked against live in the sibling
-// TinySA (Atomizer) repo.
-const TINYSA_ROOT = resolve(REPOSITORY_ROOT, '../TinySA');
+// Atomizer repo.
+const ATOMIZER_ROOT = resolve(REPOSITORY_ROOT, '../Atom-Atomizer');
 const MODEL_PATH = 'src/models/bayesian-observable.generated.ts';
 const MANIFEST_PATH = 'src/models/bayesian-observable.manifest.generated.ts';
 const REPORT_PATH = '.artifacts/classifier-validation/report.json';
 const NODE_VERSION_PATH = '.node-version';
-const PINNED_SIGNAL_LAB_COMMIT = '03bc13eb9d5efcfc5f2f9c1792042f670b71ef9a';
-const PINNED_CORPUS_SHA256 = '38288f0e0437dbb687674308afecb4f30adadc9e93ea7abad3b8bf13d80ec918';
+const PINNED_SIGNAL_LAB_COMMIT = 'e7d48afbce7165fa04fd551629891123f3b86d34';
+const PINNED_CORPUS_SHA256 = 'd68c151f6f284b14effd28bd3db2a696b095ed4fe72a4a206ccea22f54a10a48';
 const PINNED_CORPUS_VERSION = 'observable-scalar-corpus-v13';
-const PINNED_MODEL_ID = 'bayesian-observable-equivalence-v8';
+const PINNED_MODEL_ID = 'bayesian-observable-equivalence-v9';
 const PINNED_PREPROCESSING_ID = 'scalar-observable-features-v7';
 const PINNED_PRIOR_ID = 'engineering-design-class-weights-v1';
-const PINNED_CALIBRATION_ID = 'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v19';
+const PINNED_CALIBRATION_ID = 'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v20';
 const PINNED_DECISION_POLICY_ID = 'observable-open-set-decision-v10';
 const PINNED_ACCEPTANCE_POLICY_ID = 'synthetic-observable-classifier-full-corpus-release-gates-v1';
 const PINNED_ACCEPTANCE_THRESHOLDS = {
@@ -49,7 +49,7 @@ const PINNED_EXPECTED_CLASSIFICATION_NON_ADMISSION_SCENARIO_IDS = [
   'gsm-900-tdma',
 ];
 const PINNED_SELECTION_POLICY =
-  'independent-consecutive-spectrum-and-strongest-first-admission-qualified-envelope-branches-v8';
+  'independent-consecutive-spectrum-and-integrated-excess-rank-0-runtime-admission-qualified-envelope-branches-v9';
 const PINNED_LIKELIHOOD_POPULATION_POLICY =
   'independent-branch-view-matched-runtime-event-populations-v3';
 const PINNED_LIKELIHOOD_COMPONENT_DECOMPOSITION_POLICY = {
@@ -67,9 +67,13 @@ const PINNED_LIKELIHOOD_COMPONENT_DECOMPOSITION_POLICY = {
 const PINNED_REPRESENTATIVE_WEIGHTING_POLICY =
   'view-matched-spectrum-event-envelope-causal-attempt-weighting-v4';
 const PINNED_ACQUISITION_BRANCH_POLICY =
-  'independent-no-auto-spectrum-and-qualified-first-admitted-envelope-sessions-v1';
+  'independent-no-auto-spectrum-and-qualified-rank-0-integrated-excess-envelope-sessions-v2';
 const PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION =
-  'receipt-verified-provenance-bound-first-runtime-admitted-strongest-current-physical-or-agile-member-single-capture-v4';
+  'receipt-verified-provenance-bound-runtime-admitted-physical-capture-v5';
+const PINNED_DETECTED_POWER_SELECTION_CONDITION =
+  'automatic-current-source-sweep-integrated-excess-rank-0';
+const PINNED_CAPTURE_TARGET_RANK_MODEL =
+  'current-source-sweep-integrated-excess-power-v1';
 const PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY = {
   id: 'frequency-agile-fixed-tune-envelope-censoring-v1',
   associationMode: 'frequency-agile-2g4-activity',
@@ -102,7 +106,7 @@ const PINNED_TRAINING_RUNTIME_IDENTITY = {
   v8Version: '12.4.254.21-node.56',
 };
 const PINNED_CAPTURE_TARGET_SELECTION_POLICY =
-  'preferred-then-strongest-current-physical-or-qualified-agile-member-target-v3';
+  'preferred-then-current-source-sweep-integrated-excess-power-physical-or-qualified-agile-member-target-v4';
 const PINNED_RELEASE_GATE_PROFILE_HORIZONS = [
   ['cw', 32],
   ['am', 32],
@@ -198,7 +202,7 @@ const PINNED_PRODUCTION_DETECTION_CONFIG = {
 };
 const PINNED_PRODUCTION_GEOMETRY_ID = 'signal-lab-recommended-span-450-point-grid-v1';
 const PINNED_PRODUCTION_ACQUISITION_REGIME = {
-  id: 'signal-lab-recommended-span-grid-with-independent-production-branch-source-clocks-v4',
+  id: 'signal-lab-recommended-span-grid-with-independent-production-branch-source-clocks-v5',
   geometry: {
     id: PINNED_PRODUCTION_GEOMETRY_ID,
     sourceKind: 'signal-lab',
@@ -217,7 +221,7 @@ const PINNED_PRODUCTION_ACQUISITION_REGIME = {
     qualifiedEnvelope: {
       id: 'shared-monotonic-source-clock-v1',
       acquisitionIndexPolicy: 'one-look-index-per-physical-acquisition-v1',
-      detectedPowerCapturePolicy: 'capture-once-after-first-runtime-admitted-strongest-current-target-v2',
+      detectedPowerCapturePolicy: 'capture-once-after-rank-0-integrated-excess-current-target-runtime-admission-v3',
       captureTargetSelectionPolicy: PINNED_CAPTURE_TARGET_SELECTION_POLICY,
       postCaptureSpectrumPolicy: 'continue-at-next-shared-look-index-v1',
     },
@@ -361,6 +365,15 @@ const PINNED_ENGINEERING_PRIOR = {
   'unknown-signal': 0.20,
 };
 const STALE_PUBLICATION_VALUES = [
+  ['bayesian-observable-equivalence-v8', 'stale pre-integrated-excess model ID'],
+  ['synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v19', 'stale pre-integrated-excess calibration ID'],
+  ['independent-consecutive-spectrum-and-strongest-first-admission-qualified-envelope-branches-v8', 'stale strongest-current representative-selection policy'],
+  ['independent-no-auto-spectrum-and-qualified-first-admitted-envelope-sessions-v1', 'stale first-admitted acquisition-branch policy'],
+  ['receipt-verified-provenance-bound-first-runtime-admitted-strongest-current-physical-or-agile-member-single-capture-v4', 'stale strongest-current detected-power qualification'],
+  ['preferred-then-strongest-current-physical-or-qualified-agile-member-target-v3', 'stale strongest-current capture-target policy'],
+  ['capture-once-after-first-runtime-admitted-strongest-current-target-v2', 'stale strongest-current capture policy'],
+  ['consecutive-spectrum-all-runtime-representatives-and-independent-qualified-envelope-sole-capture-v4', 'stale pre-integrated-excess tail representative policy'],
+  ['signal-lab-recommended-span-grid-with-independent-production-branch-source-clocks-v4', 'stale pre-integrated-excess acquisition regime'],
   ['701fdf3f5f959327369bc299dbc5a45fdf8666d40e65d57df50558b5db67c9dd', 'stale provisional pre-v19 model asset SHA-256'],
   ['pending fresh v19 regeneration', 'stale pending-v19 publication wording'],
   ['Until fresh v19 regeneration completes', 'stale pending-v19 publication wording'],
@@ -407,9 +420,11 @@ const STALE_PUBLICATION_VALUES = [
   ['a217b3b42d5ca4fd6baa4e59cf7d7905bada2c0e', 'stale SignalLab source commit'],
   ['28ed8e9d0dba9f7672880eee608b4328f4482d13', 'stale SignalLab source commit'],
   ['1197f2d46c9b4953253302a95a31cb7ff2212fca', 'stale SignalLab source commit'],
+  ['03bc13eb9d5efcfc5f2f9c1792042f670b71ef9a', 'stale SignalLab source commit'],
   ['3fc4f90b2b5b948c93316d70a6a924229044844474c9458844d980b864482f51', 'stale corpus source-manifest SHA-256'],
   ['deb9ed20a6995aeac66c74f7bd1df0ba02f7df5edba0ed493e72b623be65814f', 'stale corpus source-manifest SHA-256'],
   ['3207f1a8170fc44fd8886d9d11bb24367b8b45915fcecabcde1f77f4ddfe5cb4', 'stale corpus source-manifest SHA-256'],
+  ['38288f0e0437dbb687674308afecb4f30adadc9e93ea7abad3b8bf13d80ec918', 'stale corpus source-manifest SHA-256'],
   ['1c9d18cbdabf28ff7f52a6bd740172feaabaf3521068f757228fb39d57c0279f', 'stale model asset SHA-256'],
   ['b664d952ec4a7ca8fc87652c0c0586b2e5f9e09e88b7b24491bcaa567e166b09', 'stale model asset SHA-256'],
   ['05ec69aacc100f272446b7e00ba36cd112e516b8832585174312bac1f6af7d0c', 'stale model asset SHA-256'],
@@ -451,7 +466,7 @@ const PINNED_PRODUCTION_HIGH_SNR_COVERAGE_POLICY = {
 const PINNED_TAIL_POLICIES = {
   scoreUnit: 'one-independent-branch-acquisition-attempt-score-per-evidence-view-v4',
   representativeSelection:
-    'consecutive-spectrum-all-runtime-representatives-and-independent-qualified-envelope-sole-capture-v4',
+    'consecutive-spectrum-all-runtime-representatives-and-independent-integrated-excess-rank-0-envelope-sole-capture-v5',
   representativeAggregation:
     'consecutive-spectrum-branch-minimum-qualified-envelope-branch-sole-capture-v5',
   runtimeInterpretation:
@@ -999,6 +1014,12 @@ function validateGeneratedCausalSamplingAudit(generatedModel, failures) {
     PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION,
     'generated detected-power acquisition qualification',
   );
+  expectEqual(
+    failures,
+    trainingMatrix.detectedPowerSelectionCondition,
+    PINNED_DETECTED_POWER_SELECTION_CONDITION,
+    'generated automatic detected-power selection condition',
+  );
   expectDeepEqual(
     failures,
     trainingMatrix.frequencyAgileFixedTuneEnvelopeCensoringPolicy,
@@ -1447,7 +1468,7 @@ function validateGeneratedCausalSamplingAudit(generatedModel, failures) {
     expectEqual(
       failures,
       envelope.detectedPowerCapturePolicyId,
-      'capture-once-after-first-runtime-admitted-strongest-current-target-v2',
+      'capture-once-after-rank-0-integrated-excess-current-target-runtime-admission-v3',
       `generated causal-sampling ${partitionName} qualified-envelope capture policy`,
     );
     expectEqual(
@@ -3653,9 +3674,9 @@ function verifyPublicationProse(documents, modelSha256, corpusSha256, metrics, f
   const rollingSummary = `The secondary high-SNR known-scenario spectrum gate classified ${formatted.rollingCases} unique current-qualified attempt/opportunity/representative windows across every fitted known scenario without a truth-conditioned filter: known coverage was ${formatted.rollingKnownCoverage}, hierarchical accuracy ${formatted.rollingHierarchicalAccuracy}, minimum per-scenario known coverage ${formatted.rollingMinimumScenarioKnownCoverage}, minimum per-scenario hierarchical accuracy ${formatted.rollingMinimumScenarioHierarchicalAccuracy}, and incompatible non-unknown decisions zero.`;
   const priorSummary = `The deterministic engineering-prior sensitivity audit evaluated ${formatted.priorVariantCount} declared baseline, unknown-mass, and family-mass variants on the causal-envelope population: known coverage ranged ${formatted.minimumPriorKnownCoverage}-${formatted.maximumPriorKnownCoverage}, hierarchical accuracy ${formatted.minimumPriorHierarchicalAccuracy}-${formatted.maximumPriorHierarchicalAccuracy}, maximum incompatible-non-unknown risk was ${formatted.maximumPriorIncompatibleRisk}, maximum false-accepted-unknown risk ${formatted.maximumPriorFalseAcceptedUnknownRisk}, and maximum decision-change rate ${formatted.maximumPriorDecisionChangeRate}. The same variants also passed the complete-online spectrum population audit over ${formatted.completeOnlineSpectrumCases} samples. These priors are engineering assumptions, not field-prevalence calibration; operational prevalence remains an unmeasured physical-validation limitation.`;
   const tailSummary = `The validator independently regenerated ${formatted.tailCalibrationAttemptCount} independent-branch spectrum-attempt minima and matched all ${metrics.tailScoreComparisons} class/view score arrays to the checked-in asset within the declared tolerance; ${formatted.tailCalibrationLateMinimumCount} spectrum-attempt minima occurred after the first-ready opportunity, proving that later online representatives affect the stored spectrum minimum. The envelope views use only the sole physical detected-power capture from each separate qualified-envelope attempt, never a later counterfactual envelope.`;
-  const productionAcquisitionSummary = `The fitted and independently regenerated acquisition matrix uses SignalLab's 450-point recommended-span grid in two independent production-gate sessions under ${PINNED_ACQUISITION_BRANCH_POLICY}. The no-automatic-capture consecutive-spectrum branch starts its twelve profiles at source looks ${spectrumReleaseGateStartList} and spans source indices [0, 512); the qualified-envelope branch starts them at source looks ${envelopeReleaseGateStartList} and spans [0, 524), with at most one detected-power capture after first runtime admission. Under ${PINNED_CAPTURE_TARGET_SELECTION_POLICY}, ordinary targets are active physical rows with zero missed sweeps. The only candidate-state exception is the exact latest raw detector/track member cited by the latest exactly-one opportunity of a current, promotion-qualified, zero-miss frequency-agile association. The synthetic activity summary never owns the hardware capture, and arbitrary candidates, stale members, retained summaries, and ambiguous opportunities remain ineligible. An autonomous branch ranks eligible raw rows by strongest current peak and uses the stable key and ID only as exact-power tie-breaks; association qualification controls only whether the narrow agile projection exists, never priority among eligible rows. Truth labels, class-domain eligibility, feature readiness, and classifier posteriors never influence that ranking. After raw ranking, the controller tunes and binds the capture to the raw row while receipt schema 3 projects the exact eight-sweep classifier window to its evidence representative and binds the complete returned capture with domain-separated canonical SHA-256. For an agile projection the receiver remains fixed on the selected physical channel and may observe later returns or no return; it never follows the hop and proves neither a common emitter nor Bluetooth protocol or mode identity. Under ${PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY.id} the valid capture and receipt remain audited, but every frequency-agile fixed-tune envelope is excluded from classifier features and the exact regional spectrum/history view is used; this observation-geometry censor is independent of truth or requested hypothesis. Later spectra continue at the next source look. Held-out validation begins at source look 512 for consecutive spectrum and 524 for qualified envelope. Every envelope admitted to a classifier likelihood requires an analysis-issued capture receipt and is explicitly qualified as ${PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION}; receipt-free or runtime-unadmitted captures cannot enter Bayesian envelope metrics. Public detected-power synthesis uses the generator-internal 100 kHz filter; measured detected-power RBW remains unavailable and is never classifier evidence.`;
-  const modelStructureSummary = `The checked-in v8 likelihood architecture has ${PINNED_DIMENSIONS.length} ordered feature dimensions and ${PINNED_CLASS_IDS.length} exact leaf class IDs. Its spectrum-only population has 18 source scenarios and 28 likelihood components; each envelope population has 16 scenarios and 26 components because the Bluetooth-like class is structurally unsupported for fixed-tune envelope evidence. Under ${PINNED_LIKELIHOOD_COMPONENT_DECOMPOSITION_POLICY.id}, exactly five pinned CSMA sources use three deterministic activity modes while every other supported source/view pair uses one component; source scenarios retain equal within-class mass, CSMA modes use empirical within-source weights, and each decomposed source shares one pooled within-mode covariance. Under ${PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY.id}, the analysis boundary validates the physical capture and schema-3 receipt first, including its canonical SHA-256 binding of all returned samples, cadence, requested geometry, RF metadata, and provenance, then excludes detected-power envelope features for every frequency-agile association and classifies its exact regional spectrum/history view. This censor is triggered by observed association geometry, never a truth label or requested hypothesis; Bluetooth envelope component and calibration arrays are therefore exactly empty.`;
-  const viewContractSummary = 'Production inference does not use missing-dimension marginalization: v8 selects one exact evidence view, requires its complete finite feature set with no extras, and evaluates only the independently fitted spectrum-only, envelope-untimed, or envelope-timed likelihood population.';
+  const productionAcquisitionSummary = `The fitted and independently regenerated acquisition matrix uses SignalLab's 450-point recommended-span grid in two independent production-gate sessions under ${PINNED_ACQUISITION_BRANCH_POLICY}. The no-automatic-capture consecutive-spectrum branch starts its twelve profiles at source looks ${spectrumReleaseGateStartList} and spans source indices [0, 512); the qualified-envelope branch starts them at source looks ${envelopeReleaseGateStartList} and spans [0, 524), with at most one detected-power capture. Under ${PINNED_CAPTURE_TARGET_SELECTION_POLICY}, ordinary targets are active physical rows with zero missed sweeps. The only candidate-state exception is the exact latest raw detector/track member cited by the latest exactly-one opportunity of a current, promotion-qualified, zero-miss frequency-agile association. The synthetic activity summary never owns the hardware capture, and arbitrary candidates, stale members, retained summaries, and ambiguous opportunities remain ineligible. The autonomous branch uses ${PINNED_CAPTURE_TARGET_RANK_MODEL}: for each eligible raw row it takes the current frozen source sweep, estimates the floor as the median of its lowest twenty percent of bins, and integrates positive linear power above that floor across every complete frequency cell whose center lies in the raw detected interval, normalized by actual RBW. It orders the exact unrounded integral descending, then uses the stable representative key and raw ID only as exact-integral tie-breaks. Association qualification controls only whether the narrow agile projection exists, never priority; truth labels, class-domain eligibility, feature readiness, and classifier posteriors never influence ranking. Only rank 0 may proceed to runtime admission, and an unavailable rank-0 target causes no capture rather than substitution of a lower rank. Receipt schema 4 records the complete numeric rank evidence, proves ${PINNED_DETECTED_POWER_SELECTION_CONDITION}, projects the exact eight-sweep classifier window to its evidence representative, and binds the complete returned capture with domain-separated canonical SHA-256. For an agile projection the receiver remains fixed on the selected physical channel and may observe later returns or no return; it never follows the hop and proves neither a common emitter nor Bluetooth protocol or mode identity. Under ${PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY.id} the valid capture and receipt remain audited, but every frequency-agile fixed-tune envelope is excluded from classifier features and the exact regional spectrum/history view is used; this observation-geometry censor is independent of truth or requested hypothesis. Later spectra continue at the next source look. Held-out validation begins at source look 512 for consecutive spectrum and 524 for qualified envelope. Every envelope admitted to a classifier likelihood requires an analysis-issued capture receipt and is explicitly qualified as ${PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION}. Every fitted and calibrated automatic envelope sample separately carries ${PINNED_DETECTED_POWER_SELECTION_CONDITION}; an operator-preferred capture remains explicitly marked as operator-selected and is never silently represented as belonging to that automatic selection population. Receipt-free, lower-ranked automatic, or runtime-unadmitted captures cannot enter Bayesian envelope metrics. Public detected-power synthesis uses the generator-internal 100 kHz filter; measured detected-power RBW remains unavailable and is never classifier evidence.`;
+  const modelStructureSummary = `The checked-in v9 likelihood architecture has ${PINNED_DIMENSIONS.length} ordered feature dimensions and ${PINNED_CLASS_IDS.length} exact leaf class IDs. Its spectrum-only population has 18 source scenarios and 28 likelihood components; each envelope population has 16 scenarios and 26 components because the Bluetooth-like class is structurally unsupported for fixed-tune envelope evidence. Under ${PINNED_LIKELIHOOD_COMPONENT_DECOMPOSITION_POLICY.id}, exactly five pinned CSMA sources use three deterministic activity modes while every other supported source/view pair uses one component; source scenarios retain equal within-class mass, CSMA modes use empirical within-source weights, and each decomposed source shares one pooled within-mode covariance. Under ${PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY.id}, the analysis boundary validates the physical capture and schema-4 receipt first, including its canonical SHA-256 binding of all returned samples, cadence, requested geometry, RF metadata, provenance, and exact integrated-excess rank evidence, then excludes detected-power envelope features for every frequency-agile association and classifies its exact regional spectrum/history view. This censor is triggered by observed association geometry, never a truth label or requested hypothesis; Bluetooth envelope component and calibration arrays are therefore exactly empty.`;
+  const viewContractSummary = 'Production inference does not use missing-dimension marginalization: v9 selects one exact evidence view, requires its complete finite feature set with no extras, and evaluates only the independently fitted spectrum-only, envelope-untimed, or envelope-timed likelihood population.';
   const manualCaptureSummary = `The App zero-span action enters a Bayesian envelope view only when the capture is bound to an analysis-issued receipt for a current runtime-admitted target, exact admitted tune, and exact eight-sweep evidence window. Receipt qualification is necessary but not sufficient: under ${PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY.id}, every fixed-tune frequency-agile capture remains excluded from Bayesian envelope inference and the exact spectrum view is used instead. Any other receipt-free or runtime-unadmitted capture may feed only the separate envelope heuristic.`;
   const decisionThresholdSummary = `The open-set rejection cutoff is a minimum maximum-known synthetic support rank of ${PINNED_MINIMUM_KNOWN_SYNTHETIC_SUPPORT_RANK}; it is an engineering threshold, not a p-value or coverage guarantee.`;
   for (const path of PUBLICATION_PATHS) {
@@ -3770,8 +3791,8 @@ async function main() {
     NODE_VERSION_PATH,
     ...PUBLICATION_PATHS,
   ];
-  const tinySaPaths = new Set(PUBLICATION_PATHS);
-  const contents = await Promise.all(paths.map((path) => readFile(resolve(tinySaPaths.has(path) ? TINYSA_ROOT : REPOSITORY_ROOT, path))));
+  const atomizerPaths = new Set(PUBLICATION_PATHS);
+  const contents = await Promise.all(paths.map((path) => readFile(resolve(atomizerPaths.has(path) ? ATOMIZER_ROOT : REPOSITORY_ROOT, path))));
   const byPath = new Map(paths.map((path, index) => [path, contents[index]]));
   const modelSource = byPath.get(MODEL_PATH).toString('utf8');
   const modelSha256 = createHash('sha256').update(modelSource).digest('hex');
@@ -4310,6 +4331,8 @@ async function main() {
   for (const [path, expected] of [
     ['selectionPolicy', PINNED_SELECTION_POLICY],
     ['matrix.selectionPolicy', PINNED_SELECTION_POLICY],
+    ['matrix.captureTargetSelectionPolicy', PINNED_CAPTURE_TARGET_SELECTION_POLICY],
+    ['matrix.automaticDetectedPowerSelectionCondition', PINNED_DETECTED_POWER_SELECTION_CONDITION],
     ['matrix.representativeWeightingPolicy', PINNED_REPRESENTATIVE_WEIGHTING_POLICY],
   ]) expectEqual(failures, valueAt(report, path), expected, path);
   for (const [key, expected] of [
@@ -4560,6 +4583,8 @@ async function main() {
     [
       'required',
       'modelDeclared',
+      'automaticSelectionConditionRequired',
+      'modelDeclaredSelectionCondition',
       'qualifiedEnvelopeSamples',
       'unqualifiedEnvelopeSamples',
       'missingOrUnissuedReceiptEnvelopeSamples',
@@ -4573,6 +4598,17 @@ async function main() {
       detectedPowerQualification[field],
       PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION,
       `detected-power acquisition qualification ${field}`,
+    );
+  }
+  for (const field of [
+    'automaticSelectionConditionRequired',
+    'modelDeclaredSelectionCondition',
+  ]) {
+    expectEqual(
+      failures,
+      detectedPowerQualification[field],
+      PINNED_DETECTED_POWER_SELECTION_CONDITION,
+      `detected-power automatic selection condition ${field}`,
     );
   }
   for (const field of [
@@ -4692,7 +4728,7 @@ async function main() {
     );
     if (expectedReceiptQualified) {
       availabilityReceiptQualifiedCaptureCount += 1;
-      expectEqual(failures, cell.detectedPowerCaptureReceiptSchemaVersion, 3, `causal envelope availability ${cell.attemptId} receipt schema`);
+      expectEqual(failures, cell.detectedPowerCaptureReceiptSchemaVersion, 4, `causal envelope availability ${cell.attemptId} receipt schema`);
       if (typeof cell.physicalCaptureId !== 'string' || cell.physicalCaptureId.length === 0) {
         failures.push(`causal envelope availability ${cell.attemptId} must publish its physical capture ID`);
       }
@@ -4705,6 +4741,9 @@ async function main() {
         expectEqual(failures, cell.envelopeEvidenceCensoringPolicyId, PINNED_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY.id, `causal envelope availability ${cell.attemptId} censoring policy`);
         if ('detectedPowerAcquisitionQualification' in cell) {
           failures.push(`causal envelope availability ${cell.attemptId} censored capture must not admit envelope qualification`);
+        }
+        if ('detectedPowerSelectionCondition' in cell) {
+          failures.push(`causal envelope availability ${cell.attemptId} censored capture must not admit an envelope selection condition`);
         }
       } else if (cell.detectedPowerEvidenceDisposition === 'admitted-envelope') {
         availabilityQualifiedEnvelopeCount += 1;
@@ -4722,11 +4761,18 @@ async function main() {
           PINNED_DETECTED_POWER_ACQUISITION_QUALIFICATION,
           `causal envelope availability ${cell.attemptId} acquisition qualification`,
         );
+        expectEqual(
+          failures,
+          cell.detectedPowerSelectionCondition,
+          PINNED_DETECTED_POWER_SELECTION_CONDITION,
+          `causal envelope availability ${cell.attemptId} automatic selection condition`,
+        );
       } else {
         failures.push(`causal envelope availability ${cell.attemptId} captured row must declare one evidence disposition`);
       }
-    } else if ('detectedPowerAcquisitionQualification' in cell) {
-      failures.push(`causal envelope availability ${cell.attemptId} must not qualify an absent physical capture`);
+    } else if ('detectedPowerAcquisitionQualification' in cell
+      || 'detectedPowerSelectionCondition' in cell) {
+      failures.push(`causal envelope availability ${cell.attemptId} must not qualify an absent physical capture or selection condition`);
     }
     if ('envelopeFeatureUnavailableCode' in cell) {
       failures.push(`causal envelope availability ${cell.attemptId} must not publish an unavailable physical-capture code`);

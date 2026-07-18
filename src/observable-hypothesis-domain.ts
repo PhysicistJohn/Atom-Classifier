@@ -1,5 +1,5 @@
-import { BAYESIAN_FREQUENCY_AGILE_ACTIVITY_MODEL } from '../../TinySA/packages/analysis/src/bayesian-agile-association.js';
-import type { ObservableFeatureObservation } from '../../TinySA/packages/analysis/src/observable-features.js';
+import { BAYESIAN_FREQUENCY_AGILE_ACTIVITY_MODEL } from '../../Atom-Atomizer/packages/analysis/src/bayesian-agile-association.js';
+import type { ObservableFeatureObservation } from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 import type { ObservableLeafClass } from './observable-classifier-model.js';
 import { compatibleRadioDuplexModes, type RadioAirInterface } from './radio-operating-band-context.js';
 

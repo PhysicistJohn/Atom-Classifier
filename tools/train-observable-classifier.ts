@@ -8,10 +8,10 @@ import {
   CLASSIFICATION_CORPUS_VERSION,
   canonicalClassificationScenarios,
   type CanonicalClassificationScenario,
-} from '../../TinySA_SignalLab/src/classification-corpus.js';
+} from '../../Atom-SignalLab/src/classification-corpus.js';
 import {
   CANONIZED_REPLAY_DETECTED_POWER_SYNTHESIS_FILTER_WIDTH_HZ,
-} from '../../TinySA_SignalLab/src/waveforms.js';
+} from '../../Atom-SignalLab/src/waveforms.js';
 import {
   OBSERVABLE_TRAINING_BASELINE_QUALIFIED_ENVELOPE_TEMPORAL_SCHEDULE,
   OBSERVABLE_TRAINING_BASELINE_SPECTRUM_TEMPORAL_SCHEDULE,
@@ -25,9 +25,12 @@ import {
   SIGNAL_LAB_PRODUCTION_TEMPORAL_SCHEDULE_PAIRS,
   occupiedBandwidthRbwDivisorGeometry,
   type ObservableTrainingAcquisitionRegime,
-} from '../../TinySA/packages/analysis/src/observable-training-acquisition-geometry.js';
-import { studentTModelTailProbability } from '../../TinySA/packages/analysis/src/bayesian-predictive.js';
-import { DETECTED_POWER_ACQUISITION_QUALIFICATION } from '../../TinySA/packages/analysis/src/observable-features.js';
+} from '../../Atom-Atomizer/packages/analysis/src/observable-training-acquisition-geometry.js';
+import { studentTModelTailProbability } from '../../Atom-Atomizer/packages/analysis/src/bayesian-predictive.js';
+import {
+  DETECTED_POWER_ACQUISITION_QUALIFICATION,
+  DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION,
+} from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 import {
   OBSERVABLE_EVIDENCE_CENSORING_POLICY,
   OBSERVABLE_EVIDENCE_VIEWS,
@@ -120,8 +123,8 @@ const publicationRecovery = recoverGeneratedModelManifestPublication({
 if (publicationRecovery !== 'none') {
   console.error(`[model-publication] recovery=${publicationRecovery}`);
 }
-const SOURCE_COMMIT = '03bc13eb9d5efcfc5f2f9c1792042f670b71ef9a';
-const SIGNAL_LAB_REPOSITORY_ROOT = resolve('../TinySA_SignalLab');
+const SOURCE_COMMIT = 'e7d48afbce7165fa04fd551629891123f3b86d34';
+const SIGNAL_LAB_REPOSITORY_ROOT = resolve('../Atom-SignalLab');
 const CHECKED_OUT_SOURCE_COMMIT = gitOutput(['rev-parse', 'HEAD']).toString('utf8').trim();
 if (CHECKED_OUT_SOURCE_COMMIT !== SOURCE_COMMIT) {
   throw new Error(`SignalLab checked-out commit ${CHECKED_OUT_SOURCE_COMMIT} does not match pinned ${SOURCE_COMMIT}`);
@@ -260,7 +263,7 @@ const HIGH_SNR_MINIMUM_SEED_COVERAGE_BY_SCENARIO: Readonly<Record<string, number
   'bluetooth-le-advertising': 0.5,
 };
 const SELECTION_POLICY =
-  'independent-consecutive-spectrum-and-strongest-first-admission-qualified-envelope-branches-v8' as const;
+  'independent-consecutive-spectrum-and-integrated-excess-rank-0-runtime-admission-qualified-envelope-branches-v9' as const;
 const REPRESENTATIVE_WEIGHTING_POLICY =
   'view-matched-spectrum-event-envelope-causal-attempt-weighting-v4' as const;
 const REPRESENTATIVE_ELIGIBILITY_POLICY = 'observation-only-hypothesis-domain-v5' as const;
@@ -276,7 +279,7 @@ const REPRESENTATIVE_ELIGIBILITY_POLICY = 'observation-only-hypothesis-domain-v5
 const TAIL_CALIBRATION_SCORE_UNIT =
   'one-independent-branch-acquisition-attempt-score-per-evidence-view-v4' as const;
 const TAIL_CALIBRATION_REPRESENTATIVE_SELECTION_POLICY =
-  'consecutive-spectrum-all-runtime-representatives-and-independent-qualified-envelope-sole-capture-v4' as const;
+  'consecutive-spectrum-all-runtime-representatives-and-independent-integrated-excess-rank-0-envelope-sole-capture-v5' as const;
 const TAIL_CALIBRATION_REPRESENTATIVE_AGGREGATION_POLICY =
   'consecutive-spectrum-branch-minimum-qualified-envelope-branch-sole-capture-v5' as const;
 const TAIL_CALIBRATION_RUNTIME_INTERPRETATION_POLICY =
@@ -1229,6 +1232,8 @@ const trainingMatrix = {
   },
   detectedPowerAcquisitionQualification:
     DETECTED_POWER_ACQUISITION_QUALIFICATION,
+  detectedPowerSelectionCondition:
+    DETECTED_POWER_AUTOMATIC_SELECTION_CONDITION,
   causalSamplingAudit,
   detectorConditionedFitMisses,
   detectorConditionedCalibrationMisses,
@@ -1245,15 +1250,15 @@ const trainingMatrix = {
 } as const;
 
 const asset: ObservableClassifierModelAsset = {
-  id: 'bayesian-observable-equivalence-v8',
+  id: 'bayesian-observable-equivalence-v9',
   corpusVersion: CLASSIFICATION_CORPUS_VERSION,
   sourceCommit: SOURCE_COMMIT,
   corpusSourceManifest: CORPUS_SOURCE_MANIFEST,
   corpusSha256: CORPUS_SHA256,
   preprocessing: 'scalar-observable-features-v7',
   priorId: 'engineering-design-class-weights-v1',
-  calibrationId: 'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v19',
-  generatedAt: '2026-07-14T00:00:00.000Z',
+  calibrationId: 'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v20',
+  generatedAt: '2026-07-18T00:00:00.000Z',
   dimensions,
   trainingMatrix,
   classModels,

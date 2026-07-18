@@ -1,12 +1,12 @@
 import { parentPort } from 'node:worker_threads';
-import { canonicalClassificationScenarios } from '../../TinySA_SignalLab/src/classification-corpus.js';
+import { canonicalClassificationScenarios } from '../../Atom-SignalLab/src/classification-corpus.js';
 import {
   featureSamples,
   attemptSamplingTimingMs,
   type FeatureSamplingAttempt,
   type FeatureSamplingProgress,
 } from './observable-training-sampling.js';
-import type { ObservableTrainingAcquisitionRegime } from '../../TinySA/packages/analysis/src/observable-training-acquisition-geometry.js';
+import type { ObservableTrainingAcquisitionRegime } from '../../Atom-Atomizer/packages/analysis/src/observable-training-acquisition-geometry.js';
 
 export const ATTEMPT_SAMPLING_WORKER_HEARTBEAT_INTERVAL_MS = 30_000;
 

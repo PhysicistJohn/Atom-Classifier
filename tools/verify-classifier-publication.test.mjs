@@ -32,9 +32,11 @@ const MODEL_PAYLOAD_PATTERN = /export const BAYESIAN_OBSERVABLE_MODEL: Observabl
 const MODEL_MANIFEST_PATTERN = /(BAYESIAN_OBSERVABLE_MODEL_SHA256 = ')([a-f0-9]{64})(' as const;)/;
 const MODEL_CONTENT_PATTERN = /(BAYESIAN_OBSERVABLE_MODEL_CONTENT_SHA256 = ')([a-f0-9]{64})(' as const;)/;
 const CURRENT_CALIBRATION_ID =
-  'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v19';
+  'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v20';
 const CURRENT_DETECTED_POWER_ACQUISITION_QUALIFICATION =
-  'receipt-verified-provenance-bound-first-runtime-admitted-strongest-current-physical-or-agile-member-single-capture-v4';
+  'receipt-verified-provenance-bound-runtime-admitted-physical-capture-v5';
+const CURRENT_DETECTED_POWER_SELECTION_CONDITION =
+  'automatic-current-source-sweep-integrated-excess-rank-0';
 const CURRENT_FREQUENCY_AGILE_ENVELOPE_CENSORING_POLICY_ID =
   'frequency-agile-fixed-tune-envelope-censoring-v1';
 const CURRENT_FREQUENCY_AGILE_ENVELOPE_CENSORING_LIMITATION =
@@ -593,6 +595,13 @@ test('classifier publication verifier is fail-closed under isolated mutations', 
     });
   });
 
+  await mutationTest(t, 'rejects a changed reported automatic selection condition', /automatic selection condition/, async (root) => {
+    await mutateReport(root, (report) => {
+      report.admission.detectedPowerAcquisitionQualification
+        .automaticSelectionConditionRequired = 'operator-preferred-current-target';
+    });
+  });
+
   await mutationTest(t, 'rejects a forged qualified-envelope denominator', /detected-power qualified\/physical envelope denominator/, async (root) => {
     await mutateReport(root, (report) => {
       report.admission.detectedPowerAcquisitionQualification.qualifiedEnvelopeSamples -= 1;
@@ -628,14 +637,28 @@ test('classifier publication verifier is fail-closed under isolated mutations', 
     });
   });
 
-  await mutationTest(t, 'rejects a captured availability cell without receipt schema 3', /availability.*receipt schema.*3|detectedPowerCaptureReceiptSchemaVersion/s, async (root) => {
+  await mutationTest(t, 'rejects a captured availability cell without receipt schema 4', /availability.*receipt schema.*4|detectedPowerCaptureReceiptSchemaVersion/s, async (root) => {
     await mutateReport(root, (report) => {
       const captured = report.admission.causalEnvelopeAvailabilityCells
         .find((cell) => cell.detectedPowerCaptureCount === 1);
       assert.ok(captured, 'baseline report must publish a captured availability cell');
-      assert.equal(captured.detectedPowerCaptureReceiptSchemaVersion, 3,
-        'baseline captured cell must publish receipt schema 3');
+      assert.equal(captured.detectedPowerCaptureReceiptSchemaVersion, 4,
+        'baseline captured cell must publish receipt schema 4');
       captured.detectedPowerCaptureReceiptSchemaVersion = 1;
+    });
+  });
+
+  await mutationTest(t, 'rejects an admitted envelope availability cell without the automatic selection condition', /availability.*automatic selection condition/, async (root) => {
+    await mutateReport(root, (report) => {
+      const admitted = report.admission.causalEnvelopeAvailabilityCells
+        .find((cell) => cell.detectedPowerEvidenceDisposition === 'admitted-envelope');
+      assert.ok(admitted, 'baseline report must publish an admitted envelope availability cell');
+      assert.equal(
+        admitted.detectedPowerSelectionCondition,
+        CURRENT_DETECTED_POWER_SELECTION_CONDITION,
+        'baseline admitted envelope cell must publish the automatic selection condition',
+      );
+      delete admitted.detectedPowerSelectionCondition;
     });
   });
 
@@ -1114,6 +1137,14 @@ test('classifier publication verifier is fail-closed under isolated mutations', 
   await mutationTest(t, 'rejects a changed model acquisition qualification', /detected-power acquisition qualification/, async (root) => {
     await mutateGeneratedModel(root, (model) => {
       model.trainingMatrix.detectedPowerAcquisitionQualification = 'manual-capture-v0';
+    });
+    await rebindModelAsset(root);
+  });
+
+  await mutationTest(t, 'rejects a changed model automatic selection condition', /automatic detected-power selection condition/, async (root) => {
+    await mutateGeneratedModel(root, (model) => {
+      model.trainingMatrix.detectedPowerSelectionCondition =
+        'operator-preferred-current-target';
     });
     await rebindModelAsset(root);
   });
@@ -1601,7 +1632,7 @@ test('classifier publication verifier is fail-closed under isolated mutations', 
   await mutationTest(t, 'rejects a missing exact-view production boundary', /exact-view-contract-summary/, async (root) => {
     const path = fixturePath(root, 'README.md');
     const source = await readFile(path, 'utf8');
-    const required = 'Production inference does not use missing-dimension marginalization: v8 selects one exact evidence view, requires its complete finite feature set with no extras, and evaluates only the independently fitted spectrum-only, envelope-untimed, or envelope-timed likelihood population.';
+    const required = 'Production inference does not use missing-dimension marginalization: v9 selects one exact evidence view, requires its complete finite feature set with no extras, and evaluates only the independently fitted spectrum-only, envelope-untimed, or envelope-timed likelihood population.';
     assert.ok(source.includes(required), 'baseline README must publish the exact-view production boundary');
     await writeFile(path, source.replace(required, 'Production inference marginalizes whichever dimensions happen to be missing.'));
   });
@@ -1636,9 +1667,9 @@ async function mutationTest(t, name, expectedFailure, mutate) {
 }
 
 async function withFixture(action) {
-  const fixtureParent = await mkdtemp(join(tmpdir(), 'tinysa-classifier-publication-'));
-  const root = resolve(fixtureParent, 'AtomOS_Classifier');
-  const tinySaRoot = resolve(fixtureParent, 'TinySA');
+  const fixtureParent = await mkdtemp(join(tmpdir(), 'atom-classifier-publication-'));
+  const root = resolve(fixtureParent, 'Atom-Classifier');
+  const atomizerRoot = resolve(fixtureParent, 'Atom-Atomizer');
   try {
     for (const relativePath of CLASSIFIER_FIXTURE_PATHS) {
       const destination = resolve(root, relativePath);
@@ -1646,9 +1677,9 @@ async function withFixture(action) {
       await copyFile(resolve(REPOSITORY_ROOT, relativePath), destination);
     }
     for (const relativePath of PUBLICATION_PATHS) {
-      const destination = resolve(tinySaRoot, relativePath);
+      const destination = resolve(atomizerRoot, relativePath);
       await mkdir(dirname(destination), { recursive: true });
-      await copyFile(resolve(REPOSITORY_ROOT, '../TinySA', relativePath), destination);
+      await copyFile(resolve(REPOSITORY_ROOT, '../Atom-Atomizer', relativePath), destination);
     }
     return await action(root);
   } finally {
@@ -1657,7 +1688,7 @@ async function withFixture(action) {
 }
 
 function fixturePath(root, relativePath) {
-  return resolve(root, PUBLICATION_PATHS.includes(relativePath) ? '../TinySA' : '.', relativePath);
+  return resolve(root, PUBLICATION_PATHS.includes(relativePath) ? '../Atom-Atomizer' : '.', relativePath);
 }
 
 async function runVerifier(root) {

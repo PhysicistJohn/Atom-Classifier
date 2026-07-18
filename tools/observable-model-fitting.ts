@@ -1,5 +1,5 @@
-import type { CanonicalClassificationScenario } from '../../TinySA_SignalLab/src/classification-corpus.js';
-import type { StudentTLikelihoodComponent } from '../../TinySA/packages/analysis/src/bayesian-predictive.js';
+import type { CanonicalClassificationScenario } from '../../Atom-SignalLab/src/classification-corpus.js';
+import type { StudentTLikelihoodComponent } from '../../Atom-Atomizer/packages/analysis/src/bayesian-predictive.js';
 import { OBSERVABLE_LIKELIHOOD_COMPONENT_DECOMPOSITION_POLICY } from '../src/observable-classifier-model.js';
 
 export { OBSERVABLE_LIKELIHOOD_COMPONENT_DECOMPOSITION_POLICY } from '../src/observable-classifier-model.js';

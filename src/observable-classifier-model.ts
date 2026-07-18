@@ -1,4 +1,4 @@
-import type { ClassLikelihoodModel } from '../../TinySA/packages/analysis/src/bayesian-predictive.js';
+import type { ClassLikelihoodModel } from '../../Atom-Atomizer/packages/analysis/src/bayesian-predictive.js';
 
 export const OBSERVABLE_EVIDENCE_VIEWS = [
   'spectrum-only',
@@ -119,7 +119,8 @@ interface ObservableConsecutiveSpectrumSamplingAudit {
 
 interface ObservableQualifiedEnvelopeSamplingAudit {
   readonly detectedPowerCapturePolicyId:
-    'capture-once-after-first-runtime-admitted-strongest-current-target-v2';
+    | 'capture-once-after-first-runtime-admitted-strongest-current-target-v2'
+    | 'capture-once-after-rank-0-integrated-excess-current-target-runtime-admission-v3';
   readonly attemptCount: number;
   readonly receiptVerifiedDetectedPowerCaptureSampleCount: number;
   readonly capturedEnvelopeRepresentativeCount: number;
@@ -202,7 +203,9 @@ export interface ObservableClassifierModelAsset {
      * admitted envelope session are separate deployed acquisition populations.
      */
     signalLabProductionAcquisitionRegime?: {
-      id: 'signal-lab-recommended-span-grid-with-independent-production-branch-source-clocks-v4';
+      id:
+        | 'signal-lab-recommended-span-grid-with-independent-production-branch-source-clocks-v4'
+        | 'signal-lab-recommended-span-grid-with-independent-production-branch-source-clocks-v5';
       geometry: {
         id: 'signal-lab-recommended-span-450-point-grid-v1';
         sourceKind: 'signal-lab';
@@ -211,7 +214,9 @@ export interface ObservableClassifierModelAsset {
         spanPolicy: 'canonical-recommended-span-v1';
         resolutionScalePolicy: 'recommended-span-divided-by-points-minus-one-v1';
       };
-      branchPolicy: 'independent-no-auto-spectrum-and-qualified-first-admitted-envelope-sessions-v1';
+      branchPolicy:
+        | 'independent-no-auto-spectrum-and-qualified-first-admitted-envelope-sessions-v1'
+        | 'independent-no-auto-spectrum-and-qualified-rank-0-integrated-excess-envelope-sessions-v2';
       sourceClocks: {
         spectrum: {
           id: 'shared-monotonic-source-clock-v1';
@@ -221,8 +226,12 @@ export interface ObservableClassifierModelAsset {
         qualifiedEnvelope: {
           id: 'shared-monotonic-source-clock-v1';
           acquisitionIndexPolicy: 'one-look-index-per-physical-acquisition-v1';
-          detectedPowerCapturePolicy: 'capture-once-after-first-runtime-admitted-strongest-current-target-v2';
-          captureTargetSelectionPolicy: 'preferred-then-strongest-current-physical-or-qualified-agile-member-target-v3';
+          detectedPowerCapturePolicy:
+            | 'capture-once-after-first-runtime-admitted-strongest-current-target-v2'
+            | 'capture-once-after-rank-0-integrated-excess-current-target-runtime-admission-v3';
+          captureTargetSelectionPolicy:
+            | 'preferred-then-strongest-current-physical-or-qualified-agile-member-target-v3'
+            | 'preferred-then-current-source-sweep-integrated-excess-power-physical-or-qualified-agile-member-target-v4';
           postCaptureSpectrumPolicy: 'continue-at-next-shared-look-index-v1';
         };
       };
@@ -304,7 +313,8 @@ export interface ObservableClassifierModelAsset {
     tailCalibrationRepresentativeSelectionPolicy?: 'online-all-ready-representatives-v1'
       | 'all-runtime-admitted-spectrum-representatives-and-sole-live-envelope-representative-v2'
       | 'consecutive-spectrum-all-runtime-representatives-and-independent-qualified-envelope-sole-capture-v3'
-      | 'consecutive-spectrum-all-runtime-representatives-and-independent-qualified-envelope-sole-capture-v4';
+      | 'consecutive-spectrum-all-runtime-representatives-and-independent-qualified-envelope-sole-capture-v4'
+      | 'consecutive-spectrum-all-runtime-representatives-and-independent-integrated-excess-rank-0-envelope-sole-capture-v5';
     /** Spectrum representatives collapse to an attempt minimum; the envelope views use the one physical live capture. */
     tailCalibrationRepresentativeAggregationPolicy?: 'minimum-support-across-fit-eligible-first-ready-representatives-v1'
       | 'minimum-support-across-fit-eligible-online-representatives-v2'
@@ -347,7 +357,8 @@ export interface ObservableClassifierModelAsset {
       csmaCovariance: 'shared-within-mode-pooled-covariance-with-0.35-off-diagonal-retention-v1';
     };
     acquisitionBranchPolicy?:
-      'independent-no-auto-spectrum-and-qualified-first-admitted-envelope-sessions-v1';
+      | 'independent-no-auto-spectrum-and-qualified-first-admitted-envelope-sessions-v1'
+      | 'independent-no-auto-spectrum-and-qualified-rank-0-integrated-excess-envelope-sessions-v2';
     frequencyAgileFixedTuneEnvelopeCensoringPolicy?:
       typeof OBSERVABLE_EVIDENCE_CENSORING_POLICY;
     /** Valid fixed-tune captures deliberately excluded from classifier evidence, by partition and canonical scenario. */
@@ -356,7 +367,11 @@ export interface ObservableClassifierModelAsset {
       tailCalibration: Readonly<Record<string, number>>;
     };
     detectedPowerAcquisitionQualification?:
-      'receipt-verified-provenance-bound-first-runtime-admitted-strongest-current-physical-or-agile-member-single-capture-v4';
+      | 'receipt-verified-provenance-bound-first-runtime-admitted-strongest-current-physical-or-agile-member-single-capture-v4'
+      | 'receipt-verified-provenance-bound-runtime-admitted-physical-capture-v5';
+    /** Exact automatic target condition represented by fitted/calibration envelope samples. */
+    detectedPowerSelectionCondition?:
+      'automatic-current-source-sweep-integrated-excess-rank-0';
     /** Content-addressed trainer audit; representative counts are never supplied only as prose. */
     causalSamplingAudit?: {
       schemaVersion: 3;
@@ -391,12 +406,13 @@ export interface ObservableClassifierModelAsset {
     exactObservableEquivalenceNullScenarioIds?: readonly string[];
     /** Known-class scenarios retained only to test/report acquisition non-admission. */
     knownAcquisitionValidationOnlyScenarioIds?: readonly string[];
-    /** Older policies remain readable only so the trainer can replace a checked-in asset; runtime asserts v8. */
+    /** Older policies remain readable only so the trainer can replace a checked-in asset; runtime asserts v9. */
     selectionPolicy?: 'endpoint-active-representative-v1' | 'endpoint-active-all-representatives-v2' | 'online-first-ready-all-representatives-v3'
       | 'causal-first-admitted-single-envelope-all-online-spectrum-v4'
       | 'independent-consecutive-spectrum-and-strongest-first-admission-qualified-envelope-branches-v6'
       | 'independent-consecutive-spectrum-and-strongest-first-admission-qualified-envelope-branches-v7'
-      | 'independent-consecutive-spectrum-and-strongest-first-admission-qualified-envelope-branches-v8';
+      | 'independent-consecutive-spectrum-and-strongest-first-admission-qualified-envelope-branches-v8'
+      | 'independent-consecutive-spectrum-and-integrated-excess-rank-0-runtime-admission-qualified-envelope-branches-v9';
     representativeWeightingPolicy?: 'equal-weight-per-endpoint-production-representative-v1' | 'equal-weight-per-first-ready-production-representative-v2'
       | 'equal-weight-per-causal-live-envelope-acquisition-attempt-v3'
       | 'view-matched-spectrum-event-envelope-causal-attempt-weighting-v4';

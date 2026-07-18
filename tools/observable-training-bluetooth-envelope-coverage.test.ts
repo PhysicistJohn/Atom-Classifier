@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalClassificationScenario } from '../../TinySA_SignalLab/src/classification-corpus.js';
+import { canonicalClassificationScenario } from '../../Atom-SignalLab/src/classification-corpus.js';
 import { featureSamples } from './observable-training-sampling.js';
 import {
   SIGNAL_LAB_PRODUCTION_ACQUISITION_GEOMETRY,
   SIGNAL_LAB_PRODUCTION_TEMPORAL_SCHEDULE_PAIRS,
   type ObservableTrainingAcquisitionRegime,
-} from '../../TinySA/packages/analysis/src/observable-training-acquisition-geometry.js';
+} from '../../Atom-Atomizer/packages/analysis/src/observable-training-acquisition-geometry.js';
 
 const fittingSeeds = [407, 1_407, 2_407, 3_407, 4_407, 5_407] as const;
 

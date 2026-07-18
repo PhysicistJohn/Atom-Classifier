@@ -7,7 +7,7 @@ import {
   type ObservableEvidenceView,
   type ObservableLeafClass,
 } from '../src/observable-classifier-model.js';
-import type { ObservableFeatureObservation } from '../../TinySA/packages/analysis/src/observable-features.js';
+import type { ObservableFeatureObservation } from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 import { posteriorUnderDeclaredPrior } from './validator-prior-sensitivity.js';
 
 describe('validator engineering-prior posterior replay', () => {

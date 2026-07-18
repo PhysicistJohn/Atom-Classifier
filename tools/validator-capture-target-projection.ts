@@ -2,18 +2,29 @@ import type {
   DetectedPowerCaptureProjectionKind,
   DetectedSignal,
   LocalClassificationRegionObservation,
-} from '../../TinySA/packages/contracts/src/index.js';
-import { bayesianDetectionEvidenceMatches } from '../../TinySA/packages/analysis/src/bayesian-signal-detector.js';
-import { observableAssociationEvidenceIsCurrentlyQualified } from '../../TinySA/packages/analysis/src/observable-features.js';
+} from '../../Atom-Atomizer/packages/contracts/src/index.js';
+import { bayesianDetectionEvidenceMatches } from '../../Atom-Atomizer/packages/analysis/src/bayesian-signal-detector.js';
+import { observableAssociationEvidenceIsCurrentlyQualified } from '../../Atom-Atomizer/packages/analysis/src/observable-features.js';
 
 const PINNED_AGILE_REGION_START_HZ = 2_402_000_000;
 const PINNED_AGILE_REGION_STOP_HZ = 2_480_000_000;
 
-/** Validator-owned replay of the v3 actuation/evidence projection policy. */
+/** Validator-owned replay of the v4 actuation/evidence projection policy. */
 export interface IndependentlyReplayedCaptureTargetProjection {
   readonly rawTarget: DetectedSignal;
   readonly projectedRepresentative: DetectedSignal;
   readonly projectionKind: DetectedPowerCaptureProjectionKind;
+  readonly rankEvidence: IndependentCaptureTargetRankEvidence;
+}
+
+export interface IndependentCaptureTargetRankEvidence {
+  readonly sourceSweepId: string;
+  readonly supportStartHz: number;
+  readonly supportStopHz: number;
+  readonly supportCellCount: number;
+  readonly robustFloorDbm: number;
+  readonly actualRbwHz: number;
+  readonly integratedExcessPowerMw: number;
 }
 
 /**
@@ -38,10 +49,13 @@ export function independentlyReplayCaptureTargetProjections(
       || rawTarget.state !== 'active'
       || rawTarget.missedSweeps !== 0
       || rawTarget.associationMode === 'frequency-agile-2g4-activity') continue;
+    const rankEvidence = independentlyReplayCaptureTargetRankEvidence(rawTarget);
+    if (!rankEvidence) continue;
     projectionByRawTargetId.set(rawTarget.id, {
       rawTarget,
       projectedRepresentative: rawTarget,
       projectionKind: 'current-active-physical-representative',
+      rankEvidence,
     });
   }
 
@@ -68,7 +82,11 @@ export function independentlyReplayCaptureTargetProjections(
   }
 
   return [...projectionByRawTargetId.values()].sort((left, right) =>
-    right.rawTarget.peakDbm - left.rawTarget.peakDbm
+    (left.rankEvidence.integratedExcessPowerMw
+      === right.rankEvidence.integratedExcessPowerMw
+      ? 0
+      : left.rankEvidence.integratedExcessPowerMw
+        > right.rankEvidence.integratedExcessPowerMw ? -1 : 1)
     || independentRepresentativeKey(left.rawTarget).localeCompare(
       independentRepresentativeKey(right.rawTarget),
     )
@@ -168,11 +186,115 @@ function independentlyBindCurrentAgileLatestMember(
       rawLocal.localBayesianEvidence,
     )) return undefined;
 
+  const rankEvidence = independentlyReplayCaptureTargetRankEvidence(rawTarget);
+  if (!rankEvidence) return undefined;
+
   return {
     rawTarget,
     projectedRepresentative,
     projectionKind: 'current-qualified-agile-latest-member',
+    rankEvidence,
   };
+}
+
+/**
+ * Independently reproduce the rank model without importing the production
+ * ranking helper. The release validator must catch a shared implementation
+ * defect, so this deliberately duplicates the exact numeric contract.
+ */
+export function independentlyReplayCaptureTargetRankEvidence(
+  detection: DetectedSignal,
+): IndependentCaptureTargetRankEvidence | undefined {
+  const observation = detection.localClassificationObservations?.at(-1)
+    ?? detection.classificationRegionObservation;
+  const sourceSweep = observation?.sourceSweep;
+  if (!observation
+    || !sourceSweep
+    || !Array.isArray(detection.sweepIds)
+    || typeof sourceSweep.id !== 'string'
+    || sourceSweep.id.length === 0
+    || sourceSweep.id !== detection.sweepIds.at(-1)
+    || sourceSweep.capturedAt !== detection.lastSeenAt
+    || observation.startHz !== detection.startHz
+    || observation.stopHz !== detection.stopHz
+    || observation.peakHz !== detection.peakHz
+    || observation.detectorId !== detection.detectorId
+    || sourceSweep.complete !== true
+    || !Number.isFinite(sourceSweep.actualStartHz)
+    || !Number.isFinite(sourceSweep.actualStopHz)
+    || sourceSweep.actualStopHz <= sourceSweep.actualStartHz
+    || !Number.isFinite(sourceSweep.actualRbwHz)
+    || sourceSweep.actualRbwHz <= 0
+    || sourceSweep.frequencyHz.length < 2
+    || sourceSweep.frequencyHz.length !== sourceSweep.powerDbm.length
+    || sourceSweep.frequencyHz.some((frequencyHz, index) =>
+      !Number.isFinite(frequencyHz)
+      || frequencyHz < sourceSweep.actualStartHz
+      || frequencyHz > sourceSweep.actualStopHz
+      || (index > 0 && frequencyHz <= sourceSweep.frequencyHz[index - 1]!))
+    || sourceSweep.powerDbm.some((powerDbm) => !Number.isFinite(powerDbm))) {
+    return undefined;
+  }
+
+  const orderedPowerDbm = [...sourceSweep.powerDbm]
+    .sort((left, right) => left - right);
+  const lowerTailCount = Math.max(1, Math.floor(orderedPowerDbm.length * 0.2));
+  const robustFloorDbm = independentMedian(
+    orderedPowerDbm.slice(0, lowerTailCount),
+  );
+  if (!Number.isFinite(detection.noiseFloorDbm)
+    || detection.noiseFloorDbm !== robustFloorDbm) return undefined;
+
+  const supportIndices = sourceSweep.frequencyHz
+    .map((frequencyHz, index) => ({ frequencyHz, index }))
+    .filter(({ frequencyHz }) => frequencyHz >= detection.startHz
+      && frequencyHz <= detection.stopHz)
+    .map(({ index }) => index);
+  if (supportIndices.length === 0) return undefined;
+  const peakIndex = sourceSweep.frequencyHz.indexOf(detection.peakHz);
+  if (peakIndex < 0
+    || !supportIndices.includes(peakIndex)
+    || sourceSweep.powerDbm[peakIndex] !== detection.peakDbm) return undefined;
+
+  const floorMw = independentDbmToMw(robustFloorDbm);
+  let integratedExcessPowerMw = 0;
+  for (const index of supportIndices) {
+    const centerHz = sourceSweep.frequencyHz[index]!;
+    const leftHz = index === 0
+      ? sourceSweep.actualStartHz
+      : (sourceSweep.frequencyHz[index - 1]! + centerHz) / 2;
+    const rightHz = index === sourceSweep.frequencyHz.length - 1
+      ? sourceSweep.actualStopHz
+      : (centerHz + sourceSweep.frequencyHz[index + 1]!) / 2;
+    const cellWidthHz = rightHz - leftHz;
+    if (!Number.isFinite(cellWidthHz) || cellWidthHz <= 0) return undefined;
+    integratedExcessPowerMw += Math.max(
+      0,
+      independentDbmToMw(sourceSweep.powerDbm[index]!) - floorMw,
+    ) * cellWidthHz / sourceSweep.actualRbwHz;
+  }
+  if (!Number.isFinite(integratedExcessPowerMw)
+    || integratedExcessPowerMw <= 0) return undefined;
+  return {
+    sourceSweepId: sourceSweep.id,
+    supportStartHz: sourceSweep.frequencyHz[supportIndices[0]!]!,
+    supportStopHz: sourceSweep.frequencyHz[supportIndices.at(-1)!]!,
+    supportCellCount: supportIndices.length,
+    robustFloorDbm,
+    actualRbwHz: sourceSweep.actualRbwHz,
+    integratedExcessPowerMw,
+  };
+}
+
+function independentMedian(values: readonly number[]): number {
+  const middle = Math.floor(values.length / 2);
+  return values.length % 2 === 0
+    ? (values[middle - 1]! + values[middle]!) / 2
+    : values[middle]!;
+}
+
+function independentDbmToMw(valueDbm: number): number {
+  return 10 ** (valueDbm / 10);
 }
 
 function independentLocalObservationsMatch(
