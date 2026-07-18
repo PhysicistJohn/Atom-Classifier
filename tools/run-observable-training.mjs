@@ -47,6 +47,28 @@ const CHILD_CODE_INJECTION_ENVIRONMENT_KEYS = new Set([
 ]);
 const FORWARDED_SIGNALS = ['SIGHUP', 'SIGINT', 'SIGTERM'];
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
+const CLI_USAGE = 'Usage: run-observable-training.mjs <train [--fresh-sampling]|check>';
+
+export function parseObservableTrainingCommand(arguments_) {
+  if (!Array.isArray(arguments_)
+    || arguments_.some((argument) => typeof argument !== 'string')) {
+    throw new TypeError(CLI_USAGE);
+  }
+  const [mode, ...extraArguments] = arguments_;
+  if (mode === 'train') {
+    if (extraArguments.length === 0) {
+      return { mode, freshSampling: false };
+    }
+    if (extraArguments.length === 1 && extraArguments[0] === '--fresh-sampling') {
+      return { mode, freshSampling: true };
+    }
+    throw new Error(CLI_USAGE);
+  }
+  if (mode === 'check' && extraArguments.length === 0) {
+    return { mode, freshSampling: false };
+  }
+  throw new Error(CLI_USAGE);
+}
 
 export async function buildObservableTrainingInvocation(options = {}) {
   assertPrivateBuildImmutabilitySupported();
@@ -396,8 +418,16 @@ function inspectCandidate(directory, expectedIdentity) {
 
 export async function runObservableTraining(mode, options = {}) {
   if (mode !== 'train' && mode !== 'check') {
-    throw new Error('Usage: run-observable-training.mjs <train|check>');
+    throw new Error(CLI_USAGE);
   }
+  if (options.freshSampling !== undefined
+    && typeof options.freshSampling !== 'boolean') {
+    throw new TypeError('Observable training freshSampling option must be boolean');
+  }
+  if (mode === 'check' && options.freshSampling === true) {
+    throw new Error('Observable training check mode is already always fresh-sampling');
+  }
+  const freshSampling = options.freshSampling === true;
   const repositoryRoot = resolve(options.repositoryRoot ?? REPOSITORY_ROOT);
   const build = await buildObservableTrainingInvocation({
     repositoryRoot,
@@ -408,7 +438,9 @@ export async function runObservableTraining(mode, options = {}) {
   try {
     const trainerArguments = mode === 'check'
       ? ['--check', '--fresh-sampling']
-      : [];
+      : freshSampling
+        ? ['--fresh-sampling']
+        : [];
     return await runChild(
       options.execPath ?? process.execPath,
       [build.trainerPath, ...trainerArguments],
@@ -736,7 +768,10 @@ function sha256(value) {
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
 if (invokedPath === fileURLToPath(import.meta.url)) {
   try {
-    const exitCode = await runObservableTraining(process.argv[2]);
+    const command = parseObservableTrainingCommand(process.argv.slice(2));
+    const exitCode = await runObservableTraining(command.mode, {
+      freshSampling: command.freshSampling,
+    });
     process.exitCode = exitCode;
   } catch (error) {
     process.exitCode = Number.isInteger(error?.exitCode) ? error.exitCode : 1;

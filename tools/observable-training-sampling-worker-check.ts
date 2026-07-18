@@ -879,6 +879,21 @@ function checkGenerationScriptsEmitWorker(): void {
     trainerSource,
     /TRAINER_RUN\.workerRuntimeSha256 !== BUILD_ATTESTATION\.workerRuntimeSha256/,
   );
+  assert.match(
+    trainerSource,
+    /const FRESH_SAMPLING = CLI_ARGUMENTS\.includes\('--fresh-sampling'\);/,
+    'the production trainer must derive fresh mode only from the forwarded CLI flag',
+  );
+  assert.match(
+    trainerSource,
+    /const FRESH_SAMPLING_RUN = FRESH_SAMPLING\s+\? openFreshSamplingRunJournal\(\{[\s\S]*?journalPath: resolve\('\.artifacts\/observable-training-fresh-check\/journal\.json'\),[\s\S]*?runsRoot: resolve\('\.artifacts\/observable-training-fresh-check\/runs'\),/,
+    'fresh mode must own its isolated journal and run namespace',
+  );
+  assert.match(
+    trainerSource,
+    /const cache = FRESH_SAMPLING_RUN\s+\? createAttemptSamplingCache\(\{\s+rootDirectory: resolve\(FRESH_SAMPLING_RUN\.cacheRoot, 'v1'\),[\s\S]*?\}\)\s+: baselineCache;/,
+    'fresh mode must sample through its per-run cache rather than the trusted local cache',
+  );
   assert.equal(
     [...trainerSource.matchAll(/trainingRuntimeIdentity: TRAINING_RUNTIME_IDENTITY/g)].length,
     2,

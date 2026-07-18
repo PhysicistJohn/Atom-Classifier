@@ -22,6 +22,7 @@ import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import {
   buildObservableTrainingInvocation,
+  parseObservableTrainingCommand,
   runObservableTraining,
 } from './run-observable-training.mjs';
 
@@ -45,6 +46,74 @@ test('classifier training scripts use only the private-build launcher', () => {
   );
   assert.doesNotMatch(packageJson.scripts['train:signal-classifier'], /dist\/tools|tsup/);
   assert.doesNotMatch(packageJson.scripts['check:signal-classifier-model'], /dist\/tools|tsup/);
+});
+
+test('launcher accepts only its exact command-line contract', () => {
+  assert.deepEqual(
+    parseObservableTrainingCommand(['train']),
+    { mode: 'train', freshSampling: false },
+  );
+  assert.deepEqual(
+    parseObservableTrainingCommand(['train', '--fresh-sampling']),
+    { mode: 'train', freshSampling: true },
+  );
+  assert.deepEqual(
+    parseObservableTrainingCommand(['check']),
+    { mode: 'check', freshSampling: false },
+  );
+  for (const arguments_ of [
+    [],
+    ['train', '--unknown'],
+    ['train', '--fresh-sampling', '--unknown'],
+    ['train', '--fresh-sampling', '--fresh-sampling'],
+    ['check', '--fresh-sampling'],
+    ['check', '--unknown'],
+    ['unknown'],
+  ]) {
+    assert.throws(
+      () => parseObservableTrainingCommand(arguments_),
+      /Usage: run-observable-training\.mjs/,
+    );
+  }
+});
+
+posixTest('fresh train forwards the flag exactly to the private trainer', async () => {
+  const temporaryParent = mkdtempSync(join(tmpdir(), 'tinysa launcher fresh train '));
+  const trainerSource = `
+const fs = require('node:fs');
+const path = require('node:path');
+const arguments_ = process.argv.slice(2);
+if (JSON.stringify(arguments_) !== JSON.stringify(['--fresh-sampling'])) {
+  process.stderr.write('fresh flag was not forwarded exactly\\n');
+  process.exit(73);
+}
+fs.writeFileSync(path.resolve('fresh-launch-receipt.json'), JSON.stringify({
+  arguments_,
+}));
+`;
+  const repositoryRoot = createFakeCompilerRepository(
+    temporaryParent,
+    emittingCompilerSource({
+      trainerSource,
+      workerSource: 'void 0;\n',
+    }),
+  );
+  try {
+    const exitCode = await runObservableTraining('train', {
+      repositoryRoot,
+      temporaryParent,
+      freshSampling: true,
+    });
+    assert.equal(exitCode, 0);
+    const receipt = JSON.parse(readFileSync(
+      join(repositoryRoot, 'fresh-launch-receipt.json'),
+      'utf8',
+    ));
+    assert.deepEqual(receipt.arguments_, ['--fresh-sampling']);
+    assert.deepEqual(observableTrainingInvocationNames(temporaryParent), []);
+  } finally {
+    rmSync(temporaryParent, { recursive: true, force: true });
+  }
 });
 
 posixTest('parallel classifier builds are isolated, immutable, and byte-coherent', {
