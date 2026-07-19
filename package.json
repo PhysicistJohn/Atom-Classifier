@@ -15,7 +15,6 @@
     "typecheck:observable-validation": "tsc -p tools/tsconfig.observable-validation.json --noEmit",
     "typecheck": "npm run typecheck:observable-training && npm run typecheck:observable-validation",
     "test": "vitest run",
-    "test:watch": "vitest",
     "check": "npm run typecheck && npm run check:observable-training-worker && npm test && npm run check:signal-classifier-model && npm run check:signal-classifier && npm run check:signal-classifier-publication"
   },
   "devDependencies": {

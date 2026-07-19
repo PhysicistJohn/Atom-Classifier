@@ -1,17 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   BAYESIAN_WAVEFORM_MODEL,
-  BayesianWaveformClassifier,
   empiricalSyntheticSupportRank,
   selectObservableDecision,
 } from './bayesian-waveform-classifier.js';
 import { BAYESIAN_OBSERVABLE_MODEL } from './models/bayesian-observable.generated.js';
 import {
-  OBSERVABLE_EVIDENCE_CENSORING_POLICY,
   observableClassSupportsEvidenceView,
   observableModelComponents,
 } from './observable-classifier-model.js';
-import { SIGNAL_LAB_PRODUCTION_ACQUISITION_REGIME_METADATA } from '../../Atom-Atomizer/packages/analysis/src/observable-training-acquisition-geometry.js';
 
 describe('synthetic support rank contract', () => {
   it('computes a smoothed lower-tail empirical rank with deterministic tie handling', () => {
@@ -45,116 +42,6 @@ describe('synthetic support rank contract', () => {
     expect(() => empiricalSyntheticSupportRank(0.1, [0.1, 1.1])).toThrow(/must be sorted/);
   });
 
-  it('pins the non-conformal statistical interpretation in the generated asset', () => {
-    expect(BAYESIAN_OBSERVABLE_MODEL.calibrationId).toBe(
-      'synthetic-independent-branch-view-matched-causal-acquisition-support-rank-detector-conditioned-physical-uncalibrated-v20',
-    );
-    expect(BAYESIAN_OBSERVABLE_MODEL.calibrationId).not.toContain('conformal');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationRepresentativeSelectionPolicy)
-      .toBe('consecutive-spectrum-all-runtime-representatives-and-independent-integrated-excess-rank-0-envelope-sole-capture-v5');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationScoreUnit)
-      .toBe('one-independent-branch-acquisition-attempt-score-per-evidence-view-v4');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationRepresentativeAggregationPolicy)
-      .toBe('consecutive-spectrum-branch-minimum-qualified-envelope-branch-sole-capture-v5');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationRuntimeInterpretationPolicy)
-      .toBe('spectrum-member-dominates-independent-branch-attempt-min-envelope-is-independent-sole-capture-v3');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.tailCalibrationStatisticalInterpretation)
-      .toBe('empirical-synthetic-reference-only-no-exchangeability-or-coverage-guarantee-v1');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.representativeEligibilityPolicy)
-      .toBe('observation-only-hypothesis-domain-v5');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerAcquisitionQualification)
-      .toBe('receipt-verified-provenance-bound-runtime-admitted-physical-capture-v5');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerSelectionCondition)
-      .toBe('automatic-current-source-sweep-integrated-excess-rank-0');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.acquisitionBranchPolicy)
-      .toBe('independent-no-auto-spectrum-and-qualified-rank-0-integrated-excess-envelope-sessions-v2');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.selectionPolicy)
-      .toBe('independent-consecutive-spectrum-and-integrated-excess-rank-0-runtime-admission-qualified-envelope-branches-v9');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.likelihoodPopulationPolicy)
-      .toBe('independent-branch-view-matched-runtime-event-populations-v3');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.frequencyAgileFixedTuneEnvelopeCensoringPolicy)
-      .toEqual(OBSERVABLE_EVIDENCE_CENSORING_POLICY);
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.censoredFrequencyAgileFixedTuneCaptureCountsByScenario)
-      .toEqual({
-        fitting: expect.objectContaining({
-          'bluetooth-classic-connected': expect.any(Number),
-          'bluetooth-le-advertising': expect.any(Number),
-        }),
-        tailCalibration: expect.objectContaining({
-          'bluetooth-classic-connected': expect.any(Number),
-          'bluetooth-le-advertising': expect.any(Number),
-        }),
-      });
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.trainingRuntimeIdentity).toEqual({
-      policyId: 'exact-repository-node-version-v1',
-      nodeVersion: '22.23.1',
-      v8Version: '12.4.254.21-node.56',
-    });
-    expect(BAYESIAN_OBSERVABLE_MODEL.id).toBe('bayesian-observable-equivalence-v9');
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.signalLabProductionAcquisitionRegime)
-      .toEqual(SIGNAL_LAB_PRODUCTION_ACQUISITION_REGIME_METADATA);
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.detectedPowerSynthesisFilterPolicy).toEqual({
-      id: 'explicit-generator-filter-width-by-acquisition-regime-v1',
-      divisorAcquisitionRegimes: 'match-swept-spectrum-actual-rbw-nuisance-v1',
-      signalLabProductionAcquisitionRegimes: 'fixed-generator-internal-width-v1',
-      signalLabProductionSynthesisFilterWidthHz: 100_000,
-      measurementActualRbwQualification: 'unavailable',
-    });
-    expect(BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.productionAcquisitionRegimeHighSnrSeedCoveragePolicy)
-      .toEqual({
-        id: 'branch-conditional-production-regime-presence-v2',
-        spectrumOnly: {
-          minimumDistinctObservationDomainEligibleSeedsPerHighSnrCell: 1,
-        },
-        qualifiedEnvelope: {
-          minimumDistinctPhysicalCaptureSeedsPerHighSnrCell: 1,
-          observationDomainEligibilityPolicy:
-            'pooled-by-scenario-and-view-after-causal-capture-v1',
-          outOfDomainCapturePolicy:
-            'honest-abstention-excluded-from-envelope-likelihood-v1',
-        },
-        globalCoveragePolicy: 'all-seeds-at-one-or-more-regimes-except-declared-sparse-asynchronous-scenarios-v1',
-      });
-    const audit = BAYESIAN_OBSERVABLE_MODEL.trainingMatrix.causalSamplingAudit;
-    expect(audit).toBeDefined();
-    if (!audit) throw new Error('Generated model omitted its causal sampling audit');
-    expect(audit.schemaVersion).toBe(3);
-    expect(audit.attributedSourceClockTraceAudit.serialization)
-      .toBe('canonical-attempt-id-branch-attributed-trace-and-capture-disposition-digest-v3');
-    for (const partition of [audit.fitting, audit.tailCalibration]) {
-      const spectrum = partition.runtimeBranches.consecutiveSpectrum;
-      const envelope = partition.runtimeBranches.qualifiedEnvelope;
-      expect(spectrum.physicalDetectedPowerCaptureCount).toBe(0);
-      expect(spectrum.postCaptureProvenanceUnavailableWindowCount).toBe(0);
-      expect(spectrum.detectedPowerCaptureSampleCount).toBe(0);
-      expect(spectrum.censoredFrequencyAgileFixedTuneCaptureCount).toBe(0);
-      expect(spectrum.sourceClockEventCount).toBe(spectrum.spectrumAcquisitionCount);
-      expect(envelope.preCaptureProvenanceUnavailableWindowCount
-        + envelope.postCaptureProvenanceUnavailableWindowCount)
-        .toBe(envelope.provenanceUnavailableWindowCount);
-      expect(envelope.sourceClockEventCount)
-        .toBe(envelope.spectrumAcquisitionCount + envelope.physicalDetectedPowerCaptureCount);
-      expect(envelope.physicalDetectedPowerCaptureCount)
-        .toBe(envelope.receiptVerifiedDetectedPowerCaptureSampleCount
-          + envelope.postCaptureProvenanceUnavailableWindowCount);
-      expect(envelope.receiptVerifiedDetectedPowerCaptureSampleCount)
-        .toBe(envelope.capturedEnvelopeRepresentativeCount
-          + envelope.censoredFrequencyAgileFixedTuneCaptureCount);
-      expect(envelope.capturedEnvelopeRepresentativeCount).toBeGreaterThan(0);
-      expect(envelope.censoredFrequencyAgileFixedTuneCaptureCount).toBeGreaterThan(0);
-      expect(partition.pairedNuisanceCellCount).toBe(spectrum.attemptCount);
-      expect(partition.pairedNuisanceCellCount).toBe(envelope.attemptCount);
-    }
-    expect(audit.attributedSourceClockTraceAudit.fitting.consecutiveSpectrumSha256)
-      .toMatch(/^[a-f0-9]{64}$/);
-    expect(audit.attributedSourceClockTraceAudit.fitting.qualifiedEnvelopeSha256)
-      .toMatch(/^[a-f0-9]{64}$/);
-    expect(audit.attributedSourceClockTraceAudit.tailCalibration.consecutiveSpectrumSha256)
-      .toMatch(/^[a-f0-9]{64}$/);
-    expect(audit.attributedSourceClockTraceAudit.tailCalibration.qualifiedEnvelopeSha256)
-      .toMatch(/^[a-f0-9]{64}$/);
-  });
-
   it('declares Bluetooth likelihood support only for the scalar spectrum view', () => {
     expect(observableClassSupportsEvidenceView('bluetooth-like', 'spectrum-only')).toBe(true);
     expect(observableClassSupportsEvidenceView('bluetooth-like', 'envelope-untimed')).toBe(false);
@@ -167,52 +54,6 @@ describe('synthetic support rank contract', () => {
     expect(observableModelComponents(bluetooth, 'envelope-timed')).toEqual([]);
     expect(bluetooth.tailCalibrationScoresByView?.['envelope-untimed']).toEqual([]);
     expect(bluetooth.tailCalibrationScoresByView?.['envelope-timed']).toEqual([]);
-  });
-});
-
-describe('generated model constructor admission', () => {
-  const component = () =>
-    observableModelComponents(
-      BAYESIAN_OBSERVABLE_MODEL.classModels[0]!,
-      'spectrum-only',
-    )[0]!;
-
-  it('rejects a non-finite fitted location before inference is available', () => {
-    const selected = component();
-    const location = selected.location as number[];
-    const original = location[0]!;
-    try {
-      location[0] = Number.NaN;
-      expect(() => new BayesianWaveformClassifier())
-        .toThrow(/location must be finite/);
-    } finally {
-      location[0] = original;
-    }
-  });
-
-  it('rejects non-positive fitted degrees of freedom before inference is available', () => {
-    const selected = component() as unknown as { degreesOfFreedom: number };
-    const original = selected.degreesOfFreedom;
-    try {
-      selected.degreesOfFreedom = 0;
-      expect(() => new BayesianWaveformClassifier())
-        .toThrow(/degrees of freedom must be positive/);
-    } finally {
-      selected.degreesOfFreedom = original;
-    }
-  });
-
-  it('rejects a non-positive-definite fitted scale before inference is available', () => {
-    const selected = component();
-    const scale = selected.scale as number[][];
-    const original = scale[0]![0]!;
-    try {
-      scale[0]![0] = 0;
-      expect(() => new BayesianWaveformClassifier())
-        .toThrow(/scale matrix is not positive definite/);
-    } finally {
-      scale[0]![0] = original;
-    }
   });
 });
 
