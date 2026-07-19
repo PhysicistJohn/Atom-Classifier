@@ -60,7 +60,7 @@ const PINNED_LIKELIHOOD_COMPONENT_DECOMPOSITION_POLICY = {
   csmaPartitionFeature: 'spectrum.powerVariationDb',
   csmaModeCount: 3,
   minimumModeFitSampleCount: 3,
-  csmaClustering: 'deterministic-one-dimensional-lloyd-min-median-max-v1',
+  csmaClustering: 'deterministic-one-dimensional-lloyd-min-median-max-minimum-population-v2',
   csmaModeWeighting: 'empirical-fit-event-frequency-within-scenario-and-view-v1',
   csmaCovariance: 'shared-within-mode-pooled-covariance-with-0.35-off-diagonal-retention-v1',
 };

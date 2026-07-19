@@ -125,11 +125,24 @@ if (publicationRecovery !== 'none') {
 }
 const SOURCE_COMMIT = 'e7d48afbce7165fa04fd551629891123f3b86d34';
 const SIGNAL_LAB_REPOSITORY_ROOT = resolve('../Atom-SignalLab');
-const CHECKED_OUT_SOURCE_COMMIT = gitOutput(['rev-parse', 'HEAD']).toString('utf8').trim();
+const ATOMIZER_SOURCE_COMMIT = 'df6c2ee06003eae94b1e02b52fb50ed0082b3ea7';
+const ATOMIZER_REPOSITORY_ROOT = resolve('../Atom-Atomizer');
+const CHECKED_OUT_SOURCE_COMMIT = gitOutput(
+  SIGNAL_LAB_REPOSITORY_ROOT,
+  ['rev-parse', 'HEAD'],
+).toString('utf8').trim();
 if (CHECKED_OUT_SOURCE_COMMIT !== SOURCE_COMMIT) {
   throw new Error(`SignalLab checked-out commit ${CHECKED_OUT_SOURCE_COMMIT} does not match pinned ${SOURCE_COMMIT}`);
 }
-assertSignalLabRepositoryIsClean();
+const CHECKED_OUT_ATOMIZER_SOURCE_COMMIT = gitOutput(
+  ATOMIZER_REPOSITORY_ROOT,
+  ['rev-parse', 'HEAD'],
+).toString('utf8').trim();
+if (CHECKED_OUT_ATOMIZER_SOURCE_COMMIT !== ATOMIZER_SOURCE_COMMIT) {
+  throw new Error(`Atomizer checked-out commit ${CHECKED_OUT_ATOMIZER_SOURCE_COMMIT} does not match pinned ${ATOMIZER_SOURCE_COMMIT}`);
+}
+assertRepositoryIsClean(SIGNAL_LAB_REPOSITORY_ROOT, 'SignalLab');
+assertRepositoryIsClean(ATOMIZER_REPOSITORY_ROOT, 'Atomizer');
 if (CANONIZED_REPLAY_DETECTED_POWER_SYNTHESIS_FILTER_WIDTH_HZ
   !== SIGNAL_LAB_PRODUCTION_DETECTED_POWER_SYNTHESIS_FILTER_WIDTH_HZ) {
   throw new Error('Atomizer production detected-power synthesis filter pin does not match SignalLab');
@@ -167,6 +180,8 @@ const CORPUS_SHA256 = createHash('sha256').update(JSON.stringify(CORPUS_SOURCE_M
 const ATTEMPT_SAMPLING_CACHE_SOURCE_IDENTITY = {
   signalLabPinnedCommit: SOURCE_COMMIT,
   signalLabCheckedOutCommit: CHECKED_OUT_SOURCE_COMMIT,
+  atomizerPinnedCommit: ATOMIZER_SOURCE_COMMIT,
+  atomizerCheckedOutCommit: CHECKED_OUT_ATOMIZER_SOURCE_COMMIT,
   classificationCorpusVersion: CLASSIFICATION_CORPUS_VERSION,
   corpusSourceManifest: CORPUS_SOURCE_MANIFEST,
   corpusSha256: CORPUS_SHA256,
@@ -1366,19 +1381,22 @@ function corpusSourceArtifact(path: string): { path: string; sha256: string } {
   const file = resolve(SIGNAL_LAB_REPOSITORY_ROOT, path);
   const status = lstatSync(file);
   if (!status.isFile() || status.isSymbolicLink()) throw new Error(`SignalLab corpus source artifact ${path} must be a regular non-symlink file`);
-  gitOutput(['ls-files', '--error-unmatch', '--', path]);
+  gitOutput(SIGNAL_LAB_REPOSITORY_ROOT, ['ls-files', '--error-unmatch', '--', path]);
   const bytes = readFileSync(file);
-  const committedBytes = gitOutput(['show', `${SOURCE_COMMIT}:${path}`]);
+  const committedBytes = gitOutput(SIGNAL_LAB_REPOSITORY_ROOT, ['show', `${SOURCE_COMMIT}:${path}`]);
   if (!bytes.equals(committedBytes)) {
     throw new Error(`SignalLab corpus source artifact ${path} differs from pinned commit ${SOURCE_COMMIT}`);
   }
   return { path, sha256: createHash('sha256').update(bytes).digest('hex') };
 }
 
-function assertSignalLabRepositoryIsClean(): void {
-  const status = gitOutput(['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+function assertRepositoryIsClean(repositoryRoot: string, label: string): void {
+  const status = gitOutput(
+    repositoryRoot,
+    ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+  );
   if (status.length !== 0) {
-    throw new Error('SignalLab repository must have a clean index and worktree, including no untracked files, before classifier generation');
+    throw new Error(`${label} repository must have a clean index and worktree, including no untracked files, before classifier generation`);
   }
 }
 
@@ -1425,9 +1443,9 @@ function relativeTypeScriptModuleSpecifiers(source: string): string[] {
   return [...new Set(patterns.flatMap((pattern) => [...source.matchAll(pattern)].map((match) => match[1]!)))].sort();
 }
 
-function gitOutput(arguments_: readonly string[]): Buffer {
+function gitOutput(repositoryRoot: string, arguments_: readonly string[]): Buffer {
   return execFileSync('git', arguments_, {
-    cwd: SIGNAL_LAB_REPOSITORY_ROOT,
+    cwd: repositoryRoot,
     encoding: 'buffer',
     maxBuffer: 16 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],

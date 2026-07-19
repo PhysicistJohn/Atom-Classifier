@@ -88,15 +88,52 @@ describe('observable likelihood component fitting', () => {
       .toBeCloseTo(0.5, 12);
   });
 
-  it('rejects a CSMA partition whose separated tail mode has fewer than three samples', () => {
+  it('deterministically rebalances a separated CSMA tail to the minimum fit population', () => {
     const scenario = canonicalClassificationScenario('wifi-hr-dsss-11m');
     const samples = [
       ...modeSamples(12, 0.8, 2.7, 0),
       ...modeSamples(9, 3.4, 2.5, 100),
       ...modeSamples(2, 20, 2.0, 200),
     ];
+    const forward = fitScenarioStudentTComponents(scenario, samples, dimensions, 0);
+    const reversed = fitScenarioStudentTComponents(scenario, [...samples].reverse(), dimensions, 0);
+
+    expect(forward).toEqual(reversed);
+    expect(forward.map((component) => component.fitSampleCount)).toEqual([12, 8, 3]);
+    forward.map((component) => Math.exp(component.logWeight))
+      .forEach((weight, index) => expect(weight).toBeCloseTo([12 / 23, 8 / 23, 3 / 23][index]!, 14));
+    expect(forward.map((component) => component.location[1]))
+      .toEqual([...forward.map((component) => component.location[1])].sort((left, right) => left! - right!));
+  });
+
+  it('rejects a CSMA population too small to satisfy every mode floor', () => {
+    const scenario = canonicalClassificationScenario('wifi-hr-dsss-11m');
+    const samples = [
+      ...modeSamples(3, 0.8, 2.7, 0),
+      ...modeSamples(3, 3.4, 2.5, 100),
+      ...modeSamples(2, 20, 2.0, 200),
+    ];
     expect(() => fitScenarioStudentTComponents(scenario, samples, dimensions, 0))
-      .toThrow(/at least 3 are required/);
+      .toThrow(/only 8 samples for 3 modes/);
+  });
+
+  it('cascades a distant surplus across adjacent mode boundaries', () => {
+    const samples = [
+      ...modeSamples(2, 0.8, 2.7, 0),
+      ...modeSamples(3, 3.4, 2.5, 100),
+      ...modeSamples(4, 20, 2.0, 200),
+    ];
+    const groups = deterministicOneDimensionalLloydPartition(
+      samples,
+      'spectrum.powerVariationDb',
+      3,
+    );
+
+    expect(groups.map((group) => group.length)).toEqual([3, 3, 3]);
+    expect(groups.flat().map((sample) => sample['spectrum.powerVariationDb']))
+      .toEqual([...samples]
+        .map((sample) => sample['spectrum.powerVariationDb'])
+        .sort((left, right) => left! - right!));
   });
 
   it('assigns an equal-distance sample to the lower-index mode deterministically', () => {

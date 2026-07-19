@@ -25,8 +25,11 @@ interface ModePopulation {
  * state to its radial tail. We therefore partition only the declared CSMA
  * populations on their directly observed sweep-to-sweep power variation,
  * retain empirical event-frequency weights, and estimate one shared pooled
- * within-mode covariance. Sharing covariance prevents the smallest burst-
- * boundary mode from estimating an independent high-dimensional covariance.
+ * within-mode covariance. The converged Lloyd partition is deterministically
+ * rebalanced at adjacent boundaries when a rare tail would otherwise contain
+ * fewer observations than the declared fit floor. Sharing covariance prevents
+ * the smallest burst-boundary mode from estimating an independent
+ * high-dimensional covariance.
  */
 export function fitScenarioStudentTComponents(
   scenario: CanonicalClassificationScenario,
@@ -121,10 +124,34 @@ export function deterministicOneDimensionalLloydPartition(
       throw new Error(`Observable likelihood ${dimension} partition produced an empty mode`);
     }
     const next = groups.map((group) => mean(group.map((sample) => finiteDimension(sample, dimension))));
-    if (next.every((value, index) => value === centers[index])) return groups;
+    if (next.every((value, index) => value === centers[index])) {
+      return rebalanceMinimumPopulation(groups, MINIMUM_MODE_SAMPLE_COUNT);
+    }
     centers = next;
   }
   throw new Error(`Observable likelihood ${dimension} partition did not converge deterministically`);
+}
+
+function rebalanceMinimumPopulation(
+  groups: readonly (readonly Readonly<Record<string, number>>[])[],
+  minimumGroupSize: number,
+): readonly (readonly Readonly<Record<string, number>>[])[] {
+  const orderedSamples = groups.flatMap((group) => group);
+  const minimumPopulation = groups.length * minimumGroupSize;
+  if (orderedSamples.length < minimumPopulation) {
+    throw new Error('Observable likelihood partition cannot satisfy its minimum mode population');
+  }
+  let offset = 0;
+  let remaining = orderedSamples.length;
+  return groups.map((group, index) => {
+    const remainingGroupCount = groups.length - index - 1;
+    const maximumSize = remaining - (remainingGroupCount * minimumGroupSize);
+    const size = Math.min(Math.max(group.length, minimumGroupSize), maximumSize);
+    const balanced = orderedSamples.slice(offset, offset + size);
+    offset += size;
+    remaining -= size;
+    return balanced;
+  });
 }
 
 function fitSingleComponent(

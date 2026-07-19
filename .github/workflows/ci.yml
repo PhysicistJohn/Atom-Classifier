@@ -29,7 +29,7 @@ jobs:
           # closure; do not silently follow a moving default branch.
           ref: df6c2ee06003eae94b1e02b52fb50ed0082b3ea7
           path: Atom-Atomizer
-          token: ${{ secrets.CLASSIFIER_TINYSA_READ_TOKEN }}
+          token: ${{ secrets.CLASSIFIER_ATOMIZER_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:

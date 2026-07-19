@@ -1,4 +1,4 @@
-# AtomOS Classifier
+# Atom Classifier
 
 Training, validation, and publication pipeline for Atomizer's Bayesian
 observable classifier. Extracted out of `Atom-Atomizer` so the
@@ -41,13 +41,18 @@ PersonalGitHub/
 
 All cross-repo imports are plain relative paths (`../../Atom-Atomizer/packages/...`,
 `../../Atom-SignalLab/src/...`) — there is no npm dependency on either
-sibling repo.
+sibling repo. Release training and validation require clean checkouts at the
+exact source pins used by CI: Atomizer
+`df6c2ee06003eae94b1e02b52fb50ed0082b3ea7` and SignalLab
+`e7d48afbce7165fa04fd551629891123f3b86d34`.
 
 ## Quick start
 
 ```
 nvm install 22.23.1
 nvm use 22.23.1
+test "$(git -C ../Atom-Atomizer rev-parse HEAD)" = "df6c2ee06003eae94b1e02b52fb50ed0082b3ea7"
+test "$(git -C ../Atom-SignalLab rev-parse HEAD)" = "e7d48afbce7165fa04fd551629891123f3b86d34"
 npm --prefix ../Atom-Atomizer ci --omit=dev --ignore-scripts
 npm --prefix ../Atom-SignalLab ci --omit=dev --ignore-scripts
 npm install
@@ -62,6 +67,6 @@ model-reproduction step alone can take 90+ minutes.
 ## Known CI gap
 
 `Atom-Atomizer` is currently a private repo. The CI workflow uses the
-`CLASSIFIER_TINYSA_READ_TOKEN` repository secret for that checkout; configure
+`CLASSIFIER_ATOMIZER_READ_TOKEN` repository secret for that checkout; configure
 it with read-only contents access to `PhysicistJohn/Atom-Atomizer` before
 enabling CI in a new remote.
