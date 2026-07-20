@@ -9,7 +9,22 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  # verify needs the private Atom-Atomizer and Atom-SignalLab siblings. Until
+  # the CLASSIFIER_TINYSA_READ_TOKEN repo secret exists (fine-grained PAT with
+  # read access to those repos), skip cleanly instead of failing at checkout
+  # on every push. The secrets context is not legal in a job-level if, so a
+  # one-step gate job exports its presence.
+  sibling-token-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.probe.outputs.present }}
+    steps:
+      - id: probe
+        run: echo "present=${{ secrets.CLASSIFIER_TINYSA_READ_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+
   verify:
+    needs: sibling-token-gate
+    if: needs.sibling-token-gate.outputs.present == 'true'
     runs-on: ubuntu-latest
     # Full model regeneration plus calibration and held-out validation
     # deliberately exceeds 90 minutes on a clean runner.
