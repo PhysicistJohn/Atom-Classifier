@@ -9,11 +9,13 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  # verify needs the private Atom-Atomizer and Atom-SignalLab siblings. Until
-  # the CLASSIFIER_TINYSA_READ_TOKEN repo secret exists (fine-grained PAT with
-  # read access to those repos), skip cleanly instead of failing at checkout
-  # on every push. The secrets context is not legal in a job-level if, so a
-  # one-step gate job exports its presence.
+  # verify checks out the Atom-Atomizer and Atom-SignalLab siblings. All
+  # Atom-* repos are now public, so the CLASSIFIER_TINYSA_READ_TOKEN repo
+  # secret (a fine-grained PAT with read access to those repos) is optional;
+  # the gate is kept so forks and remotes without the secret skip the
+  # long-running job cleanly instead of running it on every push. The
+  # secrets context is not legal in a job-level if, so a one-step gate job
+  # exports its presence.
   sibling-token-gate:
     runs-on: ubuntu-latest
     outputs:
