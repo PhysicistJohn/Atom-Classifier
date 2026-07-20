@@ -1,34 +1,20 @@
 {
-  "seed": 20260720,
-  "known": [
-    "cw",
+  "seed": 20260721,
+  "source": "signallab-analytic-complex-iq",
+  "classes": [
     "am",
+    "bluetooth",
+    "cw",
+    "dsss",
     "fm",
-    "bpsk",
-    "qpsk",
-    "qam16",
-    "qam64",
-    "gfsk",
+    "gsm",
     "ofdm"
   ],
-  "fewshot": [
-    "psk8",
-    "dsss"
-  ],
-  "novel": [
-    "noise",
-    "chirp"
-  ],
-  "episodes": 8000,
-  "snr_train": [
-    2.0,
-    30.0
-  ],
+  "episodes": 6000,
   "metrics": {
-    "closed_set_accuracy": 0.7874074074074074,
-    "open_set_auroc": 0.7994765432098765,
-    "best_val_accuracy": 0.7874074074074074
+    "clean_closed_set_accuracy": 0.9246231155778895,
+    "best_val_accuracy": 0.9246231155778895
   },
-  "unknown_threshold": 0.15080367028713226,
-  "temperature": 0.12000000000000001
+  "unknown_threshold": 0.47964563965797424,
+  "temperature": 0.1
 }

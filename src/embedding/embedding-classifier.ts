@@ -19,9 +19,17 @@ import {
   type PrototypeSet,
 } from './prototype-classifier.js';
 import { embeddingEvidenceLikelihood, type FusionContext } from './embedding-evidence-fusion.js';
+import { refineModulation, type OrderRefinement, type RefinedModulation } from './order-refinement.js';
+
+export interface ClassifyOptions extends FusionContext {
+  /** Ingestion-side quality-gated order refinement (from recover.py + order_refine.py). */
+  orderRefinement?: OrderRefinement;
+}
 
 export interface EmbeddingResult {
   classification: Classification;
+  /** Hierarchical modulation decision: family, or resolved order when supported. */
+  modulation: RefinedModulation;
   /** Measured centre frequency (cycles/sample) and occupied fractional bandwidth. */
   center: number;
   bw: number;
@@ -58,12 +66,13 @@ export class EmbeddingWaveformClassifier {
    * bandwidth in Hz (from the SDR detection) in `ctx` to enable
    * modulation→protocol disambiguation in the fused leaf likelihood.
    */
-  classifyIq(re: Float64Array, im: Float64Array, ctx: FusionContext = {}): EmbeddingResult {
+  classifyIq(re: Float64Array, im: Float64Array, opts: ClassifyOptions = {}): EmbeddingResult {
     const n = this.normalise(re, im);
     const emb = this.embedNormalised(n);
     const classification = classify(this.prototypes, emb);
-    const leafLikelihood = embeddingEvidenceLikelihood(classification, ctx);
-    return { classification, center: n.center, bw: n.bw, leafLikelihood };
+    const leafLikelihood = embeddingEvidenceLikelihood(classification, opts);
+    const modulation = refineModulation(classification.label, opts.orderRefinement);
+    return { classification, modulation, center: n.center, bw: n.bw, leafLikelihood };
   }
 
   /** Current enrollable class names (in prototype order). */

@@ -8,7 +8,9 @@
  * inference; `iq-preprocess.test.ts` asserts parity against exported fixtures.
  *
  * Complex I/Q is carried as separate real/imag Float64Array pairs. Everything is
- * double precision until the final channel cast, matching numpy.
+ * double precision until the final channel cast, matching numpy. The `!`
+ * non-null assertions in the numeric kernels satisfy the repo's
+ * `noUncheckedIndexedAccess`; every index is provably in bounds by construction.
  */
 
 export interface PreprocessParams {
@@ -44,8 +46,12 @@ function fft(re: Float64Array, im: Float64Array): void {
     for (; j & bit; bit >>= 1) j ^= bit;
     j ^= bit;
     if (i < j) {
-      [re[i], re[j]] = [re[j], re[i]];
-      [im[i], im[j]] = [im[j], im[i]];
+      const tr = re[i]!;
+      re[i] = re[j]!;
+      re[j] = tr;
+      const ti = im[i]!;
+      im[i] = im[j]!;
+      im[j] = ti;
     }
   }
   for (let len = 2; len <= n; len <<= 1) {
@@ -58,12 +64,16 @@ function fft(re: Float64Array, im: Float64Array): void {
       for (let k = 0; k < len / 2; k++) {
         const a = i + k;
         const b = i + k + len / 2;
-        const tr = re[b] * cr - im[b] * ci;
-        const ti = re[b] * ci + im[b] * cr;
-        re[b] = re[a] - tr;
-        im[b] = im[a] - ti;
-        re[a] += tr;
-        im[a] += ti;
+        const rb = re[b]!;
+        const ib = im[b]!;
+        const ra = re[a]!;
+        const ia = im[a]!;
+        const tr = rb * cr - ib * ci;
+        const ti = rb * ci + ib * cr;
+        re[b] = ra - tr;
+        im[b] = ia - ti;
+        re[a] = ra + tr;
+        im[a] = ia + ti;
         const ncr = cr * wr - ci * wi;
         ci = cr * wi + ci * wr;
         cr = ncr;
@@ -83,8 +93,8 @@ export function welchPsd(i: Float64Array, q: Float64Array, nfft: number): Float6
   const win = hann(nfft);
   const hop = nfft >> 1;
   let n = i.length;
-  let ir = i;
-  let qr = q;
+  let ir: Float64Array = i;
+  let qr: Float64Array = q;
   if (n < nfft) {
     ir = new Float64Array(nfft);
     qr = new Float64Array(nfft);
@@ -98,15 +108,15 @@ export function welchPsd(i: Float64Array, q: Float64Array, nfft: number): Float6
     const re = new Float64Array(nfft);
     const im = new Float64Array(nfft);
     for (let k = 0; k < nfft; k++) {
-      re[k] = ir[start + k] * win[k];
-      im[k] = qr[start + k] * win[k];
+      re[k] = ir[start + k]! * win[k]!;
+      im[k] = qr[start + k]! * win[k]!;
     }
     fft(re, im);
-    for (let k = 0; k < nfft; k++) acc[k] += re[k] * re[k] + im[k] * im[k];
+    for (let k = 0; k < nfft; k++) acc[k] = acc[k]! + re[k]! * re[k]! + im[k]! * im[k]!;
     count++;
   }
   if (count === 0) count = 1;
-  for (let k = 0; k < nfft; k++) acc[k] /= count;
+  for (let k = 0; k < nfft; k++) acc[k] = acc[k]! / count;
   // fftshift (even nfft): swap halves
   const half = nfft >> 1;
   const out = new Float64Array(nfft);
@@ -118,7 +128,6 @@ export function welchPsd(i: Float64Array, q: Float64Array, nfft: number): Float6
 function smoothSame(x: Float64Array, w: number): Float64Array {
   if (w <= 1) return x;
   const n = x.length;
-  const full = n + w - 1;
   const off = (w - 1) >> 1; // numpy 'same' central slice start
   const out = new Float64Array(n);
   for (let idx = 0; idx < n; idx++) {
@@ -126,7 +135,7 @@ function smoothSame(x: Float64Array, w: number): Float64Array {
     let s = 0;
     for (let k = 0; k < w; k++) {
       const xi = fi - k;
-      if (xi >= 0 && xi < n) s += x[xi];
+      if (xi >= 0 && xi < n) s += x[xi]!;
     }
     out[idx] = s / w;
   }
@@ -136,7 +145,7 @@ function smoothSame(x: Float64Array, w: number): Float64Array {
 function median(x: Float64Array): number {
   const s = Float64Array.from(x).sort();
   const n = s.length;
-  return n % 2 ? s[(n - 1) >> 1] : 0.5 * (s[n / 2 - 1] + s[n / 2]);
+  return n % 2 ? s[(n - 1) >> 1]! : 0.5 * (s[n / 2 - 1]! + s[n / 2]!);
 }
 
 /** numpy searchsorted(a, v, side='left'): first i with a[i] >= v, else a.length. */
@@ -145,7 +154,7 @@ function searchsortedLeft(a: Float64Array, v: number): number {
   let hi = a.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (a[mid] < v) lo = mid + 1;
+    if (a[mid]! < v) lo = mid + 1;
     else hi = mid;
   }
   return lo;
@@ -162,15 +171,16 @@ export function estimateBand(
   const sig = new Float64Array(nfft);
   let total = 0;
   for (let k = 0; k < nfft; k++) {
-    const v = psd[k] - floor;
-    sig[k] = v > 0 ? v : 0;
-    total += sig[k];
+    const v = psd[k]! - floor;
+    const s = v > 0 ? v : 0;
+    sig[k] = s;
+    total += s;
   }
   if (total < 1e-9) return { center: 0, bw: 0.95 };
   const cum = new Float64Array(nfft);
   let run = 0;
   for (let k = 0; k < nfft; k++) {
-    run += sig[k] / total;
+    run += sig[k]! / total;
     cum[k] = run;
   }
   let lo = searchsortedLeft(cum, p.energyEdge);
@@ -201,8 +211,8 @@ export function linResample(
     if (i0 > n - 2) i0 = n - 2;
     if (i0 < 0) i0 = 0;
     const frac = pos - i0;
-    oi[m] = i[i0] * (1 - frac) + i[i0 + 1] * frac;
-    oq[m] = q[i0] * (1 - frac) + q[i0 + 1] * frac;
+    oi[m] = i[i0]! * (1 - frac) + i[i0 + 1]! * frac;
+    oq[m] = q[i0]! * (1 - frac) + q[i0 + 1]! * frac;
   }
   return { i: oi, q: oq };
 }
@@ -228,29 +238,29 @@ export function preprocess(
   const { center, bw } = estimateBand(reIn, imIn, params);
   const n = reIn.length;
   // down-convert measured centre to DC
-  let di = new Float64Array(n);
-  let dq = new Float64Array(n);
+  const ci = new Float64Array(n);
+  const cq = new Float64Array(n);
   for (let k = 0; k < n; k++) {
     const ph = -2 * Math.PI * center * k;
     const c = Math.cos(ph);
     const s = Math.sin(ph);
-    di[k] = reIn[k] * c - imIn[k] * s;
-    dq[k] = reIn[k] * s + imIn[k] * c;
+    ci[k] = reIn[k]! * c - imIn[k]! * s;
+    cq[k] = reIn[k]! * s + imIn[k]! * c;
   }
   // resample so occupied bandwidth hits the canonical target
   const frac = Math.min(Math.max(bw, 1e-3), 0.95);
   const ratio = frac / params.targetFrac;
   const newLen = Math.max(64, Math.round(n * ratio));
-  const rs = linResample(di, dq, newLen);
-  di = centerFit(rs.i, params.lOut);
-  dq = centerFit(rs.q, params.lOut);
+  const rs = linResample(ci, cq, newLen);
+  const di: Float64Array = centerFit(rs.i, params.lOut);
+  const dq: Float64Array = centerFit(rs.q, params.lOut);
   // amplitude-normalise to unit RMS
   let p = 0;
-  for (let k = 0; k < params.lOut; k++) p += di[k] * di[k] + dq[k] * dq[k];
+  for (let k = 0; k < params.lOut; k++) p += di[k]! * di[k]! + dq[k]! * dq[k]!;
   const rms = Math.sqrt(p / params.lOut + 1e-12);
   for (let k = 0; k < params.lOut; k++) {
-    di[k] = Math.fround(di[k] / rms);
-    dq[k] = Math.fround(dq[k] / rms);
+    di[k] = Math.fround(di[k]! / rms);
+    dq[k] = Math.fround(dq[k]! / rms);
   }
   return { i: di, q: dq, center, bw };
 }
@@ -259,16 +269,19 @@ function unwrap(p: Float64Array): Float64Array {
   const n = p.length;
   const out = new Float64Array(n);
   if (n === 0) return out;
-  out[0] = p[0];
+  out[0] = p[0]!;
   let corr = 0;
+  const twoPi = 2 * Math.PI;
   for (let k = 1; k < n; k++) {
-    const dd = p[k] - p[k - 1];
-    let ddmod = ((dd + Math.PI) % (2 * Math.PI)) - Math.PI;
+    const dd = p[k]! - p[k - 1]!;
+    // floor-based modulo to match numpy's np.mod (JS `%` keeps the sign of dd)
+    const shifted = dd + Math.PI;
+    let ddmod = shifted - twoPi * Math.floor(shifted / twoPi) - Math.PI;
     if (ddmod === -Math.PI && dd > 0) ddmod = Math.PI;
     let phc = ddmod - dd;
     if (Math.abs(dd) < Math.PI) phc = 0;
     corr += phc;
-    out[k] = p[k] + corr;
+    out[k] = p[k]! + corr;
   }
   return out;
 }
@@ -285,8 +298,8 @@ export function iqFeatures(iIn: Float64Array, qIn: Float64Array): Float64Array {
   let miReal = 0;
   let miImag = 0;
   for (let k = 0; k < n; k++) {
-    miReal += iIn[k];
-    miImag += qIn[k];
+    miReal += iIn[k]!;
+    miImag += qIn[k]!;
   }
   miReal /= n;
   miImag /= n;
@@ -294,14 +307,16 @@ export function iqFeatures(iIn: Float64Array, qIn: Float64Array): Float64Array {
   const zi = new Float64Array(n);
   let pw = 0;
   for (let k = 0; k < n; k++) {
-    zr[k] = iIn[k] - miReal;
-    zi[k] = qIn[k] - miImag;
-    pw += zr[k] * zr[k] + zi[k] * zi[k];
+    const a = iIn[k]! - miReal;
+    const b = qIn[k]! - miImag;
+    zr[k] = a;
+    zi[k] = b;
+    pw += a * a + b * b;
   }
   const p = Math.sqrt(pw / n) + 1e-12;
   for (let k = 0; k < n; k++) {
-    zr[k] /= p;
-    zi[k] /= p;
+    zr[k] = zr[k]! / p;
+    zi[k] = zi[k]! / p;
   }
   // complex moment accumulators
   let m20r = 0, m20i = 0;
@@ -312,27 +327,22 @@ export function iqFeatures(iIn: Float64Array, qIn: Float64Array): Float64Array {
   let m63 = 0;
   let sumAbs = 0, sumAbs2 = 0, maxAbs2 = 0;
   for (let k = 0; k < n; k++) {
-    const a = zr[k];
-    const b = zi[k];
+    const a = zr[k]!;
+    const b = zi[k]!;
     const a2 = a * a + b * b; // |z|^2
-    // z^2
-    const z2r = a * a - b * b;
+    const z2r = a * a - b * b; // z^2
     const z2i = 2 * a * b;
     m20r += z2r; m20i += z2i;
-    // z^4 = (z^2)^2
-    const z4r = z2r * z2r - z2i * z2i;
+    const z4r = z2r * z2r - z2i * z2i; // z^4
     const z4i = 2 * z2r * z2i;
     m40r += z4r; m40i += z4i;
-    // z^3 * conj(z) = z^2 * |z|^2
-    m41r += z2r * a2; m41i += z2i * a2;
+    m41r += z2r * a2; m41i += z2i * a2; // z^3 conj(z) = z^2 |z|^2
     m42 += a2 * a2;
-    // z^6 = z^4 * z^2
-    const z6r = z4r * z2r - z4i * z2i;
+    const z6r = z4r * z2r - z4i * z2i; // z^6
     const z6i = z4r * z2i + z4i * z2r;
     m60r += z6r; m60i += z6i;
     m63 += a2 * a2 * a2;
-    const absz = Math.sqrt(a2);
-    sumAbs += absz;
+    sumAbs += Math.sqrt(a2);
     sumAbs2 += a2;
     if (a2 > maxAbs2) maxAbs2 = a2;
   }
@@ -342,41 +352,32 @@ export function iqFeatures(iIn: Float64Array, qIn: Float64Array): Float64Array {
   m42 /= n;
   m60r /= n; m60i /= n;
   m63 /= n;
-  const cAbs = (r: number, i: number) => Math.sqrt(r * r + i * i);
-  // c20 = m20
+  const cAbs = (r: number, im: number) => Math.sqrt(r * r + im * im);
   const c20 = cAbs(m20r, m20i);
-  // c40 = m40 - 3 m20^2
   const m20sqR = m20r * m20r - m20i * m20i;
   const m20sqI = 2 * m20r * m20i;
   const c40 = cAbs(m40r - 3 * m20sqR, m40i - 3 * m20sqI);
-  // c41 = m41 - 3 m20
   const c41 = cAbs(m41r - 3 * m20r, m41i - 3 * m20i);
-  // c42 = m42 - |m20|^2 - 2   (real)
   const c42 = m42 - (m20r * m20r + m20i * m20i) - 2;
-  // c60 = m60 - 15 m20 m40 + 30 m20^3
   const m20m40R = m20r * m40r - m20i * m40i;
   const m20m40I = m20r * m40i + m20i * m40r;
   const m20cubeR = m20sqR * m20r - m20sqI * m20i;
   const m20cubeI = m20sqR * m20i + m20sqI * m20r;
-  const c60 = cAbs(
-    m60r - 15 * m20m40R + 30 * m20cubeR,
-    m60i - 15 * m20m40I + 30 * m20cubeI,
-  );
+  const c60 = cAbs(m60r - 15 * m20m40R + 30 * m20cubeR, m60i - 15 * m20m40I + 30 * m20cubeI);
   const c63 = m63 - 9 * c42 - 6;
-  // amplitude stats
   const meanAbs = sumAbs / n;
-  const varAbs = sumAbs2 / n - meanAbs * meanAbs; // E[|z|^2]-E[|z|]^2
+  const varAbs = sumAbs2 / n - meanAbs * meanAbs;
   const stdAbs = Math.sqrt(Math.max(varAbs, 0));
   // instantaneous frequency spread
   const ang = new Float64Array(n);
-  for (let k = 0; k < n; k++) ang[k] = Math.atan2(zi[k], zr[k]);
+  for (let k = 0; k < n; k++) ang[k] = Math.atan2(zi[k]!, zr[k]!);
   const uw = unwrap(ang);
   let ifMean = 0;
-  for (let k = 1; k < n; k++) ifMean += uw[k] - uw[k - 1];
+  for (let k = 1; k < n; k++) ifMean += uw[k]! - uw[k - 1]!;
   ifMean /= n - 1;
   let ifVar = 0;
   for (let k = 1; k < n; k++) {
-    const d = uw[k] - uw[k - 1] - ifMean;
+    const d = uw[k]! - uw[k - 1]! - ifMean;
     ifVar += d * d;
   }
   ifVar /= n - 1;

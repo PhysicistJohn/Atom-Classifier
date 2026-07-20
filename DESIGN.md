@@ -150,6 +150,82 @@ at the modulation *family* level, keep the *order* uncertain, and let the
 bandwidth/band context + Bayesian fusion resolve the protocol. This is the
 calibrated-uncertainty ethos, not a defect to paper over.
 
+## Pushing through the order limit (quality-gated recovery)
+
+The embedding's order ceiling is a *per-capture* information limit, so the way
+through is to **add information** and **normalise out the hardware** — not a
+fancier net. A second, hierarchical stage does exactly that, and it is
+opportunistic: it resolves the order when the capture supports it and honestly
+**defers** when it does not, which is what makes it robust across arbitrary
+hardware quality.
+
+The levers, measured on the 16/64-QAM cumulant separation d′ (reproducer:
+`training/experiments/dprime.py`):
+
+- **Multipath destroys order** — d′ collapses from **5.9 (clean) to 0.05** with
+  no equalization. Dwell and timing sync cannot fix it (multipath is a *bias*,
+  not variance — both plateau).
+- **Blind equalization is the lever** — a fractionally-spaced CMA equalizer with
+  IQ-imbalance compensation, *no channel knowledge*, recovers **0.05 → 2.99**
+  (oracle channel-inverse ceiling 5.14). The T/2 equalizer absorbs symbol timing.
+- **Dwell** adds d′ ∝ √N (1.4 → 6.8 over 128 → 8192 symbols); **timing** ~1.6× on
+  top. Cheap, hardware-agnostic.
+- **IQ-imbalance compensation matters** — a cheap direct-conversion front-end
+  leaks a mirror-image (widely-linear) term the linear CMA can't invert; the
+  blind properness-restoring correction lifts d′ from **0.71 → 1.83 at 18 dB**.
+
+The order refiner (`training/order_refine.py`) turns this into a **quality-gated,
+hierarchical** decision, evaluated **held-out** (randomized channel family + real
+IQ imbalance + DC; fold-split calibration; the hard 16-vs-64 *pair* reported
+apart from the easy QPSK). Order is decided only when an **order-agnostic** gate
+— a blind in-band SNR estimate and the residual-ISI symbol-autocorrelation (not a
+modulus-dispersion metric, which covaries with order) — says the constellation
+supports it:
+
+| SNR (dB) | 16/64-pair accuracy | defer |
+|---|---|---|
+| 25 | 0.83 | 36% |
+| 18 | 0.72 (intrinsic dip) | 41% |
+| 12 | 0.92 | 61% |
+| ≤ 8 | — | 100% defer |
+
+**Aggregate single-capture 16/64 accuracy 0.81** — vs the embedding's
+unconditional 0.4/0.64 — with no low-SNR leakage. 16/64 is intrinsically
+~0.72–0.83 per capture, so:
+
+- **Multi-look accumulation** (`OrderBelief`, `src/embedding/order-accumulator.ts`)
+  fuses reliability-weighted order evidence across looks of a persistent emitter
+  and drives it to certainty: **0.80 → 0.98 over 16 looks at 18 dB**. This is the
+  same log-linear evidence accumulation the Bayesian classifier already uses,
+  applied across time per emitter track.
+
+### Where each stage runs
+
+The recovery stage is *feedback DSP* (adaptive equalizer loops, data-dependent
+branching) — it cannot be made bit-exact between the Python trainer and the TS
+runtime, and it does not need to be: it runs **once at capture ingestion** (the
+NeptuneSDR path), not in the browser render loop. Its output — an order
+posterior plus a quality/SNR gate result — is compact data that flows to the
+browser. The metric embedding, prototypes, and fusion stay **browser-native**.
+So the seam is clean: heavy adaptive DSP at ingestion, light metric inference
+in-browser. `src/embedding/order-refinement.ts` consumes the ingestion result
+and combines it with the embedding's family call: a resolved order wins; a
+deferred order reports the *family* ("linear-digital, order-unresolved") rather
+than trusting the embedding's unreliable order guess.
+
+### Built vs. follow-on
+
+Built: blind equalization + timing (CMA FSE), **blind IQ-imbalance/DC
+compensation** (properness restoration), the order-agnostic quality gate, and
+**sequential Bayesian multi-look** accumulation.
+
+Follow-on: **device-invariant training** — full-range impairment augmentation + a
+domain-adversarial (DANN) head + per-device few-shot calibration, so one model
+spans a $30 RTL-SDR and a $3k USRP (training-side; needs a small *real*
+multi-device set to validate — the standing sim-to-real caveat). An
+**augmented (widely-linear) CMA** would fold IQ-imbalance and channel into one
+adaptive filter (the current first-order properness correction leaves residual).
+
 ## Honest limitations
 
 - Trained and evaluated on synthetic I/Q. A small real held-out set is still
@@ -160,21 +236,40 @@ calibrated-uncertainty ethos, not a defect to paper over.
   The SDR instantaneous bandwidth caps the maximum classifiable signal width.
 - OFDM-family protocols are modulation-degenerate by design; the embedding will
   not separate LTE/NR/Wi-Fi-OFDM without the bandwidth/band context.
+- **Recovery needs a continuous, stationary dwell.** The CMA equalizer and the
+  cumulant estimators assume a persistent single-carrier signal over the window;
+  bursty packet traffic (GSM/BT/Wi-Fi bursts) would need burst detection +
+  concatenation before recovery.
+- **First-order IQ compensation leaves residual.** The properness correction is
+  first-order; strong imbalance leaves a residual that an augmented CMA would
+  remove. And the quality/SNR gate is calibrated on synthetic estimator noise —
+  it needs recalibration on real captures before it gates live decisions.
+- **Single-capture 16/64 order is intrinsically ~0.72–0.83.** Certainty comes
+  from multi-look accumulation over a persistent emitter, which assumes the
+  emitter's modulation is stable across the fused looks (frequency-hoppers /
+  adaptive-modulation break that) and that looks are decorrelated enough that the
+  effective look count approaches the raw count.
 
 ## Module map
 
 ```
-training/                 Python, GPU (MPS)
+training/                 Python (embedding: GPU/MPS; recovery: ingestion DSP)
   rfgen.py                synthetic modulator bank + impairment channel
   preprocess.py           detect → downconvert → resample → normalize (+ context)
   model.py                1D-CNN metric embedding (PyTorch)
   dataset.py              episodic + contrastive samplers over impaired draws
   train.py                train on MPS; export weights JSON + ONNX + prototypes
   evaluate.py             closed-set / few-shot / open-set / robustness report
+  recover.py              blind IQ-comp + CMA equalize + sync + SNR/ISI gate
+  order_refine.py         quality-gated order refiner, held-out eval, multi-look
+  experiments/dprime.py   reproducer for the push-through d′ numbers
 src/embedding/            TypeScript, inference (browser-native, zero-dep)
   iq-preprocess.ts        TS port of the DSP front-end (parity-tested)
   embedding-runtime.ts    deterministic forward pass over exported weights
   prototype-classifier.ts nearest-prototype + open-set + few-shot enroll
   embedding-evidence-fusion.ts   prototype confidence → Bayesian evidence view
-  assets/                 committed exported model (weights + prototypes + manifest)
+  order-refinement.ts     combine ingestion order result with the family call
+  order-accumulator.ts    multi-look Bayesian order accumulation (OrderBelief)
+  embedding-classifier.ts public facade (normalize → embed → classify → fuse)
+  assets/                 committed model (weights, prototypes, order-refiner, manifest)
 ```
