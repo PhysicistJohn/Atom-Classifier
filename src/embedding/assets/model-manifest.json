@@ -1,0 +1,20 @@
+{
+  "seed": 20260721,
+  "source": "signallab-analytic-complex-iq",
+  "classes": [
+    "am",
+    "bluetooth",
+    "cw",
+    "dsss",
+    "fm",
+    "gsm",
+    "ofdm"
+  ],
+  "episodes": 6000,
+  "metrics": {
+    "clean_closed_set_accuracy": 0.9124087591240876,
+    "best_val_accuracy": 0.9124087591240876
+  },
+  "unknown_threshold": 0.8810060620307922,
+  "temperature": 0.1
+}
