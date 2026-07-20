@@ -125,7 +125,7 @@ export function welchPsd(i: Float64Array, q: Float64Array, nfft: number): Float6
   return out;
 }
 
-function smoothSame(x: Float64Array, w: number): Float64Array {
+export function smoothSame(x: Float64Array, w: number): Float64Array {
   if (w <= 1) return x;
   const n = x.length;
   const off = (w - 1) >> 1; // numpy 'same' central slice start

@@ -41,9 +41,12 @@ class ConvBlock(nn.Module):
 
 class Embedding(nn.Module):
     def __init__(self, embed_dim: int = EMBED_DIM, n_features: int = N_FEATURES,
-                 hidden: int = 96, dropout: float = 0.2):
+                 hidden: int = 96, dropout: float = 0.2, in_channels: int = 2):
         super().__init__()
-        self.blocks = nn.ModuleList([ConvBlock(*spec) for spec in CONV_SPEC])
+        # in_channels selects the flavor: 2 = complex I/Q (I,Q), 1 = magnitude
+        # (log power spectrum). Everything downstream is identical.
+        self.conv_spec = [(in_channels, *CONV_SPEC[0][1:])] + [tuple(s) for s in CONV_SPEC[1:]]
+        self.blocks = nn.ModuleList([ConvBlock(*spec) for spec in self.conv_spec])
         cfinal = CONV_SPEC[-1][1]
         # mean+std pooling: the std branch exposes the amplitude/feature
         # *distribution* the head needs to separate QAM orders (3 vs 9 amplitude
@@ -72,7 +75,7 @@ class Embedding(nn.Module):
     def export_weights(self) -> dict:
         self.eval()
         convs = []
-        for blk, spec in zip(self.blocks, CONV_SPEC):
+        for blk, spec in zip(self.blocks, self.conv_spec):
             w = blk.conv.weight.detach().cpu().numpy()          # [out,in,k]
             bn = blk.bn
             gamma = bn.weight.detach().cpu().numpy()

@@ -10,3 +10,5 @@ export * from './embedding-evidence-fusion.js';
 export * from './order-refinement.js';
 export * from './order-accumulator.js';
 export * from './embedding-classifier.js';
+export * from './magnitude-preprocess.js';
+export * from './magnitude-classifier.js';

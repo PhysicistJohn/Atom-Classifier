@@ -137,17 +137,30 @@ function linear(x: Float64Array, fc: Linear, relu: boolean): Float64Array {
  */
 export function embed(m: EmbeddingModel, i: Float64Array, q: Float64Array): Float64Array {
   const raw = iqFeatures(i, q);
-  const feat = new Float64Array(N_FEATURES);
-  for (let f = 0; f < N_FEATURES; f++) feat[f] = (raw[f]! - m.feat_mean[f]!) / m.feat_std[f]!;
+  const feat = standardizeFeatures(m, raw);
+  return forwardChannels(m, [i, q], feat);
+}
 
-  let chans: Float64Array[] = [Float64Array.from(i), Float64Array.from(q)];
+/** Standardize a raw feature vector with the model's stored train-set stats. */
+export function standardizeFeatures(m: EmbeddingModel, raw: Float64Array | number[]): Float64Array {
+  const out = new Float64Array(m.n_features);
+  for (let f = 0; f < m.n_features; f++) out[f] = (raw[f]! - m.feat_mean[f]!) / m.feat_std[f]!;
+  return out;
+}
+
+/**
+ * Flavor-agnostic forward pass: conv over the input channels, mean+std pool,
+ * concatenate the (already-standardized) features, project, L2-normalise. Used
+ * by both the I/Q flavor ([I,Q] channels + cumulant features) and the magnitude
+ * flavor ([log-spectrum] channel + spectral features).
+ */
+export function forwardChannels(m: EmbeddingModel, channels: Float64Array[], featStandardized: Float64Array): Float64Array {
+  let chans: Float64Array[] = channels.map((c) => Float64Array.from(c));
   for (const cv of m.convs) chans = conv1d(chans, cv);
   const pooled = m.pool === 'mean_std' ? meanStdPool(chans) : meanOnly(chans);
-
-  const h = new Float64Array(pooled.length + N_FEATURES);
+  const h = new Float64Array(pooled.length + featStandardized.length);
   h.set(pooled, 0);
-  h.set(feat, pooled.length);
-
+  h.set(featStandardized, pooled.length);
   const a = linear(h, m.fc1, true);
   const z = linear(a, m.fc2, false);
   let norm = 0;
