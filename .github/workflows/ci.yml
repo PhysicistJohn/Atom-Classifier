@@ -9,24 +9,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  # verify checks out the Atom-Atomizer and Atom-SignalLab siblings. All
-  # Atom-* repos are now public, so the CLASSIFIER_TINYSA_READ_TOKEN repo
-  # secret (a fine-grained PAT with read access to those repos) is optional;
-  # the gate is kept so forks and remotes without the secret skip the
-  # long-running job cleanly instead of running it on every push. The
-  # secrets context is not legal in a job-level if, so a one-step gate job
-  # exports its presence.
-  sibling-token-gate:
-    runs-on: ubuntu-latest
-    outputs:
-      present: ${{ steps.probe.outputs.present }}
-    steps:
-      - id: probe
-        run: echo "present=${{ secrets.CLASSIFIER_TINYSA_READ_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
-
+  # verify checks out the Atom-Atomizer and Atom-SignalLab siblings at the
+  # exact pinned commits below. All Atom-* repos are public, so the default
+  # GITHUB_TOKEN covers the sibling checkouts and no PAT or gate job is
+  # needed.
   verify:
-    needs: sibling-token-gate
-    if: needs.sibling-token-gate.outputs.present == 'true'
     runs-on: ubuntu-latest
     # Full model regeneration plus calibration and held-out validation
     # deliberately exceeds 90 minutes on a clean runner.
@@ -46,7 +33,6 @@ jobs:
           # closure; do not silently follow a moving default branch.
           ref: df6c2ee06003eae94b1e02b52fb50ed0082b3ea7
           path: Atom-Atomizer
-          token: ${{ secrets.CLASSIFIER_TINYSA_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:

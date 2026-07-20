@@ -81,13 +81,13 @@ model-reproduction step alone can take 90+ minutes.
 
 ## CI
 
-The `verify` job in `.github/workflows/ci.yml` checks out `Atom-Atomizer`
-and `Atom-SignalLab` at the exact commits the checked-in model was trained
-and validated against, then runs the same gate as `npm run check`. The job
-only runs when the `CLASSIFIER_TINYSA_READ_TOKEN` repository secret is set
-(a fine-grained PAT with read-only contents access to
-`PhysicistJohn/Atom-Atomizer`); without it, CI skips the job cleanly instead
-of failing at checkout.
+The `verify` job in `.github/workflows/ci.yml` runs unconditionally on every
+push and pull request. It checks out `Atom-Atomizer` and `Atom-SignalLab` at
+the exact pinned commits the checked-in model was trained and validated
+against, then runs the same gate as `npm run check`. All sibling repos are
+public, so the checkouts use the default `GITHUB_TOKEN` and no PAT or
+repository secret is required. Expect the full run to take well over 90
+minutes; the model-reproduction step dominates.
 
 ## Part of the AtomOS suite
 

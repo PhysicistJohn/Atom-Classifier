@@ -1,0 +1,34 @@
+{
+  "seed": 20260720,
+  "known": [
+    "cw",
+    "am",
+    "fm",
+    "bpsk",
+    "qpsk",
+    "qam16",
+    "qam64",
+    "gfsk",
+    "ofdm"
+  ],
+  "fewshot": [
+    "psk8",
+    "dsss"
+  ],
+  "novel": [
+    "noise",
+    "chirp"
+  ],
+  "episodes": 8000,
+  "snr_train": [
+    2.0,
+    30.0
+  ],
+  "metrics": {
+    "closed_set_accuracy": 0.7874074074074074,
+    "open_set_auroc": 0.7994765432098765,
+    "best_val_accuracy": 0.7874074074074074
+  },
+  "unknown_threshold": 0.15080367028713226,
+  "temperature": 0.12000000000000001
+}
