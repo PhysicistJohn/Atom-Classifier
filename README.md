@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/brand/logo.jpg" alt="AtomOS Classifier" width="520"></p>
+
 # AtomOS Classifier
 
 Training, validation, and publication pipeline for Atomizer's Bayesian
