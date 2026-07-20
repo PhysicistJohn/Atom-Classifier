@@ -12,9 +12,9 @@
   ],
   "episodes": 6000,
   "metrics": {
-    "clean_closed_set_accuracy": 0.9246231155778895,
-    "best_val_accuracy": 0.9246231155778895
+    "clean_closed_set_accuracy": 0.9124087591240876,
+    "best_val_accuracy": 0.9124087591240876
   },
-  "unknown_threshold": 0.47964563965797424,
+  "unknown_threshold": 0.8810060620307922,
   "temperature": 0.1
 }

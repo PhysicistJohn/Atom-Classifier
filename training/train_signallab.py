@@ -51,33 +51,20 @@ def load_corpus():
     classes = sorted(manifest["classes"])
     cindex = {c: i for i, c in enumerate(classes)}
     y = np.array([cindex[it["cls"]] for it in manifest["items"]], dtype=np.int64)
-    return iq, y, classes
+    impaired = np.array([bool(it.get("impaired", False)) for it in manifest["items"]])
+    return iq, y, impaired, classes
 
 
-def augment(iq: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-    x = iq.copy()
-    n = len(x)
-    snr = rng.uniform(15.0, 45.0)
-    sp = np.mean(np.abs(x) ** 2) + 1e-12
-    npow = sp / 10 ** (snr / 10)
-    x = x + (rng.standard_normal(n) + 1j * rng.standard_normal(n)) * np.sqrt(npow / 2)
-    cfo = rng.uniform(-0.003, 0.003)
-    pn = np.cumsum(rng.standard_normal(n) * 0.005)
-    x = x * np.exp(1j * (2 * np.pi * cfo * np.arange(n) + pn))
-    x = x * (10.0 ** rng.uniform(-0.4, 0.4))
-    return x
-
-
-def build_pool(iq, y, idx, rng, n_classes, augs, clean=False):
+def build_pool(iq, y, idx, rng, scale_jitter=0.0):
+    """Preprocess each corpus signal. Impairments are baked into the corpus
+    (SignalLab's receiver model), so no extra augmentation here — only optional
+    scale jitter for bandwidth-estimate robustness."""
     xs, fs, ys = [], [], []
     for i in idx:
-        views = 1 if clean else augs
-        for v in range(views):
-            sig = iq[i] if (clean and v == 0) else augment(iq[i], rng)
-            norm, _ = pp.preprocess(sig, scale_jitter=0.0 if clean else 0.08, rng=rng)
-            xs.append(pp.to_channels(norm))
-            fs.append(pp.iq_features(norm))
-            ys.append(y[i])
+        norm, _ = pp.preprocess(iq[i], scale_jitter=scale_jitter, rng=rng)
+        xs.append(pp.to_channels(norm))
+        fs.append(pp.iq_features(norm))
+        ys.append(y[i])
     return (np.stack(xs).astype(np.float32), np.stack(fs).astype(np.float32),
             np.array(ys, dtype=np.int64))
 
@@ -88,25 +75,30 @@ def main():
     rng = np.random.default_rng(SEED)
     dev = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
 
-    iq, y, classes = load_corpus()
+    iq, y, impaired, classes = load_corpus()
     n_classes = len(classes)
-    print(f"device: {dev} | corpus {iq.shape} | classes {classes}")
+    print(f"device: {dev} | corpus {iq.shape} | impaired {int(impaired.sum())}/{len(impaired)} | classes {classes}")
 
-    # split realizations (not augmentations) to avoid leakage
-    order = rng.permutation(len(iq))
-    n_tr = int(0.72 * len(order))
-    n_en = int(0.14 * len(order))
-    tr_idx, en_idx, va_idx = order[:n_tr], order[n_tr:n_tr + n_en], order[n_tr + n_en:]
+    # Clean realizations -> prototype enrollment + validation (the app feeds clean
+    # I/Q, so the space must be anchored on clean). Impaired realizations (+ the
+    # remaining clean) -> train, so the metric is robust to real receiver/channel
+    # variation. Split by realization to avoid leakage.
+    clean_pos = rng.permutation(np.where(~impaired)[0])
+    imp_pos = np.where(impaired)[0]
+    n_en = int(0.30 * len(clean_pos))
+    n_va = int(0.30 * len(clean_pos))
+    en_idx = clean_pos[:n_en]
+    va_idx = clean_pos[n_en:n_en + n_va]
+    tr_idx = np.concatenate([clean_pos[n_en + n_va:], imp_pos])
 
     print("building pools ...")
-    xtr, ftr, ytr = build_pool(iq, y, tr_idx, rng, n_classes, AUG_PER_TRAIN)
+    xtr, ftr, ytr = build_pool(iq, y, tr_idx, rng, scale_jitter=0.08)
     fmean = ftr.mean(0); fstd = ftr.std(0) + 1e-6
     ftr = (ftr - fmean) / fstd
     idx_by_class = ds.class_indices(ytr, n_classes)
-    # prototypes + validation on CLEAN preprocess (matches the app's clean I/Q)
-    xen, fen, yen = build_pool(iq, y, en_idx, rng, n_classes, 1, clean=True)
+    xen, fen, yen = build_pool(iq, y, en_idx, rng, scale_jitter=0.0)
     fen = (fen - fmean) / fstd
-    xva, fva, yva = build_pool(iq, y, va_idx, rng, n_classes, 1, clean=True)
+    xva, fva, yva = build_pool(iq, y, va_idx, rng, scale_jitter=0.0)
     fva = (fva - fmean) / fstd
     print(f"  train {xtr.shape}  enroll {xen.shape}  val {xva.shape}")
 

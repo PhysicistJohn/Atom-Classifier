@@ -24,11 +24,42 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { synthesizeAnalyticComplexIq } from '../../Atom-SignalLab/src/complex-iq.js';
+import { synthesizeImpairedComplexIq, type ReceiverImpairments } from '../../Atom-SignalLab/src/impairments.js';
 import { waveformCatalog } from '../../Atom-SignalLab/src/waveforms.js';
 
 const SAMPLE_COUNT = 4096;
-const TARGET_PER_CLASS = 200;
+const TARGET_PER_CLASS = 260;
 const TARGET_FRACS = [0.08, 0.12, 0.18, 0.25, 0.35, 0.45];
+// 1 in every CLEAN_EVERY realizations is left clean (for prototype enrollment +
+// app-match validation); the rest get SignalLab's seeded receiver impairments.
+const CLEAN_EVERY = 4;
+
+function mulberry32(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function drawImpairments(rand: () => number): ReceiverImpairments {
+  const multipath = rand() < 0.6
+    ? [{ delay: 2 + Math.floor(rand() * 8), gainInPhase: (rand() - 0.5) * 0.6, gainQuadrature: (rand() - 0.5) * 0.6 }]
+    : [];
+  return {
+    snrDb: 10 + rand() * 30, // 10-40 dB
+    carrierFrequencyOffset: (rand() - 0.5) * 0.008,
+    phaseNoiseStd: rand() * 0.02,
+    iqGainImbalance: (rand() - 0.5) * 0.16,
+    iqPhaseImbalance: (rand() - 0.5) * 0.2,
+    dcInPhase: (rand() - 0.5) * 0.06,
+    dcQuadrature: (rand() - 0.5) * 0.06,
+    multipath,
+    ...(rand() < 0.3 ? { paSaturation: 0.6 + rand() * 0.3 } : {}),
+  };
+}
 // Common Atomizer I/Q sample rates — narrowband signals are heavily oversampled
 // at these, which is exactly the geometry the app feeds; include it so the
 // embedding is robust to it (not just the well-matched occupancy sweep).
@@ -62,7 +93,8 @@ for (const d of waveformCatalog) {
 }
 
 const blocks: Buffer[] = [];
-const items: { cls: string; profile: string; sampleRateHz: number; bandwidthHz: number }[] = [];
+const items: { cls: string; profile: string; sampleRateHz: number; bandwidthHz: number; impaired: boolean }[] = [];
+const rand = mulberry32(20260721);
 
 for (const [cls, profiles] of byClass) {
   const perProfile = Math.max(8, Math.round(TARGET_PER_CLASS / profiles.length));
@@ -77,15 +109,13 @@ for (const [cls, profiles] of byClass) {
     for (let k = 0; k < perProfile; k++) {
       const sampleRateHz = rates[k % rates.length]!;
       const bandwidthHz = clampInt(occ * 1.15, 1_000, Math.floor(sampleRateHz * 0.95));
-      const bytes = synthesizeAnalyticComplexIq({
-        profile: d.id,
-        sampleRateHz,
-        bandwidthHz,
-        sampleCount: SAMPLE_COUNT,
-        startSampleIndex: k * SAMPLE_COUNT,
-      });
+      const input = { profile: d.id, sampleRateHz, bandwidthHz, sampleCount: SAMPLE_COUNT, startSampleIndex: k * SAMPLE_COUNT };
+      const impaired = k % CLEAN_EVERY !== 0;
+      const bytes = impaired
+        ? synthesizeImpairedComplexIq(input, drawImpairments(rand), (k + 1) * 2654435761)
+        : synthesizeAnalyticComplexIq(input);
       blocks.push(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
-      items.push({ cls, profile: d.id, sampleRateHz, bandwidthHz });
+      items.push({ cls, profile: d.id, sampleRateHz, bandwidthHz, impaired });
     }
   }
 }
