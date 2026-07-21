@@ -16,10 +16,13 @@ jobs:
   #
   # Scope: typecheck + the vitest suite (embedding classifier, magnitude
   # flavor, blind recovery parity, Bayesian source closure). The multi-hour
-  # Bayesian model regeneration/validation stages were removed from CI when
-  # the application dropped the Bayesian classifier for the embedding
-  # classifier; regenerate that model deliberately with
-  # `npm run check:signal-classifier-model` when it matters.
+  # Bayesian model regeneration/validation stages and the sampling-worker
+  # reproducibility check were removed from CI when the application dropped
+  # the Bayesian classifier for the embedding classifier (the worker check
+  # pins a bundle digest recorded in the checked-in Bayesian model, which
+  # only reproduces against the authoring host's sibling state); run
+  # `npm run check:signal-classifier-model` deliberately when that model
+  # matters.
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -78,5 +81,4 @@ jobs:
       - name: Install Atom-Classifier
         run: npm ci
       - run: npm run typecheck
-      - run: npm run check:observable-training-worker
       - run: npm test
