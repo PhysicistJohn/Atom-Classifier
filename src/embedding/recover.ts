@@ -112,6 +112,14 @@ export function iqBalance(re: Float64Array, im: Float64Array): { re: Float64Arra
 /**
  * Blind symbol-rate estimate from the cyclostationary line in |x|^2. Falls back
  * to `def` when no line clears the k-sigma gate above the in-band median.
+ *
+ * The symbol rate is a stationary property, so we estimate it from a bounded
+ * PREFIX (`maxAnalysis`) rather than the whole capture. That keeps the periodogram
+ * an O(maxAnalysis^2) direct DFT instead of O(n^2): at a 56 MHz capture (65k+
+ * samples) the full-length DFT is ~34 s; a 2048-sample prefix is ~25 ms and still
+ * resolves the line to the exact bin for any sps in [2,16]. The cap sits above the
+ * parity-fixture lengths (<=1828) so those cases compute byte-identically and the
+ * integer `sps` decision is preserved exactly.
  */
 export function estimateSps(
   re: Float64Array,
@@ -120,8 +128,9 @@ export function estimateSps(
   spsHi = 16,
   def = 8,
   kSigma = 5.0,
+  maxAnalysis = 2048,
 ): number {
-  const n = re.length;
+  const n = Math.min(re.length, maxAnalysis);
   // y = |x|^2, zero-meaned, then Hann-windowed
   const y = new Float64Array(n);
   let mean = 0;
