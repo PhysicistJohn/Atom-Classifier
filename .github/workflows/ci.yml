@@ -13,11 +13,16 @@ jobs:
   # exact pinned commits below. All Atom-* repos are public, so the default
   # GITHUB_TOKEN covers the sibling checkouts and no PAT or gate job is
   # needed.
+  #
+  # Scope: typecheck + the vitest suite (embedding classifier, magnitude
+  # flavor, blind recovery parity, Bayesian source closure). The multi-hour
+  # Bayesian model regeneration/validation stages were removed from CI when
+  # the application dropped the Bayesian classifier for the embedding
+  # classifier; regenerate that model deliberately with
+  # `npm run check:signal-classifier-model` when it matters.
   verify:
     runs-on: ubuntu-latest
-    # Full model regeneration plus calibration and held-out validation
-    # deliberately exceeds 90 minutes on a clean runner.
-    timeout-minutes: 360
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: Atom-Classifier
@@ -58,9 +63,15 @@ jobs:
         run: |
           test "$(node --version)" = "v22.23.1"
           test "$(npm --version)" = "10.9.8"
-      - name: Install Atomizer runtime dependencies
+      - name: Install Atomizer dependencies
         working-directory: Atom-Atomizer
-        run: npm ci --omit=dev --ignore-scripts
+        # Dev dependencies included: the bare '@tinysa/contracts' imports inside
+        # the pinned analysis sources resolve through that workspace package's
+        # built dist, and building it needs the repo's toolchain.
+        run: npm ci --ignore-scripts
+      - name: Build the pinned Atomizer contracts package
+        working-directory: Atom-Atomizer
+        run: npm run build -w @tinysa/contracts
       - name: Install pinned SignalLab runtime dependencies
         working-directory: Atom-SignalLab
         run: npm ci --omit=dev --ignore-scripts
@@ -69,11 +80,3 @@ jobs:
       - run: npm run typecheck
       - run: npm run check:observable-training-worker
       - run: npm test
-      - name: Reproduce the checked-in Bayesian classifier model
-        timeout-minutes: 360
-        run: npm run check:signal-classifier-model
-      - name: Validate the Bayesian classifier against pinned SignalLab
-        timeout-minutes: 60
-        run: npm run check:signal-classifier
-      - name: Verify classifier publication consistency
-        run: npm run check:signal-classifier-publication
