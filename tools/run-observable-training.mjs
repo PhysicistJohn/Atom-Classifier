@@ -25,6 +25,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(HERE, '..');
 const TRAINER_ENTRY = 'tools/train-observable-classifier.ts';
 const WORKER_ENTRY = 'tools/observable-training-sampling-worker.ts';
+const TSUP_CONFIG = 'tools/tsup.observable-training-worker.config.ts';
 const TRAINER_OUTPUT = 'train-observable-classifier.js';
 const WORKER_OUTPUT = 'observable-training-sampling-worker.js';
 const EXPECTED_OUTPUTS = [TRAINER_OUTPUT, WORKER_OUTPUT].sort();
@@ -277,6 +278,8 @@ async function compileCandidate({
       tsupCli,
       TRAINER_ENTRY,
       WORKER_ENTRY,
+      '--config',
+      TSUP_CONFIG,
       '--format',
       'esm',
       '--out-dir',

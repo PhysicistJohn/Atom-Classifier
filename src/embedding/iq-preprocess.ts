@@ -13,6 +13,11 @@
  * `noUncheckedIndexedAccess`; every index is provably in bounds by construction.
  */
 
+import {
+  resampleComplexLinear,
+  welchPowerSpectrumPeriodicHann,
+} from '@atomos/dsp';
+
 export interface PreprocessParams {
   lOut: number;
   targetFrac: number;
@@ -38,91 +43,9 @@ export interface Normalised {
   bw: number;
 }
 
-/** In-place iterative radix-2 Cooley–Tukey FFT (nfft must be a power of two). */
-function fft(re: Float64Array, im: Float64Array): void {
-  const n = re.length;
-  for (let i = 1, j = 0; i < n; i++) {
-    let bit = n >> 1;
-    for (; j & bit; bit >>= 1) j ^= bit;
-    j ^= bit;
-    if (i < j) {
-      const tr = re[i]!;
-      re[i] = re[j]!;
-      re[j] = tr;
-      const ti = im[i]!;
-      im[i] = im[j]!;
-      im[j] = ti;
-    }
-  }
-  for (let len = 2; len <= n; len <<= 1) {
-    const ang = (-2 * Math.PI) / len;
-    const wr = Math.cos(ang);
-    const wi = Math.sin(ang);
-    for (let i = 0; i < n; i += len) {
-      let cr = 1;
-      let ci = 0;
-      for (let k = 0; k < len / 2; k++) {
-        const a = i + k;
-        const b = i + k + len / 2;
-        const rb = re[b]!;
-        const ib = im[b]!;
-        const ra = re[a]!;
-        const ia = im[a]!;
-        const tr = rb * cr - ib * ci;
-        const ti = rb * ci + ib * cr;
-        re[b] = ra - tr;
-        im[b] = ia - ti;
-        re[a] = ra + tr;
-        im[a] = ia + ti;
-        const ncr = cr * wr - ci * wi;
-        ci = cr * wi + ci * wr;
-        cr = ncr;
-      }
-    }
-  }
-}
-
-function hann(n: number): Float64Array {
-  const w = new Float64Array(n);
-  for (let i = 0; i < n; i++) w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / n);
-  return w;
-}
-
 /** Averaged periodogram, fftshifted (index 0 = most-negative frequency). */
 export function welchPsd(i: Float64Array, q: Float64Array, nfft: number): Float64Array {
-  const win = hann(nfft);
-  const hop = nfft >> 1;
-  let n = i.length;
-  let ir: Float64Array = i;
-  let qr: Float64Array = q;
-  if (n < nfft) {
-    ir = new Float64Array(nfft);
-    qr = new Float64Array(nfft);
-    ir.set(i);
-    qr.set(q);
-    n = nfft;
-  }
-  const acc = new Float64Array(nfft);
-  let count = 0;
-  for (let start = 0; start + nfft <= n; start += hop) {
-    const re = new Float64Array(nfft);
-    const im = new Float64Array(nfft);
-    for (let k = 0; k < nfft; k++) {
-      re[k] = ir[start + k]! * win[k]!;
-      im[k] = qr[start + k]! * win[k]!;
-    }
-    fft(re, im);
-    for (let k = 0; k < nfft; k++) acc[k] = acc[k]! + re[k]! * re[k]! + im[k]! * im[k]!;
-    count++;
-  }
-  if (count === 0) count = 1;
-  for (let k = 0; k < nfft; k++) acc[k] = acc[k]! / count;
-  // fftshift (even nfft): swap halves
-  const half = nfft >> 1;
-  const out = new Float64Array(nfft);
-  out.set(acc.subarray(half), 0);
-  out.set(acc.subarray(0, half), half);
-  return out;
+  return welchPowerSpectrumPeriodicHann(i, q, nfft);
 }
 
 export function smoothSame(x: Float64Array, w: number): Float64Array {
@@ -200,21 +123,8 @@ export function linResample(
   q: Float64Array,
   newLen: number,
 ): { i: Float64Array; q: Float64Array } {
-  const n = i.length;
-  if (newLen === n || n < 2) return { i, q };
-  const oi = new Float64Array(newLen);
-  const oq = new Float64Array(newLen);
-  const step = (n - 1) / (newLen - 1);
-  for (let m = 0; m < newLen; m++) {
-    const pos = m * step;
-    let i0 = Math.floor(pos);
-    if (i0 > n - 2) i0 = n - 2;
-    if (i0 < 0) i0 = 0;
-    const frac = pos - i0;
-    oi[m] = i[i0]! * (1 - frac) + i[i0 + 1]! * frac;
-    oq[m] = q[i0]! * (1 - frac) + q[i0 + 1]! * frac;
-  }
-  return { i: oi, q: oq };
+  const { real, imaginary } = resampleComplexLinear(i, q, newLen);
+  return { i: real, q: imaginary };
 }
 
 function centerFit(x: Float64Array, length: number): Float64Array {

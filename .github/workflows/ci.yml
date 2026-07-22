@@ -36,6 +36,12 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          repository: PhysicistJohn/Atom-DSP
+          ref: v0.1.0
+          path: Atom-DSP
+          persist-credentials: false
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
           repository: PhysicistJohn/Atom-Atomizer
           # Training/validation imports this exact committed analysis/contracts
           # closure; do not silently follow a moving default branch.
@@ -56,6 +62,7 @@ jobs:
           node-version: 22.23.1
           cache: npm
           cache-dependency-path: |
+            Atom-DSP/package-lock.json
             Atom-Classifier/package-lock.json
             Atom-Atomizer/package-lock.json
             Atom-SignalLab/package-lock.json
@@ -66,6 +73,9 @@ jobs:
         run: |
           test "$(node --version)" = "v22.23.1"
           test "$(npm --version)" = "10.9.8"
+      - name: Build Atom-DSP
+        working-directory: Atom-DSP
+        run: npm ci && npm run build
       - name: Install Atomizer dependencies
         working-directory: Atom-Atomizer
         # Dev dependencies included: the bare '@tinysa/contracts' imports inside

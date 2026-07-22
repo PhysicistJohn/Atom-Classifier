@@ -56,25 +56,29 @@ predictive math, acquisition geometry, and contracts) remains in
 
 ## Layout assumption
 
-This repo expects to sit as a sibling of `Atom-Atomizer` (Atomizer) and
-`Atom-SignalLab`:
+This repo expects to sit as a sibling of `Atom-DSP`, `Atom-Atomizer`
+(Atomizer), and `Atom-SignalLab`:
 
 ```
 PersonalGitHub/
+├── Atom-DSP/
 ├── Atom-Classifier/   (this repo)
 ├── Atom-Atomizer/     (Atomizer)
 └── Atom-SignalLab/
 ```
 
-All cross-repo imports are plain relative paths
-(`../../Atom-Atomizer/packages/...`, `../../Atom-SignalLab/src/...`).
-There is no npm dependency on either sibling repo.
+Atomizer and SignalLab source imports are plain relative paths
+(`../../Atom-Atomizer/packages/...`, `../../Atom-SignalLab/src/...`) and are
+not npm dependencies. The elementary preprocessing kernels use the explicit
+local npm dependency on `../Atom-DSP`.
 
 ## Quick start
 
 ```
 nvm install 22.23.1
 nvm use 22.23.1
+npm --prefix ../Atom-DSP ci
+npm --prefix ../Atom-DSP run build
 npm --prefix ../Atom-Atomizer ci --ignore-scripts
 npm --prefix ../Atom-Atomizer run build -w @tinysa/contracts
 npm --prefix ../Atom-SignalLab ci --omit=dev --ignore-scripts
@@ -102,6 +106,7 @@ are public, so no PAT or repository secret is required.
 
 - [Atom-Atomizer](https://github.com/PhysicistJohn/Atom-Atomizer): AI-native spectrum analyzer application.
 - [Atom-Classifier](https://github.com/PhysicistJohn/Atom-Classifier): deployed local embedding classifier plus retained Bayesian RF research pipeline.
+- [Atom-DSP](https://github.com/PhysicistJohn/Atom-DSP): dependency-free numerical kernels and cross-language conformance vectors.
 - [Atom-Firmware](https://github.com/PhysicistJohn/Atom-Firmware): reproducibly built tinySA firmware research and modernization.
 - [Atom-Flasher](https://github.com/PhysicistJohn/Atom-Flasher): fail-closed firmware flasher.
 - [Atom-NeptuneSDR-Twin](https://github.com/PhysicistJohn/Atom-NeptuneSDR-Twin): QEMU-backed firmware-executing digital twin of the NeptuneSDR/HAMGEEK P210.
