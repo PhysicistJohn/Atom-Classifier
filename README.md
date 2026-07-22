@@ -2,16 +2,19 @@
 
 # AtomOS Classifier
 
-AtomOS Classifier is a Bayesian observable classifier for RF waveforms: the
-training, validation, and publication pipeline, plus the runtime inference
-code and generated model that the Atomizer app imports. It was extracted out
-of `Atom-Atomizer` so the long-running (90+ minute) training/validation cycle
-has its own repo, its own CI, and its own room to be optimized without
-weighing down the Atomizer app's build.
+AtomOS Classifier owns Atomizer's local RF-classification assets and runtimes.
+The deployed path is a metric-embedding classifier for complex I/Q and swept
+magnitude; the repository also retains the Bayesian scalar-observable
+training, validation, publication, and regression pipeline. It was extracted
+from `Atom-Atomizer` so classifier work has an independent lifecycle without
+weighing down the application build.
 
 ## What lives here
 
-- `tools/train-observable-classifier.ts`: trains the model from
+- `src/embedding/`: deployed I/Q and magnitude preprocessing, recovery,
+  inference, evidence fusion, and content-addressed model assets imported by
+  Atomizer's Detect and I/Q workspaces.
+- `tools/train-observable-classifier.ts`: trains the retained Bayesian model from
   `Atom-SignalLab`'s classification corpus and publishes the generated model
   files into this repo's `src/models/` directory.
 - `tools/validate-signal-lab-classifier.ts`: post-training validation
@@ -27,9 +30,13 @@ weighing down the Atomizer app's build.
 
 ## Runtime inference (`src/`)
 
-The classifier-owned runtime code and the generated model live in `src/`;
-Atomizer imports this runtime from the sibling repo.
+The classifier-owned runtimes and generated assets live in `src/`; Atomizer
+imports them from the sibling repo.
 
+- `src/embedding/embedding-runtime.ts` and `magnitude-classifier.ts`: the
+  deployed local inference surfaces for complete complex I/Q and swept power.
+- `src/embedding/assets/`: checked-in weights, prototypes, refiners, parity
+  fixtures, and a content-addressed model manifest.
 - `src/bayesian-waveform-classifier.ts`: Student-t mixture posterior
   inference over 12 leaf classes (CW, AM, FM, GSM, LTE FDD/TDD, NR FDD/TDD,
   Wi-Fi HR-DSSS, Wi-Fi OFDM, Bluetooth, and unknown-signal) across three
@@ -43,7 +50,7 @@ Atomizer imports this runtime from the sibling repo.
   published model asset, pinned by SHA-256 and regenerated only by the
   training tool.
 
-Shared measurement analysis (observable feature extraction, Bayesian
+Shared scalar-observable analysis (feature extraction, Bayesian
 predictive math, acquisition geometry, and contracts) remains in
 `Atom-Atomizer/packages/analysis/src` and is imported by this repo.
 
@@ -68,34 +75,36 @@ There is no npm dependency on either sibling repo.
 ```
 nvm install 22.23.1
 nvm use 22.23.1
-npm --prefix ../Atom-Atomizer ci --omit=dev --ignore-scripts
+npm --prefix ../Atom-Atomizer ci --ignore-scripts
+npm --prefix ../Atom-Atomizer run build -w @tinysa/contracts
 npm --prefix ../Atom-SignalLab ci --omit=dev --ignore-scripts
-npm install
+npm ci
 npm run typecheck
 npm test
 ```
 
-`npm run check` runs the full local gate (typecheck, worker self-test, unit
-tests, model reproduction, validation, and publication check). The
-model-reproduction step alone can take 90+ minutes.
+`npm run typecheck && npm test` is the ordinary fast gate and covers the
+deployed embedding runtime. `npm run check` additionally runs the retained
+Bayesian worker, exact-model reproduction, validation, and publication gates;
+it requires Node 22.23.1 and the exact pinned sibling commits recorded by the
+model, and can take well over 90 minutes.
 
 ## CI
 
-The `verify` job in `.github/workflows/ci.yml` runs unconditionally on every
-push and pull request. It checks out `Atom-Atomizer` and `Atom-SignalLab` at
-the exact pinned commits the checked-in model was trained and validated
-against, then runs the same gate as `npm run check`. All sibling repos are
-public, so the checkouts use the default `GITHUB_TOKEN` and no PAT or
-repository secret is required. Expect the full run to take well over 90
-minutes; the model-reproduction step dominates.
+The `verify` job in `.github/workflows/ci.yml` runs on every push and pull
+request. It checks out the exact Atomizer and SignalLab sources required by the
+runtime tests, then runs typechecking, the deployed classifier unit suite, and
+the dependency audit. Multi-hour Bayesian reproduction and validation remain
+an explicit local/release gate rather than routine CI. All sibling repositories
+are public, so no PAT or repository secret is required.
 
 ## Part of the AtomOS suite
 
-- [Atom-Atomizer](https://github.com/PhysicistJohn/Atom-Atomizer): AI-native spectrum analyzer app.
-- [Atom-Classifier](https://github.com/PhysicistJohn/Atom-Classifier): this repo.
-- [Atom-Firmware](https://github.com/PhysicistJohn/Atom-Firmware): reverse-engineered, LLVM cross-built TinySA firmware.
+- [Atom-Atomizer](https://github.com/PhysicistJohn/Atom-Atomizer): AI-native spectrum analyzer application.
+- [Atom-Classifier](https://github.com/PhysicistJohn/Atom-Classifier): deployed local embedding classifier plus retained Bayesian RF research pipeline.
+- [Atom-Firmware](https://github.com/PhysicistJohn/Atom-Firmware): reproducibly built tinySA firmware research and modernization.
 - [Atom-Flasher](https://github.com/PhysicistJohn/Atom-Flasher): fail-closed firmware flasher.
-- [Atom-NeptuneSDR-Twin](https://github.com/PhysicistJohn/Atom-NeptuneSDR-Twin): Renode digital twin of the NeptuneSDR.
+- [Atom-NeptuneSDR-Twin](https://github.com/PhysicistJohn/Atom-NeptuneSDR-Twin): QEMU-backed firmware-executing digital twin of the NeptuneSDR/HAMGEEK P210.
 - [Atom-SignalLab](https://github.com/PhysicistJohn/Atom-SignalLab): 3GPP and reference signal generation.
 - [Atom-TinySA-Twin](https://github.com/PhysicistJohn/Atom-TinySA-Twin): Renode digital twin booting real ZS407 firmware.
 - [Atom-Website](https://github.com/PhysicistJohn/Atom-Website): product site.
