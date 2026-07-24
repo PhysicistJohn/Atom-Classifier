@@ -28,6 +28,14 @@ weighing down the application build.
   `validate-signal-lab-classifier.ts` (numeric reporting, prior sensitivity,
   receipt-qualified capture, capture-target projection).
 
+## Further reading
+
+- [`DESIGN.md`](DESIGN.md): build spec and design record for the deployed
+  metric-embedding few-shot classifier.
+- [`training/README.md`](training/README.md): how to set up the Python
+  training environment and regenerate the embedding assets under
+  `src/embedding/assets/`.
+
 ## Runtime inference (`src/`)
 
 The classifier-owned runtimes and generated assets live in `src/`; Atomizer

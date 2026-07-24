@@ -1,7 +1,8 @@
 # Metric-embedding few-shot waveform classifier
 
-Status: implemented on branch `feat/iq-embedding-fewshot`. This document is the
-build spec and the record of the design decisions behind it.
+Status: implemented and merged to `main` (commit `1ac6cb7`, formerly the
+`feat/iq-embedding-fewshot` branch). This document is the build spec and the
+record of the design decisions behind it.
 
 ## Why this exists
 
