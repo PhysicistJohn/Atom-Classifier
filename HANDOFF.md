@@ -966,3 +966,50 @@ Rules 3 and 4 exist precisely to prevent that, and a consumed seed cannot be rec
 - The sibling `Atom-DSP` worktree had 17 tracked files deleted. Restored with `git restore .`;
   commit and tree now match the pinned `4bb4d707…` / `3d1a8b7a…` exactly. The deletion was
   working-tree-only and never committed, so nothing was ever at risk.
+
+## 16. Open-set control on untouched novelty seeds (backup agent)
+
+Ran `run_v3_openset_replication.py --novelty-seeds 20260939 20260940 --novelty-n 300` to
+establish the control the v3 refit must beat. Artifact (gitignored):
+`artifacts/invariant_patch/v3_scale/openset_v2baseline_replication`.
+
+Protocol: 2 model seeds x 2 novelty seeds x 4 capture lengths. Every gate is worst-of-16.
+`sealed_release_paths_read: 0`, `consumed_test_rows_used: 0`,
+`cannot_change_closed_label: true`, fit population training only, and the design novelty
+seed 20260938 is deliberately not reused for replication.
+
+| gate | worst | bound | pass |
+|---|---:|---:|---|
+| overall AUROC | 0.8494 | >= 0.72 | yes |
+| noise AUROC | 0.8429 | >= 0.80 | yes |
+| chirp AUROC | 0.8423 | >= 0.80 | yes |
+| noise threshold recall | 0.3467 | >= 0.10 | yes |
+| known false-unknown rate | 0.0561 | <= 0.10 | yes |
+| **chirp threshold recall** | **0.0967** | >= 0.10 | **NO** |
+
+Five of six pass and the miss is 0.0033, which reads like a near-thing. **The per-cell
+breakdown says otherwise and this is the important part:**
+
+```
+model 20260727 / novelty 20260939:  .140  .097  .120  .297
+model 20260727 / novelty 20260940:  .167  .110  .127  .260
+model 20260728 / novelty 20260939:  .643  .493  .443  .527
+model 20260728 / novelty 20260940:  .593  .547  .500  .537
+```
+
+Seed 20260728 clears the gate by 4-6x. Seed 20260727 sits at 0.10-0.30. The failure is one
+cell (20260727 / 20260939 / N8192). Chirp threshold recall is therefore strongly
+**model-seed dependent**, varying about 6x across two models of the same architecture, and
+the worst-of-16 gate is set by whichever model is weaker.
+
+This is not a policy that is 3% short. Do not read it as one, and do not tune the policy
+constants to close it -- these seeds are the validation evidence.
+
+**Consequence for v3:** the fusion is a different model again and could land anywhere in
+that spread. The refit against v3 embeddings is necessary and its outcome is not
+predictable from this control. If v3 lands on the weak side, the honest options are to
+improve the rejector on dev with a fresh design seed, or to declare the gate unmet -- not
+to move the threshold.
+
+Direction is nonetheless right: v2 sealed scored chirp AUROC 0.7235 and chirp threshold
+recall 0.0. The geometry blend takes AUROC to 0.84 and recall off the floor.
