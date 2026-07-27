@@ -876,3 +876,93 @@ is the assembly: `run_time_domain_dev.py` accepts only `real` or `complex`, and 
 fusion tooling (`invariant_fusion.py`, `assemble_invariant_candidate.py`) is bound to the
 `hybrid-v3` FFT frontend that v3 replaces. Writing a v3 fusion path, using train-only
 centers and enrollment-only prototypes, is the next real piece of work.
+
+## 15. Ship assessment, 2026-07-27 (backup agent, autonomous session)
+
+### 15.1 What now exists
+
+A replicated, FFT-free v3 fusion candidate that fixes the failure which sank v2.
+
+`artifacts/invariant_patch/v3_scale/v3_fusion_multilength_seed20260730` and `…seed20260732`
+built by the new `v3_scale/assemble_v3_fusion.py` (27 unit tests, all passing). Centers fit
+on training rows only, prototypes on enrollment only, selection scored and never fit. Every
+artifact records `sealed_release_data_used: 0`, `consumed_test_rows_used: 0`.
+
+| metric | real | complex | fusion s0730 | fusion s0732 |
+|---|---:|---:|---:|---:|
+| closed balanced | 0.8623 | 0.8286 | **0.8675** | **0.8673** |
+| clean | 0.9025 | 0.8568 | 0.8921 | 0.8817 |
+| N4096 | 0.7508 | 0.7551 | 0.7678 | 0.7731 |
+| N8192 | 0.7968 | 0.8034 | 0.8095 | 0.8118 |
+| N16384 | 0.8758 | 0.8521 | 0.8848 | 0.8855 |
+| worst scale | 0.8045 | 0.7747 | 0.7956 | 0.7927 |
+
+Fusion beats both branches on closed and all three lengths. Cross-seed spread on closed
+balanced is 0.0002.
+
+**The three scale gates v2 failed now pass on dev, both seeds:**
+
+| gate | v2 sealed | threshold | s0730 | s0732 |
+|---|---:|---:|---:|---:|
+| physical-scale balanced accuracy | 0.6741 | 0.75 | 0.7956 | 0.7927 |
+| physical-scale paired embedding cosine | 0.7804 | 0.80 | 0.9406 | 0.9449 |
+| physical-scale paired prediction agreement | 0.6581 | 0.75 | 0.8457 | 0.8404 |
+
+The paired-cosine move (0.78 -> 0.94) is the substantive one: the representation is now
+scale-stable, rather than accuracy happening to land higher.
+
+Against the fresh same-data incumbent (closed balanced `0.73137`, fails N4096), v3 fusion is
+**+0.136** and clears length and scale.
+
+Also confirmed this session: the full TypeScript suite is **150/150** including the v3
+geometry and preprocess ports. `node_modules` was incomplete (vitest missing); `npm install`
+fixed it.
+
+### 15.2 NOT SHIPPABLE YET, and exactly why
+
+Of the eight gates v2 failed, this work addresses three. Five remain:
+
+| remaining gate | v2 | threshold | status for v3 |
+|---|---:|---:|---|
+| N4096 clean | 0.8464 | 0.85 | untested at N4096 specifically |
+| worst five-shot balanced | 0.8495 | 0.85 | untested |
+| chirp AUROC | 0.7235 | 0.80 | **blocked, open-set** |
+| noise AUROC | 0.7962 | 0.80 | **blocked, open-set** |
+| chirp threshold recall | 0.0 | 0.10 | **blocked, open-set** |
+
+**The blocker is the open-set rejector.** `v3_time_domain_openset.py` now has a frozen policy
+(`FROZEN_V2_WEIGHT 0.80`, `FROZEN_GEOMETRY_WEIGHT 0.20`, q95 threshold) and 8 passing tests,
+which is further than §10 describes. But `run_v3_openset_replication.py` loads the **v2**
+runtime bundle `invariant_fusion_runtime_bundle_v2_seed20260727`. The rejector is therefore
+fitted and validated on **v2 embeddings**, and §10.5 requires refitting against the final v3
+embeddings before freezing. That is not implemented.
+
+Spending release seed `20260731` now would burn it on three predictable open-set failures.
+Rules 3 and 4 exist precisely to prevent that, and a consumed seed cannot be recovered.
+
+### 15.3 Ordered remaining work
+
+1. Extend `run_v3_openset_replication.py` to accept a v3 fusion directory instead of the
+   hard-coded v2 bundle, then refit density on train and ranks/threshold on enrollment
+   against v3 embeddings.
+2. Validate on untouched dev novelty seeds (`20260939`, `20260940`) plus prefix sweeps, and
+   confirm chirp/noise AUROC and threshold recall clear their gates on dev.
+3. Measure N4096-specific clean accuracy and worst five-shot balanced on the fusion; both
+   are close calls at 0.85 and neither has been checked for v3.
+4. Export a v3 runtime bundle. The schema must bind `time_domain_geometry.py` and
+   `time_domain_invariant_patch_preprocess.py` hashes and must not claim
+   `invariant-patch-v1/hybrid-v3`.
+5. Complete the TS side: geometry and preprocess are ported and green, but encoder forward,
+   fusion, prototype distance and rejection are not. Generate fresh raw E2E parity fixtures;
+   the v2 fixtures are invalid for this frontend.
+6. Only then spend seed `20260731`, once, on the sealed suite.
+
+### 15.4 Session corrections
+
+- §14.4 (claimed provenance defect) is **retracted in full**, see §14.4. Provenance lives in
+  `training_views` and is thorough. That claim was wrong and cost a decision.
+- §9's "no artifact was saved" was stale; the artifact existed. My rerun reproduced it to
+  the last digit, proving determinism but wasting a run. Check `artifacts/` before rerunning.
+- The sibling `Atom-DSP` worktree had 17 tracked files deleted. Restored with `git restore .`;
+  commit and tree now match the pinned `4bb4d707…` / `3d1a8b7a…` exactly. The deletion was
+  working-tree-only and never committed, so nothing was ever at risk.
