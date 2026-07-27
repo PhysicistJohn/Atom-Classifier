@@ -847,3 +847,32 @@ only that one legacy artifact is ambiguous, and its numbers are reproduced exact
 5. Seed `20260731` is still unused in `training/artifacts/releases`, but it is now
    used as a **model/dev seed** in two `v3_scale` artifact names. Different
    namespace, but rename or pick another release seed to avoid confusion.
+
+### 14.6 Complex branch: the multilength effect replicates
+
+`artifacts/invariant_patch/v3_scale/timecorr_complex_multilength_4000_seed20260730`
+(4000 episodes, seed 20260730, `--multilength-train`, budget- and flag-matched to the
+real branch).
+
+| metric | real base | real ML | complex base | complex ML |
+|---|---:|---:|---:|---:|
+| N4096 | 0.6869 | 0.7508 | 0.6838 | 0.7551 |
+| N8192 | 0.7574 | 0.7968 | 0.7519 | 0.8034 |
+| N16384 | 0.8969 | 0.8758 | 0.8720 | 0.8521 |
+| closed balanced | 0.8978 | 0.8623 | 0.8692 | 0.8286 |
+| clean | 0.9710 | 0.9025 | 0.9440 | 0.8568 |
+| worst scale | 0.8178 | 0.8045 | 0.7992 | 0.7747 |
+
+Multilength moves N4096 by +0.064 on real and +0.071 on complex, costs ~0.02 at N16384
+and ~0.04 closed on both, and leaves scale above the 0.75 gate on both. Same direction,
+same magnitude, two encoders: this is a replicated effect, not a single-run artifact.
+
+**Risk to note:** complex-multilength worst scale is `0.7747`, only 0.025 above the gate.
+Real-multilength has real headroom at `0.8045`. If a fusion inherits the weaker branch's
+scale behaviour, that margin may not survive a sealed suite.
+
+The fusion pair is now budget-matched, seed-matched and flag-matched. What does not exist
+is the assembly: `run_time_domain_dev.py` accepts only `real` or `complex`, and the v2
+fusion tooling (`invariant_fusion.py`, `assemble_invariant_candidate.py`) is bound to the
+`hybrid-v3` FFT frontend that v3 replaces. Writing a v3 fusion path, using train-only
+centers and enrollment-only prototypes, is the next real piece of work.
