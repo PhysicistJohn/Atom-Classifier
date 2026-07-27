@@ -151,11 +151,37 @@ t5 repeats t4 with the reconstruction weight tripled, 1.0 → 3.0:
 It buys +0.017 coherence and gives back both the open-set recovery and the length invariance
 that cropping had just produced. The latent is unchanged to two decimals on every measure.
 
-So of the three knobs tried, only two do anything, and they pull against each other:
-`skip_dropout`/`magnorm` moves closed-set, cropping moves open-set and length invariance, and
-`w_rec` moves nothing that matters. **None of them moves the latent.** That is the strongest
-statement the campaign supports: the transfer failure is structural, not a weighting problem,
-and no amount of loss balancing addresses a bottleneck the skips make optional.
+### 4d. CORRECTION — the completed 2×2 overturns part of §4c
+
+§4c originally said "none of them moves the latent." **That was wrong**, and `t3_base_cropon`
+(the cell I deprioritised as uninformative) is what disproves it. The full factorial:
+
+| | closed | chirp | worst-length bal | **bott eff. rank** | class7 |
+|---|---|---|---|---|---|
+| base / no crop | 0.4139 | 0.651 | 0.000 | 1.03 | 0.156 |
+| base / **crop** | 0.4851 | 0.707 | 0.000 | **1.79** | 0.409 |
+| FIXED / no crop | 0.6733 | 0.200 | 0.000 | 1.11 | 0.234 |
+| FIXED / crop | 0.4756 | 0.808 | **0.111** | 1.12 | 0.464 |
+
+Crop **does** move the latent, and substantially: on the base arm it takes effective rank
+1.03 → 1.79 (the highest of any trial) and class7 0.156 → 0.409.
+
+Worse for the original story, the knobs **interact**, and not in the direction assumed. `FIXED`
+was introduced as a bottleneck-pressure fix, yet with crop held on it *suppresses* the rank gain
+crop produces alone: 1.79 (base/crop) → 1.12 (FIXED/crop). Whatever `skip_dropout=0.5` +
+`magnorm` + `feat_dropout=0.5` is doing for closed-set accuracy, it is not increasing the
+information in the bottleneck — on this evidence it reduces it.
+
+Two other interactions the "independent knobs" framing hid:
+- Crop alone does **not** break the fill-lock (base/crop worst-length 0.000). Only FIXED **and**
+  crop together reach 0.111. The length fix requires both.
+- FIXED's closed-set advantage (0.6733) exists only without crop. With crop the arms are level
+  (0.4756 vs 0.4851), and base/crop is nominally ahead.
+
+What survives: `w_rec` genuinely moves nothing (§4c table, latent identical at 1.12 / 0.46–0.47),
+and **no configuration achieves transfer** — all four verdicts are `False`, and effective rank
+tops out at 1.79 of 256. The structural reading still holds. The specific attribution to
+`skip_dropout` does not, and I asserted it before the cell that tests it had run.
 
 ## 5. Four things I got wrong, corrected
 
@@ -192,17 +218,22 @@ a finished one.**
 ## 8. What I would do next
 
 1. **Do not ship any of this.** Shipped assets are untouched and green at 117/117.
-2. **The transfer failure is structural, so stop tuning it.** Three knobs, one of which
-   (`w_rec`) does nothing and two of which trade against each other, and none moves the latent
-   off effective rank ~1.1. The next attempt should change what the bottleneck *is for*, not
-   how it is weighted. The two candidates the evidence actually supports:
-   - force the reconstruction through the bottleneck alone for some fraction of steps, so the
-     skips cannot carry the signal (`skip_dropout=0.5` is a soft version of this and it is the
-     only architectural knob that moved anything);
-   - drop the U-Net for this purpose. `trunk` (d=128) and `embed` (d=32) already score
-     0.49–0.51 on class7 where `bott` scores 0.23. If a transferable representation is the
-     goal, the encoder that produces `embed` is a better starting point than the bottleneck,
-     and the 38k CNN reaches 0.890 closed-set against the U-Net's best 0.673.
+2. **The transfer failure is structural, but the knobs interact — do not tune them singly.**
+   All four verdicts are `False` and effective rank tops out at 1.79 of 256. But see §4d: crop
+   moves the latent (1.03 → 1.79 on base), `FIXED` *suppresses* that gain (1.79 → 1.12), and the
+   length fix needs both knobs together. Any follow-up must vary them jointly; a one-at-a-time
+   sweep would have produced exactly the wrong causal story, and briefly did.
+   The candidates the evidence supports:
+   - **Investigate why `FIXED` costs bottleneck rank.** It buys closed-set without crop and
+     costs latent rank with it. `skip_dropout`, `magnorm` and `feat_dropout` were changed
+     together and never separated; that confound is now the highest-value thing to resolve, and
+     it is cheap.
+   - **Push crop harder on the base arm.** It is the only intervention measured to increase
+     bottleneck rank, and it was never run without `FIXED` at any other setting.
+   - **Consider dropping the U-Net for this purpose.** `trunk` (d=128) and `embed` (d=32) score
+     0.49–0.51 on class7 where `bott` scores 0.23–0.46. If a transferable representation is the
+     goal, the bottleneck is the weakest tap in the network, and the 38k CNN reaches 0.890
+     closed-set against the U-Net's best 0.673.
 3. Fix the front end properly: sub-bin centre estimation in `preprocess`. It fixes the target
    corruption *and* the `|c20|` damage, and it is a real receiver improvement. TS-parity blast
    radius, so it is a deliberate change.
