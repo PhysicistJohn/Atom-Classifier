@@ -142,8 +142,12 @@ def main():
     weights["input_len"] = mag.MAG_LEN
     weights["feat_mean"] = fmean.astype(float).tolist()
     weights["feat_std"] = fstd.astype(float).tolist()
-    weights["magnitude"] = {"mag_len": mag.MAG_LEN, "mag_nfft": mag.MAG_NFFT, "margin": mag.MARGIN,
-                            "smooth": pp_smooth(), "noise_floor_scale": pp_nfs(), "energy_edge": pp_edge()}
+    weights["magnitude"] = {
+        "mag_len": mag.MAG_LEN,
+        "mag_nfft": mag.MAG_NFFT,
+        "margin": mag.MARGIN,
+        **pp_detector_metadata(),
+    }
     net.eval()
     with torch.no_grad():
         probe = xva[:12]
@@ -170,12 +174,14 @@ def main():
     print("done. magnitude assets ->", os.path.relpath(ASSET_DIR))
 
 
-def pp_smooth():
-    import preprocess as pp; return pp.SMOOTH
-def pp_nfs():
-    import preprocess as pp; return pp.NOISE_FLOOR_SCALE
-def pp_edge():
-    import preprocess as pp; return pp.ENERGY_EDGE
+def pp_detector_metadata():
+    import preprocess as pp
+    metadata = pp.preprocess_metadata()
+    return {
+        key: value
+        for key, value in metadata.items()
+        if key not in {"l_out", "target_frac", "nfft"}
+    }
 
 
 if __name__ == "__main__":

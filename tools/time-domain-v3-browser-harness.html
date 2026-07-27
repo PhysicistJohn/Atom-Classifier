@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Strict time-domain v3 runtime audit</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      body {
+        margin: 2rem;
+        max-width: 90rem;
+      }
+      h1 {
+        font: 600 1.25rem system-ui, sans-serif;
+      }
+      #status {
+        font-weight: 700;
+      }
+      pre {
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Strict FFT-free v3 dedicated-worker audit: <span id="status">RUNNING</span></h1>
+    <pre id="report" aria-live="polite">Waiting for worker results…</pre>
+    <script type="module" src="/harness.js"></script>
+  </body>
+</html>

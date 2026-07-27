@@ -15,7 +15,8 @@ export const MAG_NFFT = 1024;
 export const MARGIN = 0.75;
 export const N_MAG_FEATURES = 8;
 
-const MAG_PARAMS: PreprocessParams = {
+export const MAG_PARAMS: PreprocessParams = {
+  version: 'hybrid-v3',
   lOut: MAG_LEN,
   targetFrac: 0.5,
   nfft: MAG_NFFT,
@@ -55,23 +56,55 @@ export interface MagnitudeRepresentation {
   features: Float64Array; // N_MAG_FEATURES spectral scalars
 }
 
+function circularBand(psd: Float64Array, center: number, half: number): Float64Array {
+  const nfft = psd.length;
+  const span = Math.min(2 * half, 1);
+  const loUnwrapped = Math.round((center - 0.5 * span + 0.5) * nfft);
+  const hiUnwrapped = Math.round((center + 0.5 * span + 0.5) * nfft);
+  const bandN = Math.min(nfft, Math.max(2, hiUnwrapped - loUnwrapped));
+  const band = new Float64Array(bandN);
+  for (let k = 0; k < bandN; k++) {
+    let index = (loUnwrapped + k) % nfft;
+    if (index < 0) index += nfft;
+    band[k] = psd[index]!;
+  }
+  return band;
+}
+
 /**
  * Reduce a (linear, fftshifted) power spectrum + occupied band to the canonical
- * magnitude representation. Identical maths to Python `representation_from_psd`.
+ * magnitude representation. `circular=true` is for FFT-derived I/Q spectra;
+ * swept analyzer spans are non-periodic and retain clipped extraction.
  */
-export function representationFromPsd(psd: Float64Array, center: number, bw: number): MagnitudeRepresentation {
+export function representationFromPsd(
+  psd: Float64Array,
+  center: number,
+  bw: number,
+  circular = false,
+): MagnitudeRepresentation {
   const nfft = psd.length;
   const half = bw * (0.5 + MARGIN);
-  let lo = Math.round((center - half + 0.5) * nfft);
-  let hi = Math.round((center + half + 0.5) * nfft);
-  lo = Math.min(Math.max(lo, 0), nfft - 1);
-  hi = Math.min(Math.max(hi, lo + 2), nfft);
-  const bandN = hi - lo;
-  const band = new Float64Array(bandN);
+  let band: Float64Array;
+  if (circular) {
+    let peak = 0;
+    for (const value of psd) peak = Math.max(peak, value);
+    const normalized = new Float64Array(nfft);
+    if (peak > 0) {
+      for (let k = 0; k < nfft; k++) normalized[k] = psd[k]! / peak;
+    }
+    band = circularBand(normalized, center, half);
+  } else {
+    let lo = Math.round((center - half + 0.5) * nfft);
+    let hi = Math.round((center + half + 0.5) * nfft);
+    lo = Math.min(Math.max(lo, 0), nfft - 1);
+    hi = Math.min(Math.max(hi, lo + 2), nfft);
+    band = psd.slice(lo, hi);
+  }
+  const bandN = band.length;
   let bandSum = 0;
   let bandMax = 0;
   for (let k = 0; k < bandN; k++) {
-    const v = psd[lo + k]! + 1e-12;
+    const v = band[k]! + 1e-12;
     band[k] = v;
     bandSum += v;
     if (v > bandMax) bandMax = v;
@@ -125,8 +158,29 @@ export function representationFromPsd(psd: Float64Array, center: number, bw: num
 }
 
 /** Training/inference-from-I/Q path: complex I/Q -> Welch PSD -> representation. */
-export function magnitudeFromIq(re: Float64Array, im: Float64Array): MagnitudeRepresentation {
-  const psd = smoothSame(welchPsd(re, im, MAG_NFFT), MAG_PARAMS.smooth);
-  const { center, bw } = estimateBand(re, im, MAG_PARAMS);
-  return representationFromPsd(psd, center, bw);
+export function magnitudeFromIq(
+  re: Float64Array,
+  im: Float64Array,
+  params: PreprocessParams = MAG_PARAMS,
+): MagnitudeRepresentation {
+  const circular = (params.version ?? 'linear-v1') !== 'linear-v1';
+  let sourceRe = re;
+  let sourceIm = im;
+  if (circular) {
+    let peak = 0;
+    for (let k = 0; k < re.length; k++) {
+      peak = Math.max(peak, Math.hypot(re[k]!, im[k]!));
+    }
+    sourceRe = new Float64Array(re.length);
+    sourceIm = new Float64Array(im.length);
+    if (peak > 0) {
+      for (let k = 0; k < re.length; k++) {
+        sourceRe[k] = re[k]! / peak;
+        sourceIm[k] = im[k]! / peak;
+      }
+    }
+  }
+  const psd = smoothSame(welchPsd(sourceRe, sourceIm, params.nfft), params.smooth);
+  const { center, bw } = estimateBand(sourceRe, sourceIm, params);
+  return representationFromPsd(psd, center, bw, circular);
 }

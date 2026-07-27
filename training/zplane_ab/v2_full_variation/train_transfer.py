@@ -28,19 +28,19 @@ THREE DIFFERENCES FROM train_multitask.py, each because a measurement said so.
     nothing else -- not in the data path, not in the RNG consumption pattern, not in the
     preprocessing call.
 
- 2. THE PAIR IS FREQUENCY-ALIGNED BEFORE IT BECOMES A TARGET.  `align_pair`
-    native_preprocess.force_center hands the clean member the impaired member's centre, but
-    that centre comes from a 512-point PSD and is quantized ~32x too coarsely for a
-    16384-sample window. What survives is a residual offset of median 5.96e-05
-    cycles/sample -- about one full phase rotation across the window, p90 ten -- which
-    decorrelates the pair completely. Measured: coherence on rows with essentially NO noise
-    is 0.237, and a single global derotation lifts it to 0.547.
-    This is a deliberate NARROWING of the task, and it is recorded per trial rather than
-    assumed: a frequency shift is not an LTI operation and a conv stack with a ~553-sample
-    receptive field cannot perform a global derotation, so leaving the offset in asks the
-    head for something outside its function class. Removing it leaves noise and multipath,
-    which are inside it. denoise_eval scores BOTH the aligned and unaligned target so the
-    choice stays auditable.
+ 2. THE TARGET IS ROTATED INTO THE INPUT-CARRIER COORDINATE.  `align_pair`
+    The corpus applies the same receiver-side centre nuisance to both pair members, so a
+    common coarse centre estimate cannot create or remove their relative offset.  The
+    remaining relative carrier is a real link impairment applied only to the impaired
+    member.  `derotate_onto(clean, impaired)` deliberately puts that carrier into the clean
+    target: the decoder is trained to remove noise and multipath while preserving the
+    input's carrier, not to perform carrier recovery.  Measured near noise-free coherence
+    rises from 0.237 to 0.547 because this is a narrower task, not because PSD quantisation
+    was repaired.
+    This policy is explicit and auditable. A convolutional decoder with a finite receptive
+    field is not a reliable full-window carrier estimator; a product that promises CFO
+    correction needs a separate global carrier-recovery stage. denoise_eval scores both the
+    declared input-carrier-aligned target and the original clean-coordinate target.
 
  3. CLEAN ROWS DO NOT GET A RECONSTRUCTION LOSS.  `mask_clean_recon`
     25.2% of the native training pool is CLEAN, and for a clean row the impaired member IS
@@ -83,12 +83,48 @@ from denoise_eval import derotate_onto  # noqa: E402
 K_SHOT, Q_QUERY = 5, 5      # identical to train_multitask, so batch size is comparable
 
 
+def standardize_online_features(features, data):
+    """Put online-crop features in the same coordinate system as eval features.
+
+    ``prepare_data_v2`` fits ``fmean``/``fstd`` on the training pool and applies that
+    transform to all cached train/enrol/validation features.  ``CropStream`` necessarily
+    recomputes features after each crop, so it returns them in raw units.  Feeding those raw
+    values directly to the network while evaluating with standardized values is a train/eval
+    distribution mismatch, not augmentation.
+    """
+    features = np.asarray(features, dtype=np.float32)
+    mean = np.asarray(data["fmean"], dtype=np.float32)
+    std = np.asarray(data["fstd"], dtype=np.float32)
+    if features.shape[-1] != mean.shape[0] or mean.shape != std.shape:
+        raise ValueError(
+            f"feature standardizer shape mismatch: features={features.shape}, "
+            f"mean={mean.shape}, std={std.shape}"
+        )
+    if not np.all(np.isfinite(mean)) or not np.all(np.isfinite(std)) or np.any(std <= 0):
+        raise ValueError("feature standardizer must contain finite means and positive stds")
+    return ((features - mean) / std).astype(np.float32, copy=False)
+
+
 def make_stream(data, condition="native", crop_cfg=None, align_pair=True, seed=0,
                 want_clean=True):
     module = npp if condition == "native" else pp
     align = (lambda c, i: derotate_onto(c, i)) if align_pair else None
     return CropStream(data["tr_idx"], module, crop_cfg or CropConfig(mode="off"),
                       seed=seed, want_clean=want_clean, align_fn=align)
+
+
+def embed_transfer(net, x, feat, dev, batch=256, embedding_only=False):
+    """Batch embedding helper with an optional decoder-free U-Net path."""
+    if not embedding_only or not hasattr(net, "forward_embedding"):
+        return embed_all(net, x, feat, dev, batch=batch)
+    net.eval()
+    outs = []
+    with torch.no_grad():
+        for i in range(0, len(x), batch):
+            xb = torch.from_numpy(np.asarray(x[i:i + batch])).to(dev)
+            fb = torch.from_numpy(np.asarray(feat[i:i + batch])).to(dev)
+            outs.append(net.forward_embedding(xb, fb).cpu().numpy())
+    return np.concatenate(outs)
 
 
 def train_transfer(net, data, dev, episodes, eval_every, log_tag="", lr=7e-4,
@@ -100,28 +136,66 @@ def train_transfer(net, data, dev, episodes, eval_every, log_tag="", lr=7e-4,
     idx_by_class = data["idx_by_class"]
     xen, fen, yen = data["xen"], data["fen"], data["yen"]
     xva, fva, yva = data["xva"], data["fva"], data["yva"]
+    selection_rows = data.get("selection_rows")
+    if selection_rows is not None:
+        selection_rows = np.asarray(selection_rows, dtype=np.int64)
+        x_select = np.asarray(xva)[selection_rows]
+        f_select = np.asarray(fva)[selection_rows]
+        y_select = np.asarray(yva)[selection_rows]
+    else:
+        x_select, f_select, y_select = xva, fva, yva
     imp_tr = np.asarray(data["imp_tr"], dtype=bool)
 
     stream = make_stream(data, condition, crop_cfg, align_pair, seed, want_clean=w_rec > 0)
+    cached_crop_off = (
+        w_rec <= 0
+        and getattr(crop_cfg, "mode", "off") == "off"
+        and all(key in data for key in ("xtr", "ftr"))
+    )
     print(f"[{log_tag}] w_rec={w_rec} crop={getattr(crop_cfg, 'mode', 'off')} "
           f"align_pair={align_pair} mask_clean_recon={mask_clean_recon} "
-          f"excess_loss={excess_loss} arch={getattr(net, 'config', lambda: {})()}", flush=True)
+          f"excess_loss={excess_loss} cached_crop_off={cached_crop_off} "
+          f"arch={getattr(net, 'config', lambda: {})()}", flush=True)
 
     net = net.to(dev)
-    scale = torch.nn.Parameter(torch.tensor(10.0, device=dev))
-    opt = torch.optim.Adam(list(net.parameters()) + [scale], lr=lr, weight_decay=weight_decay)
+    # Positive temperature, tracked separately from the inference model.  The previous free
+    # scalar could cross zero, received weight decay, and was neither restored with the best
+    # checkpoint nor recorded, making an exact training run impossible to reproduce.
+    log_scale = torch.nn.Parameter(torch.tensor(np.log(10.0), dtype=torch.float32, device=dev))
+    opt = torch.optim.Adam(
+        [
+            {"params": list(net.parameters()), "weight_decay": weight_decay},
+            {"params": [log_scale], "weight_decay": 0.0},
+        ],
+        lr=lr,
+    )
     warm = max(1, int(episodes * warmup_frac))
     cosine = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max(episodes - warm, 1))
+    # Classification-only *training* can skip the decoder.  Selection evaluation only
+    # reads embeddings regardless of the training objective, so it should always use the
+    # numerically identical encoder-only path when available.
+    training_embedding_only = w_rec <= 0 and hasattr(net, "forward_embedding")
+    evaluation_embedding_only = hasattr(net, "forward_embedding")
 
     def eval_clean():
-        protos = prototypes_from(embed_all(net, xen, fen, dev), yen, n_classes)
-        pred, _ = nearest(embed_all(net, xva, fva, dev), protos)
-        return float((pred == yva).mean())
+        protos = prototypes_from(
+            embed_transfer(net, xen, fen, dev,
+                           embedding_only=evaluation_embedding_only),
+            yen,
+            n_classes,
+        )
+        pred, _ = nearest(
+            embed_transfer(net, x_select, f_select, dev,
+                           embedding_only=evaluation_embedding_only),
+            protos,
+        )
+        return float((pred == y_select).mean())
 
     acc = dict(ce=0.0, coh=0.0, pass_=0.0, n=0)
     best_acc, best_state = -1.0, None
     history = {"loss_ce": [], "coherence_impaired": [], "passthrough_impaired": [],
-               "val_acc": [], "crop_len_median": [], "crop_len_p10": []}
+               "val_acc": [], "crop_len_median": [], "crop_len_p10": [],
+               "logit_scale": [], "selection_n": int(len(y_select))}
     t0 = time.perf_counter()
     for ep in range(episodes):
         net.train()
@@ -138,13 +212,30 @@ def train_transfer(net, data, dev, episodes, eval_every, log_tag="", lr=7e-4,
         sl = np.repeat(np.arange(n_classes), K_SHOT)
         ql = np.repeat(np.arange(n_classes), Q_QUERY)
 
-        Xn, Fn, Cn = stream.batch(allpos)
+        if cached_crop_off:
+            # Ground-state tests assert that CropStream(mode="off") and these corrected,
+            # non-jittered tensors are identical.  Classification-only training has no
+            # paired target to construct, so re-running the same FFT/resampler 70 times per
+            # episode only wastes time.  Cropped or reconstruction-bearing arms always
+            # remain on the live stream above.
+            Xn = np.asarray(data["xtr"])[allpos]
+            Fn = np.asarray(data["ftr"])[allpos]
+            Cn = None
+            stream.last_lengths = [stream.n_samples] * len(allpos)
+        else:
+            Xn, Fn, Cn = stream.batch(allpos)
+            # CropStream recomputes iq_features from the newly cropped waveform. Normalize
+            # them with the SAME training-set statistics used by xen/fen and xva/fva.
+            # Campaign 4 omitted this line, trained on raw feature units, and evaluated on
+            # z-scored units.
+            Fn = standardize_online_features(Fn, data)
         xb = torch.from_numpy(Xn).to(dev)
         fb = torch.from_numpy(Fn).to(dev)
-        emb = net(xb, fb)
+        emb = net.forward_embedding(xb, fb) if training_embedding_only else net(xb, fb)
         se, qe = emb[: len(sup)], emb[len(sup):]
         sl_t = torch.from_numpy(sl).to(dev)
         protos = torch.stack([se[sl_t == c].mean(0) for c in range(n_classes)])
+        scale = log_scale.exp().clamp(1e-3, 100.0)
         logits = -sq_dist(qe, protos) * scale
         loss_ce = torch.nn.functional.cross_entropy(logits, torch.from_numpy(ql).to(dev),
                                                      label_smoothing=label_smoothing)
@@ -200,20 +291,27 @@ def train_transfer(net, data, dev, episodes, eval_every, log_tag="", lr=7e-4,
             history["passthrough_impaired"].append(acc["pass_"] / n)
             history["crop_len_median"].append(int(np.median(L)))
             history["crop_len_p10"].append(int(np.percentile(L, 10)))
+            history["logit_scale"].append(float(log_scale.detach().exp().cpu()))
             acc = dict(ce=0.0, coh=0.0, pass_=0.0, n=0)
         if (ep + 1) % eval_every == 0 or (ep + 1) == episodes:
             a = eval_clean()
             history["val_acc"].append({"episode": ep + 1, "acc": a})
             tag = ""
             if a > best_acc:
-                best_acc, best_state = a, copy.deepcopy(net.state_dict()); tag = "  <- best"
-            print(f"    [{log_tag}] [val(clean) {a:.3f}]{tag}", flush=True)
+                best_acc = a
+                best_state = (copy.deepcopy(net.state_dict()),
+                              float(log_scale.detach().cpu()))
+                tag = "  <- best"
+            print(f"    [{log_tag}] [selection {a:.3f}]{tag}", flush=True)
     wall = time.perf_counter() - t0
     if best_state is not None:
-        net.load_state_dict(best_state)
+        net.load_state_dict(best_state[0])
+        with torch.no_grad():
+            log_scale.fill_(best_state[1])
     history["best_val_acc"] = best_acc
     history["wall_clock_s"] = wall
     history["episodes"] = episodes
+    history["final_logit_scale"] = float(log_scale.detach().exp().cpu())
     # The coherence pair, always together. A bare coherence number has no scale: the
     # identity map scores 0.4624 on the full pool and 0.2813 on impaired rows.
     history["final_coherence_impaired"] = (history["coherence_impaired"] or [None])[-1]

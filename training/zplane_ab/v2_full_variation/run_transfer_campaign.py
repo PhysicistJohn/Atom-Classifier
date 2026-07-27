@@ -150,6 +150,8 @@ MAX_WAIT_S = 3600          # how long to wait for memory / for another trainer t
 # --- the two architecture cells -------------------------------------------------------
 ARCH_BASE = {}                                    # today's network, unchanged
 ARCH_FIXED = dict(magnorm=True, skip_dropout=0.5, feat_dropout=0.5)
+ARCH_CORRECTED = dict(magnorm=True, skip_dropout=0.5, feat_dropout=0.5,
+                      residual_recon=True)
 
 CROP_ON = dict(mode="loguniform", guard_frac=0.35)
 CROP_OFF = dict(mode="off")
@@ -206,9 +208,14 @@ def run_trial(tag, arch, crop, w_rec, episodes=EPISODES, condition="native",
     from train_transfer import train_transfer
     from unet_transfer import TransferUNet, encoder_health
 
+    # The seed must be applied before either the cached-pool sampler or the model is
+    # constructed.  Previously it controlled only the online crop stream, so two trials
+    # bearing the same seed could start from different weights and draw different episodes.
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     DEV = (torch.device(device) if device else
            (torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")))
-    data = pool_cache.load(condition)
+    data = pool_cache.load(condition, seed=seed)
     data["condition"] = condition
     t_start = time.perf_counter()
 
@@ -251,8 +258,10 @@ def run_trial(tag, arch, crop, w_rec, episodes=EPISODES, condition="native",
     health_final = encoder_health(net.to("cpu"), xb0, fb0)
 
     # ---- canonical probe length sweep (worst length is what is gated) -------------------
-    probe = cpn.sweep(net, protos, list(data["classes"]), torch.device("cpu"),
-                      condition=condition, in_len=int(data["input_length"]))
+    probe = cpn.sweep(
+        net, protos, list(data["classes"]), torch.device("cpu"),
+        fmean=data["fmean"], fstd=data["fstd"],
+        condition=condition, in_len=int(data["input_length"]))
 
     # ---- latent transfer, with every control -------------------------------------------
     ref = json.load(open(REFERENCE_LT)) if os.path.exists(REFERENCE_LT) else None
@@ -321,7 +330,10 @@ def run_trial(tag, arch, crop, w_rec, episodes=EPISODES, condition="native",
             for blk, skip in zip(net.ups, reversed(skips)):
                 u = net._up(u, skip.shape[-1])
                 u = blk(torch.cat([u, skip], dim=1))
-            coh_zero = float(tcoh(net.out(u).squeeze(1), cb).mean())
+            rec_zero = net.out(u).squeeze(1)
+            if net.residual_recon:
+                rec_zero = torch.complex(xb[:, 0, :], xb[:, 1, :]) + rec_zero
+            coh_zero = float(tcoh(rec_zero, cb).mean())
         dn["bottleneck_ablation"] = {
             "n": k, "coh_full": coh_full, "coh_bottleneck_zeroed": coh_zero,
             "delta": coh_zero - coh_full,
@@ -361,8 +373,11 @@ def run_trial(tag, arch, crop, w_rec, episodes=EPISODES, condition="native",
         # --- length invariance
         canonical_probe=dict(
             worst_correct=probe["worst_correct"], worst_bal=probe["worst_bal"],
-            best_correct=probe["best_correct"], worst_cos=probe["worst_cos"],
+            best_correct=probe["best_correct"], best_bal=probe["best_bal"],
+            worst_cos=probe["worst_cos"],
             majority_baseline=probe["majority_baseline"],
+            matched_length=probe["matched_length"], matched_bal=probe["matched_bal"],
+            valid=probe["valid"], validity_reasons=probe["validity_reasons"],
             passes_gate=probe["passes_gate"], rows=probe["rows"]),
         # --- did the encoder ever wake up?
         encoder_health_init=health_init, encoder_health_final=health_final,
@@ -455,7 +470,7 @@ with open({res!r}, "a") as f:
 lt = r["latent_transfer"]; dn = r["denoise"]["aligned"]
 print("CHILD_OK", r["tag"],
       "closed", round(r["closed_overall"], 4),
-      "| probe worst", r["canonical_probe"]["worst_correct"],
+      "| probe worst balanced", r["canonical_probe"]["worst_bal"],
       "| bott effrank", lt["bott_eff_rank"], "vs rand", lt["bott_eff_rank_random_init"],
       "| coh", dn["model"], "vs passthrough", dn["passthrough"], flush=True)
 '''
@@ -468,7 +483,7 @@ def write_report():
          "\nEvery column is printed beside its baseline. A bare coherence, a bare latent",
          "accuracy and a bare probe score have each already been misread once in this",
          "project; none of them means anything alone.\n",
-         "\n| tag | arch | crop | w_rec | closed | clean | chirp | probe worst (maj 0.79) |"
+         "\n| tag | arch | crop | w_rec | closed | clean | chirp | probe worst balanced |"
          " bott effrank (rand) | ofdm24 acc (rand / feat12) | coh imp (passthru / oracleFIR) |"
          " lowSNR d | transfers |",
          "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
@@ -487,7 +502,8 @@ def write_report():
             "", r["tag"], "FIXED" if r["arch"] else "base", r["crop"]["mode"], str(r["w_rec"]),
             num(r["closed_overall"]), num(r["closed_clean"]),
             num(r["auroc_chirp_HELDOUT"], "{:.3f}"),
-            num(r["canonical_probe"]["worst_correct"], "{:.3f}"),
+            num(r["canonical_probe"].get(
+                "worst_bal", r["canonical_probe"].get("worst_correct")), "{:.3f}"),
             f"{lt.get('bott_eff_rank')} ({lt.get('bott_eff_rank_random_init')})",
             f"{num(o.get('acc'))} ({num(vr, plus=True)} / {num(vf, plus=True)})",
             f"{num(dn.get('model'))} ({num(dn.get('passthrough'))} / "
@@ -580,7 +596,8 @@ def smoke():
             "encoder_health_init", "encoder_health_final")
     missing = [k for k in keys if k not in r]
     print(f"[smoke] {time.time()-t0:.0f}s  missing={missing or 'none'}")
-    print(f"[smoke] closed {r['closed_overall']}  probe worst {r['canonical_probe']['worst_correct']}"
+    print(f"[smoke] closed {r['closed_overall']}  "
+          f"probe worst balanced {r['canonical_probe']['worst_bal']}"
           f"  bott dead init {r['encoder_health_init']['bottleneck_dead_frac']:.3f}"
           f" -> final {r['encoder_health_final']['bottleneck_dead_frac']:.3f}")
     d = r["denoise"]["aligned"]

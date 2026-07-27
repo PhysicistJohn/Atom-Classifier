@@ -30,6 +30,11 @@ property of the model. An instrument built to escape in-distribution evaluation 
 parameter from the very distribution it was meant to escape. That is why this file now
 sweeps length and gates on the WORST length, not a chosen one.
 
+The probe is intentionally small, but it is also heavily imbalanced: 15 CW, 2 AM and 2 FM
+rows. Raw accuracy is therefore only a diagnostic -- the constant prediction "cw" scores
+15/19 = 0.789 without recognizing a single AM or FM signal. The deployability gate is on
+balanced accuracy (mean recall over the three represented classes), never raw accuracy.
+
 The underlying defect is upstream, and the generator names it at
 tools/generate-signallab-iq-corpus.ts:111 -- captureLengthSamples "FIXED at SAMPLE_COUNT
 -- not yet swept; known gap". Every other nuisance was widened and randomised; this one
@@ -64,11 +69,20 @@ LENGTHS = (4096, 8192, 16384, 32768)
 # Bars apply to the WORST length in the sweep, never the best. Gating on the best is how
 # the first version of this file certified a fill-locked model as healthy.
 #
-# Both models measured so far fail min_correct_frac: shipped bottoms out at 2/19 (0.105)
-# at N=32768, the retrain at 0/19 at N=4096. That is the honest state -- capture length is
-# an unswept nuisance in the corpus, so nothing trained on it can be length-invariant. Do
-# NOT relax these bars to make a model pass; fix the corpus.
-GATE = {"min_correct_frac": 0.75, "max_mean_pairwise_cos": 0.78}
+# `min_valid_bal_acc` is not a ship bar. It is the floor a matched-condition measurement
+# must clear before a flat length curve is interpretable at all: a dead representation is
+# perfectly invariant. canonical_probe_net applies that validity guard because it knows the
+# campaign's matched capture length. This exported-assets probe has no reliable way to infer
+# which corpus length produced an arbitrary assets directory, so it reports best_bal instead.
+#
+# Both shipped/retrained models measured so far fail min_bal_acc. That is the honest state --
+# capture length is an unswept nuisance in the corpus, so nothing trained on it can be assumed
+# length-invariant. Do NOT relax these bars to make a model pass; fix the data coverage.
+GATE = {
+    "min_bal_acc": 0.75,
+    "min_valid_bal_acc": 0.50,
+    "max_mean_pairwise_cos": 0.78,
+}
 
 
 def awgn(s, snr_db, rng):
@@ -99,13 +113,18 @@ def build_probes(rng, n):
 
 
 def score_at(assets_dir, n, verbose=False):
-    """Score every probe at one capture length. Returns (frac_correct, mean_pairwise_cos, fill)."""
+    """Score every probe at one capture length.
+
+    Returns (raw_accuracy, balanced_accuracy, mean_pairwise_cos, fill, per_class_recall).
+    Raw accuracy is retained for continuity, but the gate must never use it because this
+    probe contains 15 CW rows and only two rows for each of AM and FM.
+    """
     w = json.load(open(os.path.join(assets_dir, "embedding-weights.json")))
     pj = json.load(open(os.path.join(assets_dir, "prototypes.json")))
     protos = np.asarray(pj["prototypes"], np.float32)
     classes, thr = pj["classes"], float(pj["unknown_threshold"])
 
-    embs, hits, fill = [], 0, None
+    embs, wanted, predicted, fill = [], [], [], None
     for label, want, iq in build_probes(np.random.default_rng(7), n):
         x, ctx = pp.preprocess(np.asarray(iq, np.complex128))
         if fill is None:  # signal-carrying fraction of the network input, the key geometry
@@ -115,43 +134,52 @@ def score_at(assets_dir, n, verbose=False):
         d = np.sum((protos - e) ** 2, axis=1)
         o = np.argsort(d)
         got = "unknown" if d[o[0]] > thr else classes[o[0]]
-        hits += got == want
+        wanted.append(want)
+        predicted.append(got)
         if verbose:
             top3 = {classes[i]: round(float(d[i]), 3) for i in o[:3]}
             print(f"    {'OK ' if got == want else 'FAIL'} {label:<20} want {want:<3} got {got:<9} {top3}")
 
     E = np.stack(embs)
-    E = E / np.linalg.norm(E, axis=1, keepdims=True)
+    E = E / (np.linalg.norm(E, axis=1, keepdims=True) + 1e-12)
     iu = np.triu_indices(len(E), 1)
-    return hits / len(embs), float((E @ E.T)[iu].mean()), fill
+    wanted = np.asarray(wanted)
+    predicted = np.asarray(predicted)
+    names = sorted(set(wanted.tolist()))
+    per_class = {name: float(np.mean(predicted[wanted == name] == name)) for name in names}
+    raw = float(np.mean(predicted == wanted))
+    bal = float(np.mean(list(per_class.values())))
+    return raw, bal, float((E @ E.T)[iu].mean()), fill, per_class
 
 
 def score(assets_dir, verbose=True):
-    """Sweep capture length. Gates on the WORST length, which is the deployable one."""
+    """Sweep capture length. Gates on worst balanced accuracy, never CW-heavy raw accuracy."""
     rows = [(n,) + score_at(assets_dir, n) for n in LENGTHS]
     if verbose:
         print(f"=== {assets_dir} ===")
-        print(f"  {'N':>7} {'fill':>6} {'correct':>9} {'pairwise cos':>13}")
-        for n, frac, cos, fill in rows:
-            print(f"  {n:>7} {fill:>6.3f} {frac*100:>8.0f}% {cos:>+13.3f}")
-    worst_frac = min(r[1] for r in rows)
-    worst_cos = max(r[2] for r in rows)
-    best_frac = max(r[1] for r in rows)
+        print(f"  {'N':>7} {'fill':>6} {'raw':>9} {'balanced':>10} {'pairwise cos':>13}")
+        for n, raw, bal, cos, fill, _per_class in rows:
+            print(f"  {n:>7} {fill:>6.3f} {raw*100:>8.0f}% {bal*100:>9.0f}% {cos:>+13.3f}")
+    worst_bal = min(r[2] for r in rows)
+    worst_cos = max(r[3] for r in rows)
+    best_bal = max(r[2] for r in rows)
+    best_raw = max(r[1] for r in rows)
     if verbose:
-        print(f"  worst-length: {worst_frac*100:.0f}% correct, cos {worst_cos:+.3f}"
-              f"   (best length reaches {best_frac*100:.0f}% -- not what is gated)")
-        print(f"  gates on WORST: correct >= {GATE['min_correct_frac']:.2f}, "
+        print(f"  worst-length balanced accuracy: {worst_bal*100:.0f}%, cos {worst_cos:+.3f}"
+              f"   (best balanced {best_bal*100:.0f}%; best raw {best_raw*100:.0f}% -- not gated)")
+        print(f"  gate on WORST balanced accuracy >= {GATE['min_bal_acc']:.2f}, "
               f"cos <= {GATE['max_mean_pairwise_cos']:.2f}")
-    return worst_frac, worst_cos, best_frac
+    return worst_bal, worst_cos, best_bal
 
 
 def main():
     d = sys.argv[1] if len(sys.argv) > 1 else LIVE
-    frac, cos, best = score(d)
+    bal, cos, best = score(d)
     fails = []
-    if frac < GATE["min_correct_frac"]:
-        fails.append(f"worst capture length scores only {frac*100:.0f}% "
-                     f"(best length reaches {best*100:.0f}%) -- model is fill-locked, not length-invariant")
+    if bal < GATE["min_bal_acc"]:
+        fails.append(f"worst capture length balanced accuracy is only {bal*100:.0f}% "
+                     f"(best length reaches {best*100:.0f}%) -- model is fill-locked, "
+                     "not length-invariant")
     if cos > GATE["max_mean_pairwise_cos"]:
         fails.append(f"probe embeddings degenerate at some length: mean pairwise cos {cos:+.3f}")
     if fails:

@@ -40,23 +40,41 @@ export interface EmbeddingModel {
   feat_mean: number[];
   feat_std: number[];
   preprocess: {
+    estimator_version?: 'linear-v1' | 'circular-v2' | 'hybrid-v3';
     l_out: number;
     target_frac: number;
     nfft: number;
     energy_edge: number;
     noise_floor_scale: number;
     smooth: number;
+    full_band_bw?: number;
+    white_flatness_deficit?: number;
+    guard_floor_scale?: number;
+    min_excess_fraction?: number;
+    hybrid_legacy_wide_bw?: number;
+    hybrid_circular_broad_bw?: number;
+    hybrid_seam_tolerance_bins?: number;
   };
 }
 
 export function preprocessParams(m: EmbeddingModel): PreprocessParams {
   return {
+    // Every shipped model predates estimator_version and was trained in the
+    // linear-v1 coordinates. Never silently reinterpret those weights as v2.
+    version: m.preprocess.estimator_version ?? 'linear-v1',
     lOut: m.preprocess.l_out,
     targetFrac: m.preprocess.target_frac,
     nfft: m.preprocess.nfft,
     energyEdge: m.preprocess.energy_edge,
     noiseFloorScale: m.preprocess.noise_floor_scale,
     smooth: m.preprocess.smooth,
+    fullBandBw: m.preprocess.full_band_bw,
+    whiteFlatnessDeficit: m.preprocess.white_flatness_deficit,
+    guardFloorScale: m.preprocess.guard_floor_scale,
+    minExcessFraction: m.preprocess.min_excess_fraction,
+    hybridLegacyWideBw: m.preprocess.hybrid_legacy_wide_bw,
+    hybridCircularBroadBw: m.preprocess.hybrid_circular_broad_bw,
+    hybridSeamToleranceBins: m.preprocess.hybrid_seam_tolerance_bins,
   };
 }
 

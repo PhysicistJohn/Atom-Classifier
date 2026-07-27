@@ -1,0 +1,35 @@
+{
+  "contract_version": "strict-time-domain-v3-runtime-audit-v1",
+  "frontend_version": "invariant-patch-time-domain-v1",
+  "geometry_version": "time-correlation-v1",
+  "synthetic_only": true,
+  "reads_held_or_sealed_payload": false,
+  "uses_frequency_transform": false,
+  "audit_lengths": [
+    4096,
+    8192,
+    16384,
+    32768
+  ],
+  "fixture_path": "src/embedding/test-fixtures/time-domain-v3-browser-parity.json",
+  "prohibited_path_fragments": [
+    "artifacts/releases",
+    "sealed",
+    "held"
+  ],
+  "source_sha256": {
+    "training/time_domain_geometry.py": "a9735473f44105d20cffb9d4888ff8cf8e02503746f70b50e6d5d3737138da33",
+    "training/time_domain_invariant_patch_preprocess.py": "5cd1787aed0e5fd95adc2e4de56db460d753d0557350aa8f3aff0e393c0bb10a",
+    "training/invariant_patch_preprocess.py": "04c66362e6978bc1827791653963d0921bcdde51f93b9dd74e6eb9b4e8217420",
+    "training/preprocess.py": "5369ea8277f64fcd6367a8a363bf7a5a28298663c39315126160ded5bcc0091d",
+    "training/generate_time_domain_v3_browser_fixture.py": "ccb9be979207d4d0b6ad2e1a2b0d5017611834ed85d77a16238be42aedae8f61",
+    "src/embedding/time-domain-geometry-v3.ts": "ce06ac19c0c6b0af6bdd61ff9b83ea5e40d4bf84d6c145459c6f139c037a8e78",
+    "src/embedding/time-domain-invariant-patch-preprocess-v3.ts": "be4dcaac688202247a812978f8917f639bfbefb51fb45199a6f6ce84d370f447",
+    "src/embedding/time-domain-invariant-patch-preprocess-v3.test.ts": "fc9a7fca4bd7084d2a8d72b7bef0e7b4904eeda40088c9bcec09b20bc5487120",
+    "src/embedding/test-fixtures/time-domain-v3-browser-parity.json": "10280d12b8b1d580b06424b576250eaf3e83e187c57303ecc393319152d8ec6b",
+    "tools/time-domain-v3-parity-common.ts": "d7b19cbe73cdae42d1b25d38513dec0979025f5cc8429cd7f96cb493b773777b",
+    "tools/time-domain-v3-browser-worker.ts": "127084d4da2a9dae97f125d38049c8791ef288e827e7d1a7c55d50b6d25a459f",
+    "tools/time-domain-v3-browser-harness.ts": "00115f3433a7d1c6427fdb952eda80e57c153cde701b839eb76723019e174df2",
+    "tools/time-domain-v3-browser-harness.html": "8ed0de267d6c1e5a118815dca89aa3b2e87c466e343a27aef5adef2b95d4563a"
+  }
+}

@@ -110,8 +110,17 @@ def embed_all(net, x, feat, dev, batch=256) -> np.ndarray:
     outs = []
     with torch.no_grad():
         for i in range(0, len(x), batch):
-            xb = torch.from_numpy(x[i : i + batch]).to(dev)
-            fb = torch.from_numpy(feat[i : i + batch]).to(dev)
+            # Cached development pools are intentionally read-only memmaps.
+            # torch.from_numpy warns that a non-writable backing array would
+            # make any accidental in-place tensor operation undefined.  Inference
+            # does not mutate inputs, but owning each small batch makes that
+            # contract real and keeps warnings-as-errors meaningful.
+            xb = torch.from_numpy(
+                np.array(x[i : i + batch], copy=True)
+            ).to(dev)
+            fb = torch.from_numpy(
+                np.array(feat[i : i + batch], copy=True)
+            ).to(dev)
             outs.append(net(xb, fb).cpu().numpy())
     return np.concatenate(outs)
 
@@ -127,12 +136,24 @@ def nearest(emb, protos):
 
 def auroc(pos_scores, neg_scores) -> float:
     """AUROC that `pos` (novel) scores exceed `neg` (known). Higher = more novel."""
-    labels = np.r_[np.ones(len(pos_scores)), np.zeros(len(neg_scores))]
-    scores = np.r_[pos_scores, neg_scores]
-    order = np.argsort(scores)
-    ranks = np.empty(len(scores))
-    ranks[order] = np.arange(1, len(scores) + 1)
+    pos_scores = np.asarray(pos_scores, dtype=np.float64).reshape(-1)
+    neg_scores = np.asarray(neg_scores, dtype=np.float64).reshape(-1)
     n_pos, n_neg = len(pos_scores), len(neg_scores)
+    if n_pos == 0 or n_neg == 0:
+        raise ValueError("AUROC requires at least one positive and one negative score")
+    scores = np.r_[pos_scores, neg_scores]
+    if not np.isfinite(scores).all():
+        raise ValueError("AUROC scores must be finite")
+    labels = np.r_[np.ones(n_pos, dtype=bool), np.zeros(n_neg, dtype=bool)]
+
+    # Mann-Whitney U with average ranks for ties. Assigning ordinal ranks makes the answer
+    # depend on concatenation/order whenever distances are equal (all-equal scores could
+    # report 0 or 1 instead of the required 0.5).
+    _values, inverse, counts = np.unique(scores, return_inverse=True, return_counts=True)
+    ends = np.cumsum(counts)
+    starts = ends - counts + 1
+    average_ranks = (starts + ends) / 2.0
+    ranks = average_ranks[inverse]
     return float((ranks[labels == 1].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
 
 
@@ -275,8 +296,7 @@ def main():
     with open(os.path.join(ASSET_DIR, "embedding-weights.json"), "w") as f:
         json.dump({
             "input_len": INPUT_LEN, "embed_dim": EMBED_DIM, "n_features": N_FEATURES,
-            "preprocess": {"l_out": pp.L_OUT, "target_frac": pp.TARGET_FRAC, "nfft": pp.NFFT,
-                           "energy_edge": pp.ENERGY_EDGE, "noise_floor_scale": pp.NOISE_FLOOR_SCALE, "smooth": pp.SMOOTH},
+            "preprocess": pp.preprocess_metadata(),
             **weights,
         }, f)
     with open(os.path.join(ASSET_DIR, "prototypes.json"), "w") as f:

@@ -1,0 +1,38 @@
+{
+  "status": "IN_PROGRESS_AT_HANDOFF",
+  "note": "This file was written at a forced turn cutoff while the full 120-generation ES run was still executing in the background (pid launched via nohup+disown, condition=resampled). It reflects real, non-fabricated numbers observed at cutoff time, not a completed result. Re-run or resume monitoring training/zplane_ab/v2_full_variation/es_rl/artifacts/es_resampled_run.log and, once '[es-resampled] done.' appears, run evaluate_es.py to get final closed_overall/closed_clean/closed_impaired + fewshot-LOO numbers.",
+  "smoke_test": {
+    "condition": "resampled",
+    "generations": 5,
+    "popsize": 16,
+    "batch": 4,
+    "completed": true,
+    "warm_start_ce": 2.0427,
+    "warm_start_acc": 0.4929,
+    "final_gen5_val_ce": 1.5485,
+    "final_gen5_val_acc": 0.4857,
+    "best_val_ce": 1.5485,
+    "wall_clock_s": 17.2
+  },
+  "full_run": {
+    "condition": "resampled",
+    "generations_requested": 120,
+    "popsize": 48,
+    "batch": 8,
+    "sigma0": 1.0,
+    "seed": 0,
+    "device": "mps",
+    "param_count": 56256,
+    "sep_cma_es_constants": {
+      "lambda": 48, "mu": 24, "mueff": 13.42,
+      "cc": 7.11e-05, "cs": 0.000274, "c1": 1.19e-05, "cmu": 0.000136, "damps": 1.0
+    },
+    "warm_start_ce": 2.1578,
+    "warm_start_acc": 0.4857,
+    "generations_completed_at_cutoff": 9,
+    "val_ce_trajectory_at_cutoff": [2.0307, 1.8006, 1.7195, 1.5566, 1.5849, 1.5966, 1.5938, 1.5485, 1.5602],
+    "val_acc_trajectory_at_cutoff": [0.4643, 0.4821, 0.5000, 0.5250, 0.5643, 0.5464, 0.5750, 0.5321, 0.5393],
+    "status_at_cutoff": "process still running (pid 56909), gen 9/120, ~186.5s elapsed of an estimated ~2500s (42 min) total. Launched via nohup+disown so it may continue after this session ends; log at artifacts/es_resampled_run.log, final state_dict.pt/manifest.json only written after generation 120 completes.",
+    "final_evaluate_es_report": null
+  }
+}

@@ -125,12 +125,12 @@ not reproduce has been removed rather than restated.
     any CFO+LTI operator" is RETRACTED -- see item 4 above: the FIR ladder does not
     plateau and full-length circular LTI reaches 1.0000.
 
-  * Mechanism, at least in part: a residual carrier offset between the pair, median
-    5.96e-05 cycles/sample = ~1 full phase rotation across the 16384-sample window (p90
-    ~10 rotations). native_preprocess.force_center already fixed the gross version of
-    this, but it hands over a centre estimated from a 512-point PSD, quantized to
-    1/512 = 1.95e-03, while a 16384-sample window needs ~1/16384 = 6.1e-05 -- 32x
-    finer. Derotating alone lifts noise-free coherence 0.237 -> 0.547.
+  * Mechanism, corrected after auditing the generator: the residual carrier offset between
+    the pair is an intended link impairment, not an artefact of the shared 512-bin centre
+    estimate. The generator applies the receiver-side centre nuisance identically to clean
+    and impaired members; applying any common derotation preserves their coherence.
+    Rotating the clean member onto the impaired carrier lifts near-noise-free coherence
+    0.237 -> 0.547 because it removes CFO correction from the supervised task.
 
   * The oracle matched-bandwidth lowpass LOSES to passthrough (0.221 vs 0.276), for the
     same reason: with the carrier not actually at DC, a DC-centred brickwall narrower
@@ -144,16 +144,13 @@ The clean I/Q is the right *object* -- it is the only target that makes the head
 equalizer rather than a feature regressor -- but the way it is currently posed is broken
 in three separable ways, in descending order of damage:
 
-  (T1) IT IS NOT ALIGNED WITH ITS INPUT. Fix this before anything else; the other two are
-       cosmetic next to it. force_center passes the impaired member's centre to the clean
-       member, which was the right idea, but the centre it passes is quantized 32x too
-       coarsely for a 16384-sample window. Estimate the residual offset between the pair
-       directly -- `best_freq_offset()` in this file does it in one zero-padded FFT, no
-       search -- and derotate the TARGET onto the input when the pair is built (in
-       train_multitask.build_targets, which caches, so the cost is paid once). Expected
-       effect, measured: noise-free reachability 0.237 -> 0.547 before any FIR, and
-       0.697 with one. Until this is done the loss contains a large constant the model
-       cannot remove, and campaign comparisons on coherence are comparing noise.
+  (T1) DECLARE THE CARRIER POLICY. `best_freq_offset()` can rotate the target onto the
+       input carrier. That makes an input-carrier-aligned denoiser and raises measured
+       reachability (0.237 -> 0.547 before any FIR), but it explicitly removes link-CFO
+       correction from the learned task. Keeping the original clean-coordinate target asks
+       for CFO correction too and therefore requires a suitable global carrier-recovery
+       mechanism. Neither policy is a free preprocessing fix; every run must name which
+       object it predicts.
 
   (T2) CLEAN ROWS TEACH THE IDENTITY. 25% of the pool has impaired == clean, so their
        coherence loss is minimized exactly by recon = input. That is the opposite of the
@@ -650,16 +647,12 @@ ALIGN_NFINE = 1 << 18       # 3.8e-06 cycles/sample: 0.06 rotations residual at 
 
 
 def derotate_onto(clean, impaired, n_fine=ALIGN_NFINE):
-    """T1 IN ONE CALL: rotate the CLEAN target onto the IMPAIRED input's carrier.
+    """Rotate the CLEAN target onto the IMPAIRED input's carrier.
 
-    native_preprocess.force_center already hands the clean member the impaired member's
-    centre, but that centre comes from an NFFT-point PSD and is therefore quantized ~32x
-    too coarsely for a 16384-sample window; what survives is a residual offset of median
-    5.96e-05 cycles/sample -- about one full phase rotation across the window, p90 ten --
-    which is enough to decorrelate the pair completely.
-
-    Measured effect of removing it: coherence on near-noise-free rows 0.237 -> 0.547 with
-    no filtering at all.
+    The pair's shared receiver-side centre nuisance is common-mode and cannot change their
+    relative coherence. This operation instead absorbs the intended link CFO into the
+    target. Measured near-noise-free coherence rises from 0.237 to 0.547 because the target
+    is now easier and explicitly input-carrier-aligned.
 
     WHAT THIS COSTS SCIENTIFICALLY, stated plainly. A frequency shift is not an LTI
     operation and a conv net with a ~553-sample receptive field cannot perform a global
@@ -720,7 +713,8 @@ def _manifest():
 
 
 def load_eval_rows(split="train", n=256, condition="native", seed=0, need_targets=True,
-                   verify_target_builder=True, align_target=False):
+                   verify_target_builder=True, align_target=False,
+                   allowed_corpus_idx=None):
     """Rows of (impaired_preprocessed, clean_target_preprocessed) + per-item metadata.
 
     split="train" reads the cached _clean_targets_*.npy that training already built (free,
@@ -747,9 +741,15 @@ def load_eval_rows(split="train", n=256, condition="native", seed=0, need_target
     fs = np.load(os.path.join(POOLS, f"{condition}_f{tag}.npy"), mmap_mode="r")
     imp = np.load(os.path.join(POOLS, f"{condition}_imp_{tag}.npy"))
 
+    eligible = np.arange(len(idx))
+    if allowed_corpus_idx is not None:
+        allowed_corpus_idx = np.asarray(allowed_corpus_idx, dtype=np.int64)
+        eligible = np.where(np.isin(idx, allowed_corpus_idx))[0]
+        if not len(eligible):
+            raise ValueError("allowed_corpus_idx selects no rows from the requested split")
     rng = np.random.default_rng(seed)
-    sel = np.sort(rng.choice(len(idx), size=min(n, len(idx)), replace=False)) if n < len(idx) \
-        else np.arange(len(idx))
+    sel = np.sort(rng.choice(eligible, size=min(n, len(eligible)), replace=False)) \
+        if n < len(eligible) else eligible
 
     in_len = xs.shape[-1]
     impaired = xs[sel, 0, :].astype(np.complex128) + 1j * xs[sel, 1, :].astype(np.float64)
@@ -766,7 +766,14 @@ def load_eval_rows(split="train", n=256, condition="native", seed=0, need_target
             zi = (imp_mm[i, :, 0] + 1j * imp_mm[i, :, 1]).astype(np.complex64)
             zc = (cln_mm[i, :, 0] + 1j * cln_mm[i, :, 1]).astype(np.complex64)
             _, ctx = module.preprocess(zi, l_out=in_len)
-            cc, _ = module.preprocess(zc, l_out=in_len, force_center=ctx["center"])
+            pair_kw = {"force_center": ctx["center"]}
+            import inspect
+            params = inspect.signature(module.preprocess).parameters
+            if "force_bw" in params:
+                pair_kw["force_bw"] = ctx["bw"]
+            if "force_resample_frac" in params and "resample_frac" in ctx:
+                pair_kw["force_resample_frac"] = ctx["resample_frac"]
+            cc, _ = module.preprocess(zc, l_out=in_len, **pair_kw)
             got[j] = cc
         del imp_mm, cln_mm
         return got

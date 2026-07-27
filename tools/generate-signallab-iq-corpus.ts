@@ -20,14 +20,60 @@
  * Run:  npx tsx tools/generate-signallab-iq-corpus.ts
  */
 
-import { mkdirSync, writeFileSync, openSync, writeSync, closeSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { synthesizeAnalyticComplexIq } from '../../Atom-SignalLab/src/complex-iq.js';
-import { synthesizeImpairedComplexIq, type ReceiverImpairments } from '../../Atom-SignalLab/src/impairments.js';
-import { waveformCatalog } from '../../Atom-SignalLab/src/waveforms.js';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+
+// The normal app checkout keeps Atom-SignalLab beside this repository. Release
+// generation may instead point at a clean, isolated source tree. This matters
+// when the sibling checkout or one of its file: dependencies is dirty/damaged:
+// release evidence must never repair or silently depend on that mutable tree.
+const SIGNAL_LAB_ROOT = process.env.SIGNALLAB_ROOT
+  ? resolve(process.env.SIGNALLAB_ROOT)
+  : resolve(dirname(fileURLToPath(import.meta.url)), '../../Atom-SignalLab');
+for (const relative of [
+  'src/complex-iq.ts',
+  'src/impairments.ts',
+  'src/waveforms.ts',
+]) {
+  if (!existsSync(join(SIGNAL_LAB_ROOT, relative))) {
+    throw new Error(
+      `SIGNALLAB_ROOT is missing ${relative}: ${SIGNAL_LAB_ROOT}`,
+    );
+  }
+}
+const complexIqModule = await import(
+  pathToFileURL(join(SIGNAL_LAB_ROOT, 'src/complex-iq.ts')).href
+) as typeof import('../../Atom-SignalLab/src/complex-iq.js');
+const impairmentsModule = await import(
+  pathToFileURL(join(SIGNAL_LAB_ROOT, 'src/impairments.ts')).href
+) as typeof import('../../Atom-SignalLab/src/impairments.js');
+const waveformsModule = await import(
+  pathToFileURL(join(SIGNAL_LAB_ROOT, 'src/waveforms.ts')).href
+) as typeof import('../../Atom-SignalLab/src/waveforms.js');
+const { synthesizeAnalyticComplexIq } = complexIqModule;
+const { synthesizeImpairedComplexIq } = impairmentsModule;
+const { waveformCatalog } = waveformsModule;
+type ReceiverImpairments = import(
+  '../../Atom-SignalLab/src/impairments.js'
+).ReceiverImpairments;
 
 const SAMPLE_COUNT = process.env.SAMPLE_COUNT ? parseInt(process.env.SAMPLE_COUNT, 10) : 16384;
+const CORPUS_SEED = process.env.CORPUS_SEED
+  ? parseInt(process.env.CORPUS_SEED, 10)
+  : 20260721;
+const ALLOW_OVERWRITE = process.env.ALLOW_OVERWRITE === '1';
+const START_STRIDE_SAMPLES = process.env.START_STRIDE_SAMPLES
+  ? parseInt(process.env.START_STRIDE_SAMPLES, 10)
+  : SAMPLE_COUNT;
 // 4096 -> 16384 (2026-07-24). At 4096 the capture was too short in TIME to contain
 // the burst structure that distinguishes the bursty digital classes from each other:
 // a Bluetooth Classic slot is 625us, a BLE advertising packet 376us, a GSM normal
@@ -52,6 +98,7 @@ const INSTANTANEOUS_BANDWIDTH_HZ: Record<string, number> = {
   'bluetooth-le-advertising': 2_000_000,     // canonical-timing.ts: channelWidthHz
 };
 const TARGET_PER_CLASS = process.env.TARGET_PER_CLASS ? parseInt(process.env.TARGET_PER_CLASS, 10) : 260;
+const EXACT_TARGET_PER_CLASS = process.env.EXACT_TARGET_PER_CLASS === '1';
 const TARGET_FRACS = [0.08, 0.12, 0.18, 0.25, 0.35, 0.45];
 // 1 in every CLEAN_EVERY realizations is left clean (for prototype enrollment +
 // app-match validation); the rest get SignalLab's seeded receiver impairments.
@@ -257,6 +304,19 @@ const RX_POWER_MIN_DBM = -110;
 const THERMAL_DBM_PER_HZ = -174;
 
 type Descriptor = (typeof waveformCatalog)[number];
+interface MatchedStartRow {
+  profile: string;
+  sampleRateHz: number;
+  bandwidthHz: number;
+  startSampleIndex: number;
+}
+
+const MATCH_STARTS_FROM = process.env.MATCH_STARTS_FROM
+  ? resolve(process.env.MATCH_STARTS_FROM)
+  : null;
+const matchedStarts: MatchedStartRow[] | null = MATCH_STARTS_FROM
+  ? (JSON.parse(readFileSync(MATCH_STARTS_FROM, 'utf8')).items as MatchedStartRow[])
+  : null;
 
 function classOf(d: Descriptor): string {
   if (d.id === 'cw') return 'cw';
@@ -303,16 +363,60 @@ function meanPower(bytes: Uint8Array): number {
 // Stream both binaries to disk as they are produced. Accumulating them in memory and
 // Buffer.concat-ing at the end overflows Node's max buffer length at full corpus size
 // (2 x ~1.8 GB) and throws ERR_OUT_OF_RANGE.
-const outDirEarly = join(dirname(fileURLToPath(import.meta.url)), '..', 'training', 'artifacts', 'signallab-corpus');
+if (!Number.isSafeInteger(SAMPLE_COUNT) || SAMPLE_COUNT < 64) {
+  throw new RangeError('SAMPLE_COUNT must be a safe integer >= 64');
+}
+if (!Number.isSafeInteger(CORPUS_SEED) || CORPUS_SEED < 0) {
+  throw new RangeError('CORPUS_SEED must be a non-negative safe integer');
+}
+if (!Number.isSafeInteger(START_STRIDE_SAMPLES) || START_STRIDE_SAMPLES <= 0) {
+  throw new RangeError('START_STRIDE_SAMPLES must be a positive safe integer');
+}
+if (!Number.isSafeInteger(TARGET_PER_CLASS) || TARGET_PER_CLASS <= 0) {
+  throw new RangeError('TARGET_PER_CLASS must be a positive safe integer');
+}
+
+const defaultOutDir = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'training',
+  'artifacts',
+  'signallab-corpus',
+);
+const outDirEarly = process.env.OUTPUT_DIR
+  ? resolve(process.env.OUTPUT_DIR)
+  : defaultOutDir;
 mkdirSync(outDirEarly, { recursive: true });
-const fdMain = openSync(join(outDirEarly, 'corpus.f32'), 'w');
-const fdClean = openSync(join(outDirEarly, 'corpus_clean.f32'), 'w');
+const outputPaths = [
+  join(outDirEarly, 'corpus.f32'),
+  join(outDirEarly, 'corpus_clean.f32'),
+  join(outDirEarly, 'corpus.json'),
+];
+if (!ALLOW_OVERWRITE) {
+  const existing = outputPaths.filter((path) => existsSync(path));
+  if (existing.length > 0) {
+    throw new Error(
+      `refusing to overwrite an existing corpus: ${existing.join(', ')}; `
+      + 'choose a fresh OUTPUT_DIR (recommended) or set ALLOW_OVERWRITE=1 explicitly',
+    );
+  }
+}
+const fdMain = openSync(outputPaths[0]!, ALLOW_OVERWRITE ? 'w' : 'wx');
+const fdClean = openSync(outputPaths[1]!, ALLOW_OVERWRITE ? 'w' : 'wx');
 const items: Record<string, unknown>[] = [];
-const rand = mulberry32(20260721);
+const rand = mulberry32(CORPUS_SEED);
 
 for (const [cls, profiles] of byClass) {
-  const perProfile = Math.max(8, Math.round(TARGET_PER_CLASS / profiles.length));
-  for (const d of profiles) {
+  for (const [profileIndex, d] of profiles.entries()) {
+    // Historical training builds used a minimum of eight rows per catalog
+    // profile. A sealed evaluation instead needs the declared class population
+    // to be exact, otherwise classes with many profiles (especially OFDM) get
+    // several times more rows than classes with one profile. The exact mode
+    // distributes the remainder deterministically in catalog order.
+    const perProfile = EXACT_TARGET_PER_CLASS
+      ? Math.floor(TARGET_PER_CLASS / profiles.length)
+        + (profileIndex < TARGET_PER_CLASS % profiles.length ? 1 : 0)
+      : Math.max(8, Math.round(TARGET_PER_CLASS / profiles.length));
     // sample rates to sweep: the occupancy-matched set + the app's common rates
     // (where they are wide enough to actually carry the signal).
     // Use the INSTANTANEOUS occupied bandwidth to size the capture. For frequency-
@@ -380,15 +484,46 @@ for (const [cls, profiles] of byClass) {
       // ~0.2 ms per step at any sample rate -> 400 retries sweep ~80 ms, which covers
       // BLE's 20-30 ms advertising interval regardless of fs.
       const stride = Math.max(1, Math.floor(sampleRateHz * 0.0002));
-      let startSampleIndex = k * SAMPLE_COUNT;
+      const matchedStart = matchedStarts?.[items.length];
+      if (matchedStarts && !matchedStart) {
+        throw new Error(
+          `MATCH_STARTS_FROM has no row ${items.length}: ${MATCH_STARTS_FROM}`,
+        );
+      }
+      if (
+        matchedStart
+        && (
+          matchedStart.profile !== d.id
+          || matchedStart.sampleRateHz !== sampleRateHz
+          || matchedStart.bandwidthHz !== bandwidthHz
+        )
+      ) {
+        throw new Error(
+          `MATCH_STARTS_FROM row ${items.length} geometry does not match `
+          + `${d.id}/${sampleRateHz}/${bandwidthHz}`,
+        );
+      }
+      let startSampleIndex = matchedStart?.startSampleIndex
+        ?? k * START_STRIDE_SAMPLES;
       let clean = synthesizeAnalyticComplexIq({ profile: d.id, sampleRateHz, bandwidthHz, sampleCount: SAMPLE_COUNT, startSampleIndex });
       let tries = 0;
-      while (meanPower(clean) <= OCCUPANCY_MIN_POWER && tries < OCCUPANCY_MAX_TRIES) {
+      while (
+        !matchedStart
+        && meanPower(clean) <= OCCUPANCY_MIN_POWER
+        && tries < OCCUPANCY_MAX_TRIES
+      ) {
         tries += 1;
         startSampleIndex += stride;
         clean = synthesizeAnalyticComplexIq({ profile: d.id, sampleRateHz, bandwidthHz, sampleCount: SAMPLE_COUNT, startSampleIndex });
       }
-      if (meanPower(clean) <= OCCUPANCY_MIN_POWER) rejectedEmpty += 1;
+      if (meanPower(clean) <= OCCUPANCY_MIN_POWER) {
+        if (matchedStart) {
+          throw new Error(
+            `matched start row ${items.length} became empty at length ${SAMPLE_COUNT}`,
+          );
+        }
+        rejectedEmpty += 1;
+      }
 
       const input = { profile: d.id, sampleRateHz, bandwidthHz, sampleCount: SAMPLE_COUNT, startSampleIndex };
       const centerHz = FC_MIN_HZ * Math.pow(FC_MAX_HZ / FC_MIN_HZ, rand());
@@ -401,8 +536,15 @@ for (const [cls, profiles] of byClass) {
       // trained implicitly through classification loss, which is a far weaker signal
       // than "reconstruct the emission this capture came from". Same startSampleIndex
       // for both, so they are genuinely the same emission, differing only in channel.
+      // Keep the historical default bitstream reproducible.  A deliberately
+      // new corpus seed also changes the impairment-noise realization, and
+      // incorporates the global row index so profiles do not share noise.
+      const legacyImpairmentSeed = (k + 1) * 2654435761;
+      const impairmentSeed = CORPUS_SEED === 20260721
+        ? legacyImpairmentSeed
+        : Math.imul((items.length + 1) ^ CORPUS_SEED, 2654435761) >>> 0;
       const bytes = impaired
-        ? synthesizeImpairedComplexIq(input, imp, (k + 1) * 2654435761)
+        ? synthesizeImpairedComplexIq(input, imp, impairmentSeed)
         : Uint8Array.from(clean);
       const nuiDraw = drawCaptureNuisances(rand);
       const cleanOut = Uint8Array.from(clean);
@@ -418,15 +560,36 @@ for (const [cls, profiles] of byClass) {
         noiseFigureDb: Math.round(link.noiseFigureDb * 10) / 10,
         centreOffsetFrac: Math.round(nui.centreOffsetFrac * 1000) / 1000,
         adcBits: nui.adcBits, clockErrorPpm: Math.round(nui.clockErrorPpm * 10) / 10,
-        multipathTaps: (imp.multipath ?? []).length,
+        multipathTaps: (imp.multipath ?? []).length, impairmentSeed,
       });
     }
   }
 }
 
 closeSync(fdMain); closeSync(fdClean);
+if (matchedStarts && matchedStarts.length !== items.length) {
+  throw new Error(
+    `MATCH_STARTS_FROM row count ${matchedStarts.length} does not match ${items.length}`,
+  );
+}
+if (EXACT_TARGET_PER_CLASS) {
+  for (const cls of byClass.keys()) {
+    const count = items.filter((item) => item.cls === cls).length;
+    if (count !== TARGET_PER_CLASS) {
+      throw new Error(
+        `exact class target failed for ${cls}: ${count} != ${TARGET_PER_CLASS}`,
+      );
+    }
+  }
+}
 const outDir = outDirEarly;
-writeFileSync(join(outDir, 'corpus.json'), JSON.stringify({
+writeFileSync(outputPaths[2]!, JSON.stringify({
+  corpusSeed: CORPUS_SEED,
+  signalLabRoot: SIGNAL_LAB_ROOT,
+  targetPerClass: TARGET_PER_CLASS,
+  exactTargetPerClass: EXACT_TARGET_PER_CLASS,
+  startStrideSamples: START_STRIDE_SAMPLES,
+  matchedStartsFrom: MATCH_STARTS_FROM,
   sampleCount: SAMPLE_COUNT,
   format: 'cf32le-interleaved',
   classes: [...byClass.keys()].sort(),
@@ -435,7 +598,7 @@ writeFileSync(join(outDir, 'corpus.json'), JSON.stringify({
   hardwareBounds: { srMaxHz: SR_MAX, fcMinHz: FC_MIN_HZ, fcMaxHz: FC_MAX_HZ, rxPowerMaxDbm: RX_POWER_MAX_DBM, rxPowerMinDbm: RX_POWER_MIN_DBM },
   hasCleanPairs: true,
   items,
-}));
+}), { flag: ALLOW_OVERWRITE ? 'w' : 'wx' });
 
 const perClass: Record<string, number> = {};
 for (const it of items) perClass[it.cls] = (perClass[it.cls] ?? 0) + 1;

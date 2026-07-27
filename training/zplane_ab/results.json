@@ -1,0 +1,249 @@
+{
+  "seed": 20260721,
+  "classes": [
+    "am",
+    "bluetooth",
+    "cw",
+    "dsss",
+    "fm",
+    "gsm",
+    "ofdm"
+  ],
+  "cnn": {
+    "manifest": {
+      "backbone": "cnn_production_fresh",
+      "seed": 20260721,
+      "classes": [
+        "am",
+        "bluetooth",
+        "cw",
+        "dsss",
+        "fm",
+        "gsm",
+        "ofdm"
+      ],
+      "episodes_requested": 6000,
+      "episodes_production_reference": 6000,
+      "eval_every": 1000,
+      "param_count": 38208,
+      "wall_clock_train_s": 118.4871805,
+      "infer_latency_ms_per_1k": 138.83268359377033,
+      "clean_closed_set_accuracy": 0.9197080291970803,
+      "per_class": {
+        "am": 1.0,
+        "bluetooth": 1.0,
+        "cw": 1.0,
+        "dsss": 0.857,
+        "fm": 1.0,
+        "gsm": 0.611,
+        "ofdm": 0.952
+      },
+      "best_val_acc_during_training": 0.9197080291970803,
+      "history": {
+        "loss": [
+          0.5077190617918969,
+          0.2672104975283146,
+          0.20102436375897378,
+          0.16150886827893554,
+          0.12728778140619398,
+          0.0982727000778541,
+          0.06632769738929346,
+          0.049015681272547226,
+          0.038036634847987444,
+          0.03180064115318237,
+          0.028212696547678207,
+          0.030470572909223847
+        ],
+        "val_acc": [
+          {
+            "episode": 1000,
+            "acc": 0.9197080291970803
+          },
+          {
+            "episode": 2000,
+            "acc": 0.9197080291970803
+          },
+          {
+            "episode": 3000,
+            "acc": 0.9051094890510949
+          },
+          {
+            "episode": 4000,
+            "acc": 0.9124087591240876
+          },
+          {
+            "episode": 5000,
+            "acc": 0.9051094890510949
+          },
+          {
+            "episode": 6000,
+            "acc": 0.9051094890510949
+          }
+        ],
+        "best_val_acc": 0.9197080291970803,
+        "wall_clock_s": 118.4871805,
+        "episodes": 6000
+      }
+    },
+    "eval": {
+      "closed_fine": 0.9197080291970803,
+      "per_class": {
+        "am": 1.0,
+        "bluetooth": 1.0,
+        "cw": 1.0,
+        "dsss": 0.857,
+        "fm": 1.0,
+        "gsm": 0.611,
+        "ofdm": 0.952
+      },
+      "fewshot": {
+        "loo_am_k1": 0.953,
+        "loo_am_k5": 0.947,
+        "loo_bluetooth_k1": 0.528,
+        "loo_bluetooth_k5": 0.716,
+        "loo_cw_k1": 0.3,
+        "loo_cw_k5": 0.9,
+        "loo_dsss_k1": 0.879,
+        "loo_dsss_k5": 0.857,
+        "loo_fm_k1": 1.0,
+        "loo_fm_k5": 1.0,
+        "loo_gsm_k1": 0.528,
+        "loo_gsm_k5": 0.633,
+        "loo_ofdm_k1": 0.952,
+        "loo_ofdm_k5": 0.952,
+        "loo_k1_mean": 0.734,
+        "loo_k5_mean": 0.858
+      },
+      "param_count": 38208,
+      "wall_clock_train_s": 118.4871805,
+      "episodes": 6000,
+      "infer_latency_ms_per_1k": 138.83268359377033,
+      "classes": [
+        "am",
+        "bluetooth",
+        "cw",
+        "dsss",
+        "fm",
+        "gsm",
+        "ofdm"
+      ]
+    }
+  },
+  "zplane": {
+    "manifest": {
+      "backbone": "zplane_operator",
+      "config": {
+        "width": 64,
+        "layers": 3,
+        "sections": 8,
+        "warm_radius": 0.5,
+        "clip_grad": 1.0
+      },
+      "seed": 20260721,
+      "classes": [
+        "am",
+        "bluetooth",
+        "cw",
+        "dsss",
+        "fm",
+        "gsm",
+        "ofdm"
+      ],
+      "episodes_requested": 1500,
+      "eval_every": 250,
+      "param_count": 56256,
+      "wall_clock_train_s": 614.519028125,
+      "infer_latency_ms_per_1k": 2610.916339843783,
+      "clean_closed_set_accuracy": 0.9124087591240876,
+      "per_class": {
+        "am": 0.947,
+        "bluetooth": 0.938,
+        "cw": 1.0,
+        "dsss": 0.857,
+        "fm": 1.0,
+        "gsm": 0.667,
+        "ofdm": 0.952
+      },
+      "best_val_acc_during_training": 0.9124087591240876,
+      "history": {
+        "loss": [
+          0.8979525570273399,
+          0.5365998000502586,
+          0.4165180679112673
+        ],
+        "val_acc": [
+          {
+            "episode": 250,
+            "acc": 0.7883211678832117
+          },
+          {
+            "episode": 500,
+            "acc": 0.9051094890510949
+          },
+          {
+            "episode": 750,
+            "acc": 0.8978102189781022
+          },
+          {
+            "episode": 1000,
+            "acc": 0.9124087591240876
+          },
+          {
+            "episode": 1250,
+            "acc": 0.9124087591240876
+          },
+          {
+            "episode": 1500,
+            "acc": 0.9124087591240876
+          }
+        ],
+        "best_val_acc": 0.9124087591240876,
+        "wall_clock_s": 614.519028125,
+        "episodes": 1500
+      }
+    },
+    "eval": {
+      "closed_fine": 0.9124087591240876,
+      "per_class": {
+        "am": 0.947,
+        "bluetooth": 0.938,
+        "cw": 1.0,
+        "dsss": 0.857,
+        "fm": 1.0,
+        "gsm": 0.667,
+        "ofdm": 0.952
+      },
+      "fewshot": {
+        "loo_am_k1": 0.939,
+        "loo_am_k5": 0.942,
+        "loo_bluetooth_k1": 0.372,
+        "loo_bluetooth_k5": 0.725,
+        "loo_cw_k1": 0.05,
+        "loo_cw_k5": 0.1,
+        "loo_dsss_k1": 0.719,
+        "loo_dsss_k5": 0.857,
+        "loo_fm_k1": 0.994,
+        "loo_fm_k5": 1.0,
+        "loo_gsm_k1": 0.508,
+        "loo_gsm_k5": 0.661,
+        "loo_ofdm_k1": 0.952,
+        "loo_ofdm_k5": 0.952,
+        "loo_k1_mean": 0.648,
+        "loo_k5_mean": 0.748
+      },
+      "param_count": 56256,
+      "wall_clock_train_s": 614.519028125,
+      "episodes": 1500,
+      "infer_latency_ms_per_1k": 2610.916339843783,
+      "classes": [
+        "am",
+        "bluetooth",
+        "cw",
+        "dsss",
+        "fm",
+        "gsm",
+        "ofdm"
+      ]
+    }
+  }
+}

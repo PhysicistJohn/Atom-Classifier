@@ -176,8 +176,7 @@ def main():
     os.makedirs(ASSET_DIR, exist_ok=True)
     with open(os.path.join(ASSET_DIR, "embedding-weights.json"), "w") as f:
         json.dump({"input_len": INPUT_LEN, "embed_dim": EMBED_DIM, "n_features": N_FEATURES,
-                   "preprocess": {"l_out": pp.L_OUT, "target_frac": pp.TARGET_FRAC, "nfft": pp.NFFT,
-                                  "energy_edge": pp.ENERGY_EDGE, "noise_floor_scale": pp.NOISE_FLOOR_SCALE, "smooth": pp.SMOOTH},
+                   "preprocess": pp.preprocess_metadata(),
                    **weights}, f)
     with open(os.path.join(ASSET_DIR, "prototypes.json"), "w") as f:
         json.dump({"classes": classes, "embed_dim": EMBED_DIM,

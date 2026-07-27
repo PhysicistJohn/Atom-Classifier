@@ -34,15 +34,41 @@ def lin_resample_real(x: np.ndarray, new_len: int) -> np.ndarray:
     return x[i0] * (1 - frac) + x[i0 + 1] * frac
 
 
-def representation_from_psd(psd: np.ndarray, center: float, bw: float) -> tuple[np.ndarray, np.ndarray]:
+def _circular_band(psd: np.ndarray, center: float, half: float) -> np.ndarray:
+    """Frequency-contiguous PSD slice that may cross the fftshift seam."""
+    spectrum = np.asarray(psd, dtype=np.float64)
+    nfft = len(spectrum)
+    span = min(2.0 * half, 1.0)
+    lo_unwrapped = int(round((center - 0.5 * span + 0.5) * nfft))
+    hi_unwrapped = int(round((center + 0.5 * span + 0.5) * nfft))
+    band_n = min(nfft, max(2, hi_unwrapped - lo_unwrapped))
+    indices = (lo_unwrapped + np.arange(band_n)) % nfft
+    return spectrum[indices]
+
+
+def representation_from_psd(
+    psd: np.ndarray,
+    center: float,
+    bw: float,
+    *,
+    circular: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
     """Reduce a (linear, fftshifted) power spectrum + occupied band to a canonical
     log-shape [MAG_LEN] in [0,1] and N_MAG_FEATURES magnitude/spectral scalars.
-    Works identically on a Welch PSD (training) or a tinySA sweep (inference)."""
+    ``circular=True`` is for FFT-derived I/Q spectra; a swept tinySA span is
+    non-periodic and retains the legacy clipped extraction by default."""
     nfft = len(psd)
     half = bw * (0.5 + MARGIN)
-    lo_i = int(np.clip(round((center - half + 0.5) * nfft), 0, nfft - 1))
-    hi_i = int(np.clip(round((center + half + 0.5) * nfft), lo_i + 2, nfft))
-    band = np.asarray(psd[lo_i:hi_i], dtype=np.float64) + 1e-12
+    if circular:
+        spectrum = np.asarray(psd, dtype=np.float64)
+        peak = float(np.max(spectrum))
+        if peak > 0.0:
+            spectrum = spectrum / peak
+        band = _circular_band(spectrum, center, half) + 1e-12
+    else:
+        lo_i = int(np.clip(round((center - half + 0.5) * nfft), 0, nfft - 1))
+        hi_i = int(np.clip(round((center + half + 0.5) * nfft), lo_i + 2, nfft))
+        band = np.asarray(psd[lo_i:hi_i], dtype=np.float64) + 1e-12
 
     # scale-invariant SHAPE: relative-dB above the noise floor, peak-normalised
     logband = 10.0 * np.log10(band)
@@ -68,6 +94,7 @@ def representation_from_psd(psd: np.ndarray, center: float, bw: float) -> tuple[
 
 def magnitude_from_iq(iq: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Training path: complex I/Q -> Welch PSD -> the magnitude representation."""
-    psd = pp._smooth(pp.welch_psd(iq.astype(np.complex128), MAG_NFFT), pp.SMOOTH)
-    center, bw = pp.estimate_band(iq, MAG_NFFT)
-    return representation_from_psd(psd, center, bw)
+    scaled, _ = pp._peak_normalized(pp._as_finite_complex_1d(iq))
+    psd = pp._smooth(pp.welch_psd(scaled, MAG_NFFT), pp.SMOOTH)
+    center, bw = pp.estimate_band(scaled, MAG_NFFT)
+    return representation_from_psd(psd, center, bw, circular=True)
