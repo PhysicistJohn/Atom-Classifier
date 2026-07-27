@@ -1013,3 +1013,69 @@ to move the threshold.
 
 Direction is nonetheless right: v2 sealed scored chirp AUROC 0.7235 and chirp threshold
 recall 0.0. The geometry blend takes AUROC to 0.84 and recall off the floor.
+
+## 17. v3 open-set refit: chirp solved, noise broken. NOT SHIPPABLE.
+
+`v3_scale/fit_v3_openset.py` (55 tests green) refits the additive rejector against v3 fusion
+embeddings, replacing the hard-coded v2 bundle. Two findings from the build worth keeping:
+`FROZEN_V2_WEIGHT` is not v2-bound (it is a branch-LOF rank weight, so the policy
+generalises), and the old runner preprocessed novelty through the **v2 FFT frontend**, which
+would have confounded any v2-vs-v3 comparison. This module uses the v3 frontend.
+
+Run on both replicated fusions. Rebuild was **bit-identical** to each fusion artifact (every
+reproduction error exactly 0.0), so nothing below is a rebuild artifact.
+
+Worst-of across 2 fusion seeds x 2 novelty seeds x 3 prefix lengths:
+
+| gate | v2 control | v3 fusion | bound | |
+|---|---:|---:|---:|---|
+| chirp AUROC | 0.8423 | **0.9716** | >= 0.80 | pass |
+| chirp threshold recall | 0.0967 (fail) | **0.7200** | >= 0.10 | pass |
+| overall AUROC | 0.8494 | 0.7910 | >= 0.72 | pass |
+| known false-unknown rate | 0.0561 | 0.0466 | <= 0.10 | pass |
+| **noise AUROC** | 0.8429 (pass) | **0.6038** | >= 0.80 | **FAIL** |
+| **noise threshold recall** | 0.3467 (pass) | **0.0000** | >= 0.10 | **FAIL** |
+
+**The failure moved rather than closed.** v3 solves chirp outright -- the gate v2 sealed
+scored 0.0 on now reaches recall 0.72-1.00 and AUROC 0.97-1.00 -- and destroys noise
+rejection, which v2 passed comfortably.
+
+### Mechanism, and why this is structural
+
+The v3 frontend estimates occupied bandwidth from autocorrelation and resamples onto a
+dimensionless time coordinate. White noise has no coherent autocorrelation, so its bandwidth
+estimate is degenerate; normalisation then maps noise into the same canonical geometry as a
+real emission and it stops looking anomalous. Chirps have strong but structurally wrong
+autocorrelation, so they become trivially separable.
+
+Scale invariance is bought by discarding absolute scale, and absolute scale is precisely the
+cue that distinguishes noise from signal. This is a real tension between the scale gate and
+the noise gate, not a tuning problem. Note the same trade is visible in the frontend
+diagnostics: the estimator's bandwidth p05 at N4096 is 0.0137, i.e. it badly underestimates
+bandwidth on a tail of rows, and noise is the degenerate limit of that failure.
+
+### What must NOT be done
+
+Do not tune the policy constants, the LOF ensemble shape, or the q95 threshold to recover
+noise. The novelty seeds 20260939/20260940 are the validation evidence, the design seed
+20260938 is already spent, and rule 4 forbids weakening a gate after seeing a result.
+
+### Options, honestly
+
+1. Give the rejector a scale-bearing feature that the classifier does not use, so noise
+   rejection can see what the invariant frontend discards. This is the principled fix and it
+   preserves the closed-set invariance the whole v3 effort exists for.
+2. Design a new rejector on a fresh novelty design seed, validated on further untouched
+   seeds. Costs seeds and time.
+3. Ship v3 closed-set with the v2 rejector, which requires establishing that a v2-fitted
+   rejector is valid on v3 embeddings. The refit above suggests it is not.
+4. Declare the noise gate unmet and do not ship.
+
+### Status
+
+v3 is NOT shippable. Release seed 20260731 remains unspent, which is the correct outcome:
+spending it now would consume it on two predictable noise-gate failures.
+
+Still unmeasured for v3 (HANDOFF 15.3 item 3): N4096-specific clean accuracy and worst
+five-shot balanced. Both were 0.85 knife-edges for v2. They are moot until the noise gate
+has a path.
