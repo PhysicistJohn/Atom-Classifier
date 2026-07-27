@@ -1079,3 +1079,45 @@ spending it now would consume it on two predictable noise-gate failures.
 Still unmeasured for v3 (HANDOFF 15.3 item 3): N4096-specific clean accuracy and worst
 five-shot balanced. Both were 0.85 knife-edges for v2. They are moot until the noise gate
 has a path.
+
+## 18. Remaining closed-set gates measured: N4096 clean fixed, five-shot regressed
+
+`v3_scale/measure_v3_remaining_gates.py` (55 tests green), run on both replicated fusions.
+
+| gate | v2 sealed | v3 s0730 | v3 s0732 | bound | |
+|---|---:|---:|---:|---:|---|
+| N4096 clean accuracy | 0.8464 | **0.9208** | **0.9235** | >= 0.85 | **fixed** |
+| N8192 clean | - | 0.9631 | 0.9631 | - | |
+| N16384 clean | - | 0.9736 | 0.9683 | - | |
+| worst five-shot balanced | 0.8495 | **0.7564** | **0.7552** | >= 0.85 | **worse** |
+
+N4096 clean is comfortably fixed, by +0.074 over the gate. Five-shot moved the wrong way by
+about 0.09 and replicates at both seeds, so it is real and not seed noise.
+
+### Full scorecard against v2's eight sealed failures
+
+| # | gate | v2 | v3 | verdict |
+|---|---|---:|---:|---|
+| 1 | N4096 clean | 0.8464 | 0.9208 | **fixed** |
+| 2 | worst five-shot balanced | 0.8495 | 0.7564 | worse |
+| 3 | chirp AUROC | 0.7235 | 0.9716 | **fixed** |
+| 4 | noise AUROC | 0.7962 | 0.6038 | worse |
+| 5 | chirp threshold recall | 0.0 | 0.7200 | **fixed** |
+| 6 | physical-scale balanced | 0.6741 | 0.7956 | **fixed** |
+| 7 | physical-scale paired cosine | 0.7804 | 0.9406 | **fixed** |
+| 8 | physical-scale paired agreement | 0.6581 | 0.8457 | **fixed** |
+
+Plus one gate v2 PASSED that v3 now fails: noise threshold recall, 0.3467 -> 0.0000.
+
+**Six of eight fixed, three failing: five-shot, noise AUROC, noise threshold recall.**
+
+Two of the three failures are noise rejection and share one suspected cause (section 17).
+The third, five-shot, is independent and is the plausible cost of multilength training:
+expanding each training row into 4096/8192/16384 views buys length invariance and may widen
+within-class embedding variance, which is exactly what a 5-example support set is sensitive
+to. That is a hypothesis with a clean test -- compare against a fusion assembled from the
+NON-multilength baseline branches, which exist and are budget-matched -- and it is being
+diagnosed rather than assumed.
+
+If it holds, it is a genuine three-way trade and should be stated as one: multilength buys
+N4096 length invariance and costs few-shot compactness.
