@@ -14,6 +14,13 @@ jobs:
   # GITHUB_TOKEN covers the sibling checkouts and no PAT or gate job is
   # needed.
   #
+  # SignalLab is checked out TWICE, at two different commits, on purpose:
+  #   Atom-SignalLab     historic, the corpus the checked-in model was fit on
+  #   Atom-SignalLab-IQ  current, the exact-I/Q v2 contract new code builds on
+  # They are separate paths because they are separate facts. Collapsing them
+  # onto one commit would either silently restate the sealed model's training
+  # data or hold the new I/Q code to a contract that no longer exists.
+  #
   # Scope: typecheck + the vitest suite (embedding classifier, magnitude
   # flavor, blind recovery parity, Bayesian source closure). The multi-hour
   # Bayesian model regeneration/validation stages and the sampling-worker
@@ -57,6 +64,17 @@ jobs:
           ref: e7d48afbce7165fa04fd551629891123f3b86d34
           path: Atom-SignalLab
           persist-credentials: false
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: PhysicistJohn/Atom-SignalLab
+          # The exact-I/Q v2 source of truth. Everything under
+          # tools/classifier-receiver-iq.ts and
+          # tools/generate-signallab-iq-corpus.ts imports this checkout, and the
+          # corpus generator refuses to run unless HEAD here is exactly this
+          # commit and the worktree is clean.
+          ref: 98114b100a15ad84875908be5210aae1b2dc7274
+          path: Atom-SignalLab-IQ
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.23.1
@@ -66,6 +84,7 @@ jobs:
             Atom-Classifier/package-lock.json
             Atom-Atomizer/package-lock.json
             Atom-SignalLab/package-lock.json
+            Atom-SignalLab-IQ/package-lock.json
       - name: Install exact npm
         run: npm install --global npm@10.9.8
       - name: Verify exact Node and npm versions
@@ -88,8 +107,36 @@ jobs:
       - name: Install pinned SignalLab runtime dependencies
         working-directory: Atom-SignalLab
         run: npm ci --omit=dev --ignore-scripts
+      - name: Install pinned SignalLab I/Q runtime dependencies
+        working-directory: Atom-SignalLab-IQ
+        # node_modules is ignored by that repo, so this leaves the worktree
+        # clean and the corpus generator's clean-source assertion still holds.
+        run: npm ci --omit=dev --ignore-scripts
       - name: Install Atom-Classifier
         run: npm ci
+      # Called out separately from the aggregate typecheck below so a break in
+      # the exact-I/Q v2 integration is attributed to it directly.
+      - run: npm run typecheck:signal-lab-iq
       - run: npm run typecheck
       - run: npm test
+      # Disposable smoke: prove the corpus generator still runs end to end
+      # against the pinned I/Q checkout and still emits a manifest the training
+      # loader accepts. Deliberately tiny, deliberately thrown away, and
+      # deliberately not written anywhere near training/artifacts -- CI must
+      # never be able to restate the sealed corpus.
+      - name: Smoke the SignalLab I/Q corpus generator
+        shell: bash
+        run: |
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
+          SIGNAL_LAB_SOURCE_COMMIT="98114b100a15ad84875908be5210aae1b2dc7274" \
+          OUTPUT_DIR="$tmp_dir" \
+          SAMPLE_COUNT=256 \
+          TARGET_PER_CLASS=1 \
+          MIN_PER_PROFILE=1 \
+          SIGNAL_LAB_IQ_PROFILES="gsm-normal-burst,bluetooth-le-advertising,nr-n78-tdd-100m,custom-lte" \
+            npx tsx tools/generate-signallab-iq-corpus.ts
+          test -s "$tmp_dir/corpus.json"
+          test -s "$tmp_dir/corpus.f32"
+          test -s "$tmp_dir/corpus_clean.f32"
       - run: npm run audit
