@@ -808,19 +808,35 @@ This is the best worst-length result in the project. It trades ~0.035 closed and
 ~0.069 clean for it, which is a real cost and has not been weighed against the
 release gates.
 
-### 14.4 Provenance defect to fix before any release run
+### 14.4 RETRACTED: there is no provenance defect
 
-`dev_metrics.json` records `architecture.multilength_train: None` and
-`view_consistency_weight: None` even when the run clearly used multilength (the
-log prefix is `[real/multiview]`). **An artifact cannot currently be distinguished
-from its own ablation by reading it.** Given this project has already been misled
-twice by confounded comparisons, record both flags in `architecture` before
-generating any further artifacts.
+This section previously claimed `dev_metrics.json` does not record which variant
+produced an artifact, and recommended fixing that before any further runs. **That
+was wrong and the recommendation was wasted.**
+
+Provenance is recorded, in `training_views`, not in `architecture`. I checked
+`architecture.multilength_train`, found `None`, and concluded the flag was unrecorded
+without reading `training_views` -- a top-level key I had already printed. It contains:
+
+- `enabled: true|false`
+- `lengths: [4096, 8192, 16384]`
+- `expanded_views` and `views_per_eligible_base_row`
+- `base_rows_eligible` / `base_rows_total` / `excluded_by_class`
+- `eligible_corpus_indices_sha256` for exact reproducibility
+- `episode_sampler_rng_contract`
+
+`view_consistency_weight: 0.05` is likewise recorded in the cons005 artifact. Every
+artifact can be distinguished from its own ablation by reading it.
+
+The one genuine gap is minor: `timecorr_real_4000_seed20260730_v3a` reports
+`training_views.enabled: null` because it predates the block. Current code is correct;
+only that one legacy artifact is ambiguous, and its numbers are reproduced exactly by
+`..._rerun1`, which does record it.
 
 ### 14.5 Suggested next steps
 
-1. Fix §14.4 provenance first. It is a few lines and everything downstream depends
-   on artifacts being self-describing.
+1. ~~Fix §14.4 provenance first~~ RETRACTED, see §14.4. No fix is needed; go straight
+   to the complex branch.
 2. Run the complex branch with `--multilength-train --episodes 4000 --seed 20260730`
    so the fusion pair is budget-matched and flag-matched.
 3. Only then assemble v3 fusion. Note there is currently **no v3 fusion path**:
