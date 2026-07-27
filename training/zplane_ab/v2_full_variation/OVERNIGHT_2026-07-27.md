@@ -135,6 +135,28 @@ detection that the architecture change destroyed and flattens the length respons
 0.20 of closed-set doing it. That is a real trade to decide deliberately, not a tuning
 accident — and nothing measured tonight says which corner you want.
 
+### 4c. `w_rec` is not the lever
+
+t5 repeats t4 with the reconstruction weight tripled, 1.0 → 3.0:
+
+| | t4 (w_rec 1.0) | t5 (w_rec 3.0) |
+|---|---|---|
+| closed | 0.4756 | 0.4851 |
+| chirp AUROC | **0.808** | 0.288 |
+| worst-length bal | **0.111** | 0.000 |
+| bott eff. rank | 1.12 | 1.12 |
+| latent class7 | 0.464 | 0.470 |
+| denoise vs passthrough | +0.032 | **+0.049** |
+
+It buys +0.017 coherence and gives back both the open-set recovery and the length invariance
+that cropping had just produced. The latent is unchanged to two decimals on every measure.
+
+So of the three knobs tried, only two do anything, and they pull against each other:
+`skip_dropout`/`magnorm` moves closed-set, cropping moves open-set and length invariance, and
+`w_rec` moves nothing that matters. **None of them moves the latent.** That is the strongest
+statement the campaign supports: the transfer failure is structural, not a weighting problem,
+and no amount of loss balancing addresses a bottleneck the skips make optional.
+
 ## 5. Four things I got wrong, corrected
 
 1. **"The 0.878 physical coherence ceiling."** Quoted in every status report. Wrong — a matched
@@ -170,8 +192,17 @@ a finished one.**
 ## 8. What I would do next
 
 1. **Do not ship any of this.** Shipped assets are untouched and green at 117/117.
-2. The bottleneck needs pressure, not more capacity — `skip_dropout` is the lever that moved,
-   and it is worth a sweep on its own rather than bundled with `magnorm`/`feat_dropout`.
+2. **The transfer failure is structural, so stop tuning it.** Three knobs, one of which
+   (`w_rec`) does nothing and two of which trade against each other, and none moves the latent
+   off effective rank ~1.1. The next attempt should change what the bottleneck *is for*, not
+   how it is weighted. The two candidates the evidence actually supports:
+   - force the reconstruction through the bottleneck alone for some fraction of steps, so the
+     skips cannot carry the signal (`skip_dropout=0.5` is a soft version of this and it is the
+     only architectural knob that moved anything);
+   - drop the U-Net for this purpose. `trunk` (d=128) and `embed` (d=32) already score
+     0.49–0.51 on class7 where `bott` scores 0.23. If a transferable representation is the
+     goal, the encoder that produces `embed` is a better starting point than the bottleneck,
+     and the 38k CNN reaches 0.890 closed-set against the U-Net's best 0.673.
 3. Fix the front end properly: sub-bin centre estimation in `preprocess`. It fixes the target
    corruption *and* the `|c20|` damage, and it is a real receiver improvement. TS-parity blast
    radius, so it is a deliberate change.
@@ -179,3 +210,5 @@ a finished one.**
    it cannot manufacture the high-fill end.
 5. The denoiser should be asked to beat the oracle matched lowpass, not passthrough. Passthrough
    is too weak a bar and it passed that while losing to a filter.
+6. Decide the corner deliberately (§4b). Closed-set, open-set, and length invariance are in
+   genuine tension here and no measurement resolves which one the deployment needs.
