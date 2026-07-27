@@ -72,7 +72,7 @@ jobs:
           # tools/generate-signallab-iq-corpus.ts imports this checkout, and the
           # corpus generator refuses to run unless HEAD here is exactly this
           # commit and the worktree is clean.
-          ref: df571f12667eb0a508a64cda68404f875ab85aa3
+          ref: 98114b100a15ad84875908be5210aae1b2dc7274
           path: Atom-SignalLab-IQ
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -129,7 +129,7 @@ jobs:
         run: |
           tmp_dir="$(mktemp -d)"
           trap 'rm -rf "$tmp_dir"' EXIT
-          SIGNAL_LAB_SOURCE_COMMIT="df571f12667eb0a508a64cda68404f875ab85aa3" \
+          SIGNAL_LAB_SOURCE_COMMIT="98114b100a15ad84875908be5210aae1b2dc7274" \
           OUTPUT_DIR="$tmp_dir" \
           SAMPLE_COUNT=256 \
           TARGET_PER_CLASS=1 \
