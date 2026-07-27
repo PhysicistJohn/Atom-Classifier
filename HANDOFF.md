@@ -1121,3 +1121,69 @@ diagnosed rather than assumed.
 
 If it holds, it is a genuine three-way trade and should be stated as one: multilength buys
 N4096 length invariance and costs few-shot compactness.
+
+## 19. Pose-degeneracy features work; the frozen policy structure cannot use them
+
+### 19.1 The mechanism from section 17 is confirmed
+
+`v3_scale/pose_degeneracy.py` (21 features, FFT-free, phase- and scale-invariant, 25 tests)
+plus `measure_pose_degeneracy.py`. Worst-of 2 novelty seeds x 3 prefix lengths, known =
+training split, novelty = 300 rows/family/seed:
+
+| single feature | noise AUROC | chirp AUROC |
+|---|---:|---:|
+| carrier_phase_coherence | **0.9154** | 0.8513 |
+| log10_relative_lag_magnitude_mean | 0.9004 | - |
+| relative_lag_magnitude_decay_slope | 0.8872 | 0.8736 |
+| high_lag_qualified_fraction | 0.8579 | - |
+| prefix_centre_dispersion | 0.7230 | **0.9612** |
+| *(v3 embedding rejector, section 17)* | *0.6038* | *0.9716* |
+
+Four single features clear the 0.80 noise gate the full refit failed at 0.6038, and noise and
+chirp are carried by DIFFERENT features, which is the right complementary shape. Replicated
+on the enrollment split without fitting, and unchanged under a fixed estimator floor.
+
+Worth keeping: `degenerate_full_band_fallback` scores AUROC **exactly 0.5000**. The
+estimator's own built-in degeneracy flag never fires on any development or novelty row. The
+signal is in the quotient statistics it discards, not the flag it exposes. Three other
+features are dead (`bandwidth_clipped_to_full` 0.5009, `zero_magnitude_prefix_fraction`
+0.5066, `quotient_clip_fraction` 0.5144).
+
+### 19.2 And the frozen policy cannot exploit them
+
+`v3_scale/fit_v3_openset_posedegen.py` (87 tests) adds a third rank term. Design role, fresh
+design seed 20260941, three weights:
+
+| posedegen weight | noise AUROC | noise threshold recall | chirp threshold recall |
+|---:|---:|---:|---:|
+| 0.20 | 0.654 - 0.721 | 0.037 - 0.070 | 1.000 |
+| 0.35 | 0.668 - 0.738 | 0.020 - 0.060 | 0.997 - 1.000 |
+| 0.50 | 0.665 - 0.733 | 0.010 - 0.027 | 0.673 - 1.000 |
+
+Gates are >= 0.80 AUROC and >= 0.10 recall. All three fail. Features scoring 0.9154 alone
+lift the fused rejector only to ~0.74, and threshold recall barely moves.
+
+**The limit is structural.** The frozen policy is a fixed-weight rank blend that must include
+the branch-LOF term, and on v3 embeddings that term is actively wrong for noise -- it ranks
+noise as known (section 17: noise AUROC 0.6038). A fixed blend containing a harmful term
+cannot be rescued by adding a good one; raising the good term's weight only trades noise
+against chirp, which is visible as chirp recall collapsing to 0.673 at weight 0.50.
+
+Weight exploration was stopped at three points. Three points on a design seed is legitimate;
+sweeping until something passes is how a validation seed gets burned.
+
+### 19.3 What this means
+
+The noise gate is reachable -- the information exists and is cleanly separable -- but not
+through this policy. The next step is a policy REDESIGN, not another weight:
+
+1. Let the rejector select or down-weight the branch-LOF term rather than carrying it at a
+   fixed 0.80, e.g. a learned or rank-max combination, fit on training and enrollment only.
+2. Or reject in two stages: pose-degeneracy first (noise), branch LOF second (chirp), since
+   the two families are carried by disjoint features.
+3. Either way it needs a fresh design novelty seed and then untouched validation seeds.
+   20260939/20260940 are now scored for the feature question and 20260941 for the weight
+   question; 20260942 onward are clean.
+
+Do not tune the existing weights, the LOF shape, or q95 to close this. The structure is the
+problem and tuning it would only hide that.
