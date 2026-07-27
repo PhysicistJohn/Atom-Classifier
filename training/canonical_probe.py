@@ -1,27 +1,45 @@
-"""Score the embedding on textbook signals built OUTSIDE the training pipeline.
+"""Score the embedding on textbook signals built OUTSIDE the training pipeline,
+ACROSS CAPTURE LENGTHS.
 
-WHY THIS EXISTS. On 2026-07-25 a retrain on the corrected corpus scored 0.890 closed-set,
-1.000 per-class on cw, and plausible open-set AUROC -- and was broadly non-functional. It
-called a pure carrier gsm, and mapped a carrier, an AM tone and wideband FM to nearly the
-same direction in embedding space (pairwise cosine 0.925, versus 0.400 for the model it
-replaced). Every metric used to approve it was computed on draws from the same generator
-the model trained on, so the corpus was simultaneously the optimisation target and the
-measuring instrument. No in-distribution metric can see a model that has learned "corpus
-cw" instead of "cw" -- the failure only appears on inputs the corpus does not contain.
+WHY THIS EXISTS, AND WHY THE LENGTH SWEEP IS THE WHOLE POINT. On 2026-07-25 a retrain on
+the rebuilt corpus scored 0.890 closed-set and 1.000 per-class on cw, yet called a pure
+carrier gsm. The first version of this file scored it 0/19 and reported "representational
+collapse". That diagnosis was WRONG, and the way it was wrong is the actual lesson.
 
-The collapse also defeats the unknown-threshold, which is why it must be caught here
-rather than papered over downstream: collapse pulls unfamiliar input TOWARD the
-prototypes (mean nearest-prototype distance fell 0.188 -> 0.108), so open-set rejection
-fires LESS on exactly the inputs it should reject most. Tightening the threshold cannot
-recover a collapsed space.
+This file originally hard-coded N=4096 -- copied from src/embedding/embedding-classifier
+.test.ts:39, which is itself the OLD corpus's SAMPLE_COUNT. The rebuilt corpus moved
+SAMPLE_COUNT to 16384. Sweeping the probe length instead of fixing it:
 
-So this module shares no code with the corpus generator and no parameters with training.
-It builds a carrier, an AM tone and an FM tone from their definitions and asks the only
-question the corpus cannot: does the model still know what these are?
+      N     fill    shipped         retrain
+   4096    0.094    16/19  +0.609     0/19  +0.955
+   8192    0.188    17/19  +0.645    10/19  +0.880
+  16384    0.375     5/19  +0.703    18/19  +0.820
+  32768    0.750     2/19  +0.777    10/19  +0.822
+
+Neither model is collapsed. Both are FILL-LOCKED, in mirror image, each competent only
+near its own corpus's capture length. preprocess resamples so occupied bandwidth hits
+TARGET_FRAC then centre-fits to L_OUT, so the fraction of the 1024-sample network input
+that carries signal is linear in raw capture length; for a narrowband emitter whose
+measured bandwidth is floor-limited at ~6/512 by the Hann-512 mainlobe, fill is a pure
+function of SAMPLE_COUNT. Below ~0.2 fill the conv stack sees mostly zero padding and the
+12 scalar features read out 1/fill rather than modulation.
+
+So the "independent oracle" was not independent: it silently inherited the old corpus's
+geometry through a hard-coded constant, and then reported the resulting mismatch as a
+property of the model. An instrument built to escape in-distribution evaluation carried a
+parameter from the very distribution it was meant to escape. That is why this file now
+sweeps length and gates on the WORST length, not a chosen one.
+
+The underlying defect is upstream, and the generator names it at
+tools/generate-signallab-iq-corpus.ts:111 -- captureLengthSamples "FIXED at SAMPLE_COUNT
+-- not yet swept; known gap". Every other nuisance was widened and randomised; this one
+was moved from one fixed point to another, which is the worst case: a distribution shift
+with coverage on neither side. Until capture length is swept in the corpus, NO model will
+pass the invariance bar here, and that failure is the correct output rather than something
+to tune around.
 
 Run:  .venv-training/bin/python training/canonical_probe.py [assets_dir]
-Exits non-zero if the model falls below the bars in GATE -- run it after any retrain,
-before the assets are copied into src/embedding/assets.
+Exits non-zero if the model falls below the bars in GATE.
 """
 from __future__ import annotations
 
@@ -37,12 +55,20 @@ from train import np_forward  # noqa: E402
 
 LIVE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "embedding", "assets")
 
-# Bars calibrated on the two measured models: the shipped one scores 16/19 at cos 0.609,
-# the collapsed retrain 0/19 at cos 0.955. The cos bar sits between them with margin on
-# both sides -- close enough to 0.609 to catch real degradation, far enough that ordinary
-# run-to-run variation in a healthy retrain will not trip it.
+# Realistic capture lengths. A field receiver does not hand the classifier a fixed N, and
+# preprocess accepts any length, so a model that only works at one is not deployable --
+# it is matched to a corpus constant, which is precisely the failure this file exists to
+# surface.
+LENGTHS = (4096, 8192, 16384, 32768)
+
+# Bars apply to the WORST length in the sweep, never the best. Gating on the best is how
+# the first version of this file certified a fill-locked model as healthy.
+#
+# Both models measured so far fail min_correct_frac: shipped bottoms out at 2/19 (0.105)
+# at N=32768, the retrain at 0/19 at N=4096. That is the honest state -- capture length is
+# an unswept nuisance in the corpus, so nothing trained on it can be length-invariant. Do
+# NOT relax these bars to make a model pass; fix the corpus.
 GATE = {"min_correct_frac": 0.75, "max_mean_pairwise_cos": 0.78}
-N = 4096
 
 
 def awgn(s, snr_db, rng):
@@ -52,9 +78,12 @@ def awgn(s, snr_db, rng):
     return s + np.sqrt(npow / 2) * (rng.standard_normal(len(s)) + 1j * rng.standard_normal(len(s)))
 
 
-def build_probes(rng):
-    """Textbook definitions only. Nothing here imports the corpus generator."""
-    t = np.arange(N)
+def build_probes(rng, n):
+    """Textbook definitions only. Nothing here imports the corpus generator.
+
+    Length is a PARAMETER, never a constant. All rates are in cycles/sample, so the
+    signals are the same signals at every n -- only the capture window changes."""
+    t = np.arange(n)
     out = []
     for f in (0.0117, 0.05, 0.1, 0.2, -0.15):          # the TS suite's tone, plus offsets
         for snr in (40, 20, 10):
@@ -69,18 +98,18 @@ def build_probes(rng):
     return out
 
 
-def score(assets_dir, verbose=True):
+def score_at(assets_dir, n, verbose=False):
+    """Score every probe at one capture length. Returns (frac_correct, mean_pairwise_cos, fill)."""
     w = json.load(open(os.path.join(assets_dir, "embedding-weights.json")))
     pj = json.load(open(os.path.join(assets_dir, "prototypes.json")))
     protos = np.asarray(pj["prototypes"], np.float32)
     classes, thr = pj["classes"], float(pj["unknown_threshold"])
 
-    probes = build_probes(np.random.default_rng(7))
-    embs, hits = [], 0
-    if verbose:
-        print(f"=== {assets_dir} (threshold {thr:.4f}) ===")
-    for label, want, iq in probes:
-        x, _ = pp.preprocess(np.asarray(iq, np.complex128))
+    embs, hits, fill = [], 0, None
+    for label, want, iq in build_probes(np.random.default_rng(7), n):
+        x, ctx = pp.preprocess(np.asarray(iq, np.complex128))
+        if fill is None:  # signal-carrying fraction of the network input, the key geometry
+            fill = min(int(max(64, round(n * ctx["bw"] / pp.TARGET_FRAC))), pp.L_OUT) / pp.L_OUT
         e = np_forward(pp.to_channels(x), w)
         embs.append(e)
         d = np.sum((protos - e) ** 2, axis=1)
@@ -89,35 +118,51 @@ def score(assets_dir, verbose=True):
         hits += got == want
         if verbose:
             top3 = {classes[i]: round(float(d[i]), 3) for i in o[:3]}
-            print(f"  {'OK ' if got == want else 'FAIL'} {label:<20} want {want:<3} got {got:<9} {top3}")
+            print(f"    {'OK ' if got == want else 'FAIL'} {label:<20} want {want:<3} got {got:<9} {top3}")
 
     E = np.stack(embs)
     E = E / np.linalg.norm(E, axis=1, keepdims=True)
     iu = np.triu_indices(len(E), 1)
-    cos = float((E @ E.T)[iu].mean())
-    frac = hits / len(probes)
+    return hits / len(embs), float((E @ E.T)[iu].mean()), fill
+
+
+def score(assets_dir, verbose=True):
+    """Sweep capture length. Gates on the WORST length, which is the deployable one."""
+    rows = [(n,) + score_at(assets_dir, n) for n in LENGTHS]
     if verbose:
-        print(f"  -> {hits}/{len(probes)} correct ({frac*100:.0f}%), "
-              f"probe-embedding mean pairwise cos {cos:+.3f}")
-        print(f"     gates: correct >= {GATE['min_correct_frac']:.2f}, "
+        print(f"=== {assets_dir} ===")
+        print(f"  {'N':>7} {'fill':>6} {'correct':>9} {'pairwise cos':>13}")
+        for n, frac, cos, fill in rows:
+            print(f"  {n:>7} {fill:>6.3f} {frac*100:>8.0f}% {cos:>+13.3f}")
+    worst_frac = min(r[1] for r in rows)
+    worst_cos = max(r[2] for r in rows)
+    best_frac = max(r[1] for r in rows)
+    if verbose:
+        print(f"  worst-length: {worst_frac*100:.0f}% correct, cos {worst_cos:+.3f}"
+              f"   (best length reaches {best_frac*100:.0f}% -- not what is gated)")
+        print(f"  gates on WORST: correct >= {GATE['min_correct_frac']:.2f}, "
               f"cos <= {GATE['max_mean_pairwise_cos']:.2f}")
-    return frac, cos
+    return worst_frac, worst_cos, best_frac
 
 
 def main():
     d = sys.argv[1] if len(sys.argv) > 1 else LIVE
-    frac, cos = score(d)
+    frac, cos, best = score(d)
     fails = []
     if frac < GATE["min_correct_frac"]:
-        fails.append(f"only {frac*100:.0f}% of canonical probes correct")
+        fails.append(f"worst capture length scores only {frac*100:.0f}% "
+                     f"(best length reaches {best*100:.0f}%) -- model is fill-locked, not length-invariant")
     if cos > GATE["max_mean_pairwise_cos"]:
-        fails.append(f"embedding collapse: probes at mean pairwise cos {cos:+.3f}")
+        fails.append(f"probe embeddings degenerate at some length: mean pairwise cos {cos:+.3f}")
     if fails:
         print("\nCANONICAL PROBE FAILED -- do not ship:")
         for f in fails:
             print(f"  - {f}")
+        print("\n  Expected until capture length is swept in the corpus generator")
+        print("  (tools/generate-signallab-iq-corpus.ts:111 declares it an unswept gap).")
+        print("  Fix the corpus; do not relax GATE.")
         return 1
-    print("\ncanonical probe PASSED")
+    print("\ncanonical probe PASSED across all capture lengths")
     return 0
 
 
