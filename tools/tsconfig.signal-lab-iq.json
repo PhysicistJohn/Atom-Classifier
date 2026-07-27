@@ -1,0 +1,20 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../.artifacts/signal-lab-iq",
+    "rootDir": "../..",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "classifier-receiver-iq.ts",
+    "classifier-receiver-iq.test.ts",
+    "generate-signallab-iq-corpus.ts",
+    "../../Atom-SignalLab-IQ/src/complex-iq.ts",
+    "../../Atom-SignalLab-IQ/src/contracts.ts",
+    "../../Atom-SignalLab-IQ/src/fixed-digital-profile-binding.ts",
+    "../../Atom-SignalLab-IQ/src/impairments.ts",
+    "../../Atom-SignalLab-IQ/src/iq-resampler.ts",
+    "../../Atom-SignalLab-IQ/src/waveforms.ts"
+  ]
+}

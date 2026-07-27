@@ -4,30 +4,54 @@
  * feeds the classifier. This replaces the mismatched rfgen training data so the
  * embedding learns SignalLab's actual I/Q distribution.
  *
- * The 34 catalog profiles are grouped into I/Q-separable modulation classes that
- * map cleanly onto the app's protocol-leaf taxonomy (bandwidth/band context then
- * disambiguates the OFDM protocols at fusion time):
+ * The 37 classifier-supported catalog profiles are grouped into I/Q-separable
+ * modulation classes that map cleanly onto the app's protocol-leaf taxonomy
+ * (bandwidth/band context then disambiguates the OFDM protocols at fusion time).
+ * The five `ref-*` constellation references are intentionally outside this
+ * seven-class corpus:
  *   cw · am · fm · gsm(GERAN) · ofdm(LTE+NR+Wi-Fi-OFDM) · dsss(Wi-Fi HR/DSSS) · bluetooth
  *
- * SignalLab's I/Q is clean and (for continuous signals) deterministic per
- * geometry, so diversity comes from varied capture geometry (fractional
- * occupancy) + moving time windows here, plus light AWGN/CFO added in Python.
+ * SignalLab's fixed-profile I/Q is acquired only at its content-bound native
+ * geometry. Sample-rate diversity, capture windowing, and receiver/channel
+ * nuisances are separately named transforms whose source and output hashes are
+ * retained in the manifest. Transformed bytes are never described as the
+ * canonical qualified artifact.
  *
  * Output (git-ignored):
  *   training/artifacts/signallab-corpus/corpus.f32   concatenated cf32le blocks
  *   training/artifacts/signallab-corpus/corpus.json  manifest (order matches .f32)
  *
- * Run:  npx tsx tools/generate-signallab-iq-corpus.ts
+ * Run:
+ *   SIGNAL_LAB_SOURCE_COMMIT=<full-clean-commit> \
+ *     npx tsx tools/generate-signallab-iq-corpus.ts
+ *
+ * A run refuses a dirty SignalLab source checkout. Set OUTPUT_DIR to generate a
+ * disposable smoke corpus without touching an existing corpus.
  */
 
-import { mkdirSync, writeFileSync, openSync, writeSync, closeSync } from 'node:fs';
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { synthesizeAnalyticComplexIq } from '../../Atom-SignalLab/src/complex-iq.js';
-import { synthesizeImpairedComplexIq, type ReceiverImpairments } from '../../Atom-SignalLab/src/impairments.js';
-import { waveformCatalog } from '../../Atom-SignalLab/src/waveforms.js';
+import { dirname, join, resolve } from 'node:path';
+import type { ReceiverImpairments } from '../../Atom-SignalLab-IQ/src/impairments.js';
+import { waveformCatalog } from '../../Atom-SignalLab-IQ/src/waveforms.js';
+import {
+  CLASSIFIER_RECEIVER_IQ_TRANSFORM_ALGORITHM,
+  CLASSIFIER_RECEIVER_IQ_TRANSFORM_ID,
+  acquireClassifierReceiverCleanIq,
+  applyClassifierReceiverImpairments,
+  sha256Cf32le,
+} from './classifier-receiver-iq.js';
 
-const SAMPLE_COUNT = process.env.SAMPLE_COUNT ? parseInt(process.env.SAMPLE_COUNT, 10) : 16384;
+const SAMPLE_COUNT = integerEnvironment('SAMPLE_COUNT', 16384, 1);
 // 4096 -> 16384 (2026-07-24). At 4096 the capture was too short in TIME to contain
 // the burst structure that distinguishes the bursty digital classes from each other:
 // a Bluetooth Classic slot is 625us, a BLE advertising packet 376us, a GSM normal
@@ -51,11 +75,10 @@ const INSTANTANEOUS_BANDWIDTH_HZ: Record<string, number> = {
   'bluetooth-classic-connected': 1_000_000,  // waveforms.ts: channelWidthHz
   'bluetooth-le-advertising': 2_000_000,     // canonical-timing.ts: channelWidthHz
 };
-const TARGET_PER_CLASS = process.env.TARGET_PER_CLASS ? parseInt(process.env.TARGET_PER_CLASS, 10) : 260;
-const TARGET_FRACS = [0.08, 0.12, 0.18, 0.25, 0.35, 0.45];
-// 1 in every CLEAN_EVERY realizations is left clean (for prototype enrollment +
-// app-match validation); the rest get SignalLab's seeded receiver impairments.
-const CLEAN_EVERY = 4;
+const TARGET_PER_CLASS = integerEnvironment('TARGET_PER_CLASS', 260, 1);
+const MIN_PER_PROFILE = integerEnvironment('MIN_PER_PROFILE', 8, 1);
+// A class-independent RNG draw leaves 25% clean for prototype enrollment and
+// app-match validation; the rest receive seeded receiver impairments.
 
 function mulberry32(seed: number): () => number {
   let s = seed >>> 0;
@@ -83,7 +106,7 @@ function mulberry32(seed: number): () => number {
 //
 // Two structural rules follow, and both are enforced below:
 //   1. Draw every nuisance from its own RNG stream keyed on the realization index,
-//      never from a per-profile counter (the old code used `k % CLEAN_EVERY` for
+//      never from a per-profile counter (the old code used `k % 4` for
 //      clean-vs-impaired while `k % rates.length` chose the sample rate, so
 //      impairment status was locked to sample rate).
 //   2. Sweep to the edges of what the field actually presents, not to what looks
@@ -107,7 +130,7 @@ const NUISANCE_SPEC = {
   adcBits: '30% of realizations quantized to U{8,10,12,14} bits',
   clockErrorPpm: 'U(-40, 40) ppm applied as a resample stretch',
   impairedProbability: 'independent Bernoulli(0.75), NOT a k%4 pattern locked to sample rate',
-  sampleRateHz: 'geometric sweep over the full feasible range per profile (Nyquist+guard .. SR_MAX)',
+  sampleRateHz: 'receiver target rate: geometric sweep over the feasible range per profile (Nyquist+guard .. SR_MAX); fixed SignalLab artifacts are first acquired at their native rate and explicitly resampled',
   captureLengthSamples: 'FIXED at SAMPLE_COUNT -- not yet swept (flat binary format); known gap',
   interference: 'NOT MODELLED -- known gap',
   fadingDoppler: 'NOT MODELLED (multipath is static) -- known gap',
@@ -273,19 +296,26 @@ function clampInt(value: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, Math.round(value)));
 }
 
-// group profiles by class
+const PROFILE_FILTER = profileFilterEnvironment();
+
+// Group the classifier-supported profiles by class. A filter is intended for
+// bounded smoke tests; by default this uses all 37 profiles accepted by classOf,
+// not the five `ref-*` constellation references in SignalLab's 42-profile catalog.
 const byClass = new Map<string, Descriptor[]>();
 for (const d of waveformCatalog) {
+  if (PROFILE_FILTER !== null && !PROFILE_FILTER.has(d.id)) continue;
   const cls = classOf(d);
   if (cls === 'unknown') continue;
   (byClass.get(cls) ?? byClass.set(cls, []).get(cls)!).push(d);
+}
+if (byClass.size === 0) {
+  throw new Error('SIGNAL_LAB_IQ_PROFILES selected no supported catalog profiles');
 }
 
 // Occupancy gate: clean synthesis of an idle window is *exactly* zero, so any
 // positive floor separates "emission present" from "idle gap" unambiguously.
 const OCCUPANCY_MIN_POWER = 1e-9;
 const OCCUPANCY_MAX_TRIES = 400;   // BLE's 20-30ms advertising interval at a 0.16ms stride
-let rejectedEmpty = 0;
 
 /** The synthesizers hand back Uint8Array holding raw cf32le bytes, NOT samples.
  *  Every numeric inspection/modification below goes through this float view. */
@@ -303,15 +333,31 @@ function meanPower(bytes: Uint8Array): number {
 // Stream both binaries to disk as they are produced. Accumulating them in memory and
 // Buffer.concat-ing at the end overflows Node's max buffer length at full corpus size
 // (2 x ~1.8 GB) and throws ERR_OUT_OF_RANGE.
-const outDirEarly = join(dirname(fileURLToPath(import.meta.url)), '..', 'training', 'artifacts', 'signallab-corpus');
+export function generateSignalLabIqCorpus(): void {
+const signalLabSource = assertCleanSignalLabSource();
+const outDirEarly = process.env.OUTPUT_DIR
+  ? resolve(process.env.OUTPUT_DIR)
+  : join(dirname(fileURLToPath(import.meta.url)), '..', 'training', 'artifacts', 'signallab-corpus');
 mkdirSync(outDirEarly, { recursive: true });
-const fdMain = openSync(join(outDirEarly, 'corpus.f32'), 'w');
-const fdClean = openSync(join(outDirEarly, 'corpus_clean.f32'), 'w');
-const items: Record<string, unknown>[] = [];
+const tempSuffix = `.tmp-${process.pid}`;
+const mainTempPath = join(outDirEarly, `corpus.f32${tempSuffix}`);
+const cleanTempPath = join(outDirEarly, `corpus_clean.f32${tempSuffix}`);
+const manifestTempPath = join(outDirEarly, `corpus.json${tempSuffix}`);
+const items: Array<Record<string, unknown> & {
+  readonly cls: string;
+  readonly cleanPower: number;
+}> = [];
 const rand = mulberry32(20260721);
+let realizationOrdinal = 0;
+let rejectedEmpty = 0;
+let fdMain: number | undefined;
+let fdClean: number | undefined;
 
+try {
+fdMain = openSync(mainTempPath, 'wx');
+fdClean = openSync(cleanTempPath, 'wx');
 for (const [cls, profiles] of byClass) {
-  const perProfile = Math.max(8, Math.round(TARGET_PER_CLASS / profiles.length));
+  const perProfile = Math.max(MIN_PER_PROFILE, Math.round(TARGET_PER_CLASS / profiles.length));
   for (const d of profiles) {
     // sample rates to sweep: the occupancy-matched set + the app's common rates
     // (where they are wide enough to actually carry the signal).
@@ -322,7 +368,8 @@ for (const [cls, profiles] of byClass) {
     const occ = INSTANTANEOUS_BANDWIDTH_HZ[d.id] ?? d.occupiedBandwidthHz;
 
     // SAMPLE-RATE DECORRELATION (2026-07-24).
-    // Previously the rate set was occ/TARGET_FRACS, i.e. fs was DETERMINED by the
+    // Previously the rate set was occupied bandwidth divided by a fixed
+    // fractional-occupancy list, i.e. fs was DETERMINED by the
     // signal's own bandwidth. That made capture parameterization a class label:
     // measured I(class; fs) = 0.859 bits, 31% of class entropy, with dsss never
     // appearing below 30 MHz and am/cw/fm/gsm never above it. A classifier can then
@@ -345,7 +392,7 @@ for (const [cls, profiles] of byClass) {
     if (fsFloor <= SR_MAX) {
       for (let i = 0; i < RATES_PER_PROFILE; i++) {
         // geometric sweep floor -> SR_MAX so every octave is represented
-        const t = RATES_PER_PROFILE === 1 ? 0 : i / (RATES_PER_PROFILE - 1);
+        const t = i / (RATES_PER_PROFILE - 1);
         rates.push(clampInt(fsFloor * Math.pow(SR_MAX / fsFloor, t), fsFloor, SR_MAX));
       }
       // keep the app's real capture rates in the mix where they are legal
@@ -357,7 +404,11 @@ for (const [cls, profiles] of byClass) {
       // stride by a coprime step so a small perProfile still walks the whole rate
       // sweep instead of only its first few entries
       const sampleRateHz = rates[(k * 7) % rates.length]!;
-      const bandwidthHz = clampInt(occ * 1.15, 1_000, Math.floor(sampleRateHz * 0.95));
+      const captureBandwidthHz = clampInt(
+        occ * 1.15,
+        1_000,
+        Math.floor(sampleRateHz * 0.95),
+      );
       const impaired = rand() < 0.75;   // independent of k, so independent of sample rate
 
       // OCCUPANCY REJECTION SAMPLING (2026-07-24).
@@ -381,16 +432,31 @@ for (const [cls, profiles] of byClass) {
       // BLE's 20-30 ms advertising interval regardless of fs.
       const stride = Math.max(1, Math.floor(sampleRateHz * 0.0002));
       let startSampleIndex = k * SAMPLE_COUNT;
-      let clean = synthesizeAnalyticComplexIq({ profile: d.id, sampleRateHz, bandwidthHz, sampleCount: SAMPLE_COUNT, startSampleIndex });
+      let receiverClean = acquireClassifierReceiverCleanIq({
+        profile: d.id,
+        targetSampleRateHz: sampleRateHz,
+        captureBandwidthHz,
+        targetSampleCount: SAMPLE_COUNT,
+        targetStartSampleIndex: startSampleIndex,
+        realizationIndex: realizationOrdinal,
+      });
+      let clean = receiverClean.bytes;
       let tries = 0;
       while (meanPower(clean) <= OCCUPANCY_MIN_POWER && tries < OCCUPANCY_MAX_TRIES) {
         tries += 1;
         startSampleIndex += stride;
-        clean = synthesizeAnalyticComplexIq({ profile: d.id, sampleRateHz, bandwidthHz, sampleCount: SAMPLE_COUNT, startSampleIndex });
+        receiverClean = acquireClassifierReceiverCleanIq({
+          profile: d.id,
+          targetSampleRateHz: sampleRateHz,
+          captureBandwidthHz,
+          targetSampleCount: SAMPLE_COUNT,
+          targetStartSampleIndex: startSampleIndex,
+          realizationIndex: realizationOrdinal + tries,
+        });
+        clean = receiverClean.bytes;
       }
       if (meanPower(clean) <= OCCUPANCY_MIN_POWER) rejectedEmpty += 1;
 
-      const input = { profile: d.id, sampleRateHz, bandwidthHz, sampleCount: SAMPLE_COUNT, startSampleIndex };
       const centerHz = FC_MIN_HZ * Math.pow(FC_MAX_HZ / FC_MIN_HZ, rand());
       const link = drawLinkBudget(rand, sampleRateHz);
       const imp = drawImpairments(rand, sampleRateHz, centerHz, link.snrDb);
@@ -402,7 +468,11 @@ for (const [cls, profiles] of byClass) {
       // than "reconstruct the emission this capture came from". Same startSampleIndex
       // for both, so they are genuinely the same emission, differing only in channel.
       const bytes = impaired
-        ? synthesizeImpairedComplexIq(input, imp, (k + 1) * 2654435761)
+        ? applyClassifierReceiverImpairments(
+          clean,
+          imp,
+          (realizationOrdinal + 1) * 2654435761,
+        )
         : Uint8Array.from(clean);
       const nuiDraw = drawCaptureNuisances(rand);
       const cleanOut = Uint8Array.from(clean);
@@ -412,30 +482,63 @@ for (const [cls, profiles] of byClass) {
       writeSync(fdMain, Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
       writeSync(fdClean, Buffer.from(cleanOut.buffer, cleanOut.byteOffset, cleanOut.byteLength));
       items.push({
-        cls, profile: d.id, sampleRateHz, bandwidthHz, impaired, startSampleIndex,
+        cls,
+        profile: d.id,
+        sampleRateHz,
+        captureBandwidthHz,
+        // Compatibility alias for existing exploratory training scripts.
+        bandwidthHz: captureBandwidthHz,
+        bandwidthSemantics: 'receiver-capture-bandwidth',
+        impaired,
+        startSampleIndex,
         cleanPower: meanPower(clean), centerHz: Math.round(centerHz),
+        sourceIq: receiverClean.source,
+        receiverTransform: receiverClean.transform,
+        receiverOutputSamplesSha256:
+          receiverClean.transform.outputSamplesSha256,
+        cleanPairSha256: sha256Cf32le(cleanOut),
+        captureSha256: sha256Cf32le(bytes),
         snrDb: Math.round(link.snrDb * 10) / 10, rxPowerDbm: Math.round(link.rxPowerDbm * 10) / 10,
         noiseFigureDb: Math.round(link.noiseFigureDb * 10) / 10,
         centreOffsetFrac: Math.round(nui.centreOffsetFrac * 1000) / 1000,
         adcBits: nui.adcBits, clockErrorPpm: Math.round(nui.clockErrorPpm * 10) / 10,
         multipathTaps: (imp.multipath ?? []).length,
       });
+      realizationOrdinal += 1;
     }
   }
 }
 
-closeSync(fdMain); closeSync(fdClean);
+closeSync(fdMain); fdMain = undefined;
+closeSync(fdClean); fdClean = undefined;
 const outDir = outDirEarly;
-writeFileSync(join(outDir, 'corpus.json'), JSON.stringify({
+writeFileSync(manifestTempPath, JSON.stringify({
+  schemaVersion: 2,
   sampleCount: SAMPLE_COUNT,
   format: 'cf32le-interleaved',
   classes: [...byClass.keys()].sort(),
   count: items.length,
+  signalLabSource,
+  sourcePolicy: {
+    fixedProfiles: 'exact-native-qualified-artifact-before-receiver-transform',
+    flexibleProfiles: 'intrinsic-signal-bandwidth-continuous-source',
+    transformedQualification: 'derived-from-independently-verified-digital-baseband',
+    canonicalArtifactBytesRelabeled: false,
+    receiverCaptureBandwidthSeparate: true,
+    receiverTransform: {
+      id: CLASSIFIER_RECEIVER_IQ_TRANSFORM_ID,
+      algorithm: CLASSIFIER_RECEIVER_IQ_TRANSFORM_ALGORITHM,
+      boundary: 'zero',
+    },
+  },
   nuisanceSpec: NUISANCE_SPEC,
   hardwareBounds: { srMaxHz: SR_MAX, fcMinHz: FC_MIN_HZ, fcMaxHz: FC_MAX_HZ, rxPowerMaxDbm: RX_POWER_MAX_DBM, rxPowerMinDbm: RX_POWER_MIN_DBM },
   hasCleanPairs: true,
   items,
-}));
+}), { flag: 'wx' });
+renameSync(mainTempPath, join(outDir, 'corpus.f32'));
+renameSync(cleanTempPath, join(outDir, 'corpus_clean.f32'));
+renameSync(manifestTempPath, join(outDir, 'corpus.json'));
 
 const perClass: Record<string, number> = {};
 for (const it of items) perClass[it.cls] = (perClass[it.cls] ?? 0) + 1;
@@ -443,3 +546,102 @@ console.log(`wrote ${items.length} realizations (${SAMPLE_COUNT} samples each) t
 console.log('per class:', perClass);
 const stillEmpty = items.filter((it) => it.cleanPower <= OCCUPANCY_MIN_POWER).length;
 console.log(`occupancy gate: ${rejectedEmpty} items exhausted ${OCCUPANCY_MAX_TRIES} retries; ${stillEmpty}/${items.length} (${(stillEmpty / items.length * 100).toFixed(2)}%) still have no emission`);
+} catch (error) {
+  if (fdMain !== undefined) safeClose(fdMain);
+  if (fdClean !== undefined) safeClose(fdClean);
+  rmSync(mainTempPath, { force: true });
+  rmSync(cleanTempPath, { force: true });
+  rmSync(manifestTempPath, { force: true });
+  throw error;
+}
+}
+
+function integerEnvironment(
+  name: string,
+  fallback: number,
+  minimum: number,
+): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  if (!/^[0-9]+$/.test(raw)) {
+    throw new RangeError(`${name} must be a base-10 integer`);
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    throw new RangeError(`${name} must be a safe integer no smaller than ${minimum}`);
+  }
+  return parsed;
+}
+
+function profileFilterEnvironment(): ReadonlySet<string> | null {
+  const raw = process.env.SIGNAL_LAB_IQ_PROFILES;
+  if (raw === undefined || raw.trim() === '') return null;
+  const profiles = raw.split(',').map((value) => value.trim()).filter(Boolean);
+  if (profiles.length === 0 || new Set(profiles).size !== profiles.length) {
+    throw new Error('SIGNAL_LAB_IQ_PROFILES must contain unique comma-separated profile IDs');
+  }
+  const known = new Set(waveformCatalog.map((descriptor) => descriptor.id));
+  const unknown = profiles.filter((profile) => !known.has(profile as never));
+  if (unknown.length > 0) {
+    throw new Error(`SIGNAL_LAB_IQ_PROFILES contains unknown profiles: ${unknown.join(', ')}`);
+  }
+  return new Set(profiles);
+}
+
+function assertCleanSignalLabSource(): {
+  readonly repository: 'Atom-SignalLab';
+  readonly commit: string;
+  readonly dirty: false;
+} {
+  const repositoryRoot = fileURLToPath(
+    new URL('../../Atom-SignalLab-IQ/', import.meta.url),
+  );
+  const commit = execFileSync(
+    'git',
+    ['-C', repositoryRoot, 'rev-parse', '--verify', 'HEAD'],
+    { encoding: 'utf8' },
+  ).trim();
+  if (!/^[a-f0-9]{40}$/.test(commit)) {
+    throw new Error(`SignalLab returned invalid source commit ${JSON.stringify(commit)}`);
+  }
+  const expectedCommit = process.env.SIGNAL_LAB_SOURCE_COMMIT;
+  if (process.env.OUTPUT_DIR === undefined && expectedCommit === undefined) {
+    throw new Error(
+      'SIGNAL_LAB_SOURCE_COMMIT is required when replacing the training corpus',
+    );
+  }
+  if (expectedCommit !== undefined && !/^[a-f0-9]{40}$/.test(expectedCommit)) {
+    throw new Error('SIGNAL_LAB_SOURCE_COMMIT must be a full lowercase Git commit');
+  }
+  if (expectedCommit !== undefined && commit !== expectedCommit) {
+    throw new Error(
+      `SignalLab checked-out commit ${commit} does not match requested ${expectedCommit}`,
+    );
+  }
+  const status = execFileSync(
+    'git',
+    ['-C', repositoryRoot, 'status', '--porcelain=v1', '--untracked-files=all'],
+    { encoding: 'utf8' },
+  );
+  if (status !== '') {
+    throw new Error(
+      'SignalLab source must have a clean index and worktree before corpus generation',
+    );
+  }
+  return { repository: 'Atom-SignalLab', commit, dirty: false };
+}
+
+function safeClose(fileDescriptor: number): void {
+  try {
+    closeSync(fileDescriptor);
+  } catch {
+    // Preserve the original generation failure.
+  }
+}
+
+const invokedPath = process.argv[1] === undefined
+  ? null
+  : resolve(process.argv[1]);
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  generateSignalLabIqCorpus();
+}

@@ -313,10 +313,12 @@ Commits: `1996895 85c124c ad83c33 d4e80ed b31925c b8f0056 eeda0ef ee8a47d 1ed8ad
 
 ## 9. Footguns. These destroy data or the shipped model.
 
-1. **Never run `tools/generate-signallab-iq-corpus.ts`.** It calls `openSync(..., 'w')` on
-   `corpus.f32` and `corpus_clean.f32` at module top level (lines 308-309), no `main()` guard.
-   Merely starting it truncates 3.67 GB. Neither file is in git (`.gitignore:18`). The corpora are
-   currently `chmod a-w` as protection; `chmod u+w` deliberately if you must regenerate.
+1. **Corpus generation is destructive only after a successful complete run, but still deliberate.**
+   `tools/generate-signallab-iq-corpus.ts` is now import-safe, writes PID-scoped temporary files,
+   refuses a dirty SignalLab checkout, and requires `SIGNAL_LAB_SOURCE_COMMIT` before replacing
+   the default corpus. Use `OUTPUT_DIR` for smoke generation. A successful default run atomically
+   renames its completed outputs over `corpus.f32`, `corpus_clean.f32`, and `corpus.json`; those
+   large outputs remain outside git (`.gitignore:18`).
 2. **Never run `training/train_signallab.py` directly.** `ASSET_DIR` (line 37) points at
    `src/embedding/assets`, so it overwrites the **shipped model** in place with no backup.
 3. **MPS cannot backward through a boolean-masked complex tensor.** Mask the real-valued loss
