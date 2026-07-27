@@ -276,23 +276,33 @@ Open questions for the user, not yet answered:
 
 ## 8. Where everything is
 
-Working dir `training/zplane_ab/v2_full_variation/`.
+All paths below are **relative to the repo root**. Most of the work lives in
+`training/zplane_ab/v2_full_variation/`, abbreviated `V2/` here.
 
 | file | what it is |
 |---|---|
-| `HANDOFF.md` | this document |
-| `OVERNIGHT_2026-07-27.md` | earlier report, **29 upheld corrections not yet folded in, unreliable** |
-| `attach_point.py` | which tap to attach a head to. Recomputes from saved reports, no GPU |
-| `latent_transfer.py` | the transfer probe. Verdict rule needs the §5.2 fix |
-| `denoise_eval.py` | denoising with passthrough / lowpass / oracle-FIR baselines |
-| `length_aug.py` | crop augmentation, and a **validated** ridge readout (`_readout_features`) |
-| `zplane_front.py` | the z-plane experiment, §7 |
-| `train_transfer.py`, `run_transfer_campaign.py`, `unet_transfer.py` | campaign 4 |
-| `../../canonical_probe.py` | OOD textbook-signal probe, sweeps length, gates on worst |
+| `HANDOFF.md` | this document (repo root) |
+| `V2/OVERNIGHT_2026-07-27.md` | earlier report, **29 upheld corrections not yet folded in, unreliable** |
+| `V2/attach_point.py` | which tap to attach a head to. Recomputes from saved reports, no GPU |
+| `V2/latent_transfer.py` | the transfer probe. Verdict rule needs the §5.2 fix |
+| `V2/denoise_eval.py` | denoising with passthrough / lowpass / oracle-FIR baselines |
+| `V2/length_aug.py` | crop augmentation, and a **validated** ridge readout (`_readout_features`) |
+| `V2/zplane_front.py` | the z-plane experiment, §7 |
+| `V2/train_transfer.py`, `V2/run_transfer_campaign.py`, `V2/unet_transfer.py` | campaign 4 |
+| `training/canonical_probe.py` | OOD textbook-signal probe, sweeps length, gates on worst |
+| `training/preprocess.py` | the front end (§1), where most of the trouble lives |
+| `src/embedding/` | the shipped TypeScript runtime and its 117-test suite |
 
-Artifacts: `artifacts/campaign4/results.jsonl` (one row per trial),
-`artifacts/campaign4/<tag>/{state_dict.pt, prototypes.npy, latent_transfer.json}`,
-`artifacts/campaign3/results.jsonl` (references).
+Artifacts: `V2/artifacts/campaign4/results.jsonl` (one row per trial),
+`V2/artifacts/campaign4/<tag>/{state_dict.pt, prototypes.npy, latent_transfer.json}`,
+`V2/artifacts/campaign3/results.jsonl` (references).
+
+Reproduce the two cheapest checks without a GPU:
+
+```bash
+.venv-training/bin/python training/zplane_ab/v2_full_variation/attach_point.py
+.venv-training/bin/python training/canonical_probe.py
+```
 
 Audit output with all 29 corrections:
 `/private/tmp/claude-502/-Users-johnelliott-PersonalGitHub/d0de1806-43d2-4722-96e4-a3efe51af569/tasks/wsw966w7a.output`
