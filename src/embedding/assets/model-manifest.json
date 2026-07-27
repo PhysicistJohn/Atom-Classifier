@@ -12,9 +12,21 @@
   ],
   "episodes": 6000,
   "metrics": {
-    "clean_closed_set_accuracy": 0.9124087591240876,
-    "best_val_accuracy": 0.9124087591240876
+    "clean_closed_set_accuracy": 0.8797348484848485,
+    "best_val_accuracy": 0.8797348484848485
   },
-  "unknown_threshold": 0.8810060620307922,
-  "temperature": 0.1
+  "unknown_threshold": 0.1779443323612213,
+  "temperature": 0.1,
+  "unknown_threshold_rule": "quantile(known,0.95)",
+  "open_set": {
+    "auroc_overall": 0.7808,
+    "auroc_chirp": 0.956,
+    "auroc_noise": 0.6057,
+    "design_gate": 0.72,
+    "gate_passed": true,
+    "flagged_unknown_noise": 0.047,
+    "flagged_unknown_chirp": 0.773,
+    "known_false_unknown_rate": 0.05
+  },
+  "corpus": "corrected 2026-07-24: instantaneous-BW bluetooth, occupancy-gated, fs-decorrelated, field-realistic nuisances"
 }
