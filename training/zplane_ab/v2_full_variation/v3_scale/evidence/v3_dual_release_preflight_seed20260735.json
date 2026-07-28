@@ -1,0 +1,646 @@
+{
+  "checks": [
+    {
+      "detail": "6 assets match",
+      "name": "classifier.fusion.asset_sha256",
+      "passed": true
+    },
+    {
+      "detail": "0",
+      "name": "classifier.fusion.consumed_test_rows_used",
+      "passed": true
+    },
+    {
+      "detail": "0",
+      "name": "classifier.fusion.sealed_release_data_used",
+      "passed": true
+    },
+    {
+      "detail": "ecd894281b4cbac0917304b22ad7be194d41f994dcf2c008ca6ea0643b58667b",
+      "name": "classifier.fusion.directory_sha256",
+      "passed": true
+    },
+    {
+      "detail": "6 assets match",
+      "name": "rejector.fusion.asset_sha256",
+      "passed": true
+    },
+    {
+      "detail": "0",
+      "name": "rejector.fusion.consumed_test_rows_used",
+      "passed": true
+    },
+    {
+      "detail": "0",
+      "name": "rejector.fusion.sealed_release_data_used",
+      "passed": true
+    },
+    {
+      "detail": "0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5",
+      "name": "rejector.fusion.directory_sha256",
+      "passed": true
+    },
+    {
+      "detail": "atomos.v3.time-domain-invariant-fusion.runtime-bundle",
+      "name": "classifier.bundle.schema",
+      "passed": true
+    },
+    {
+      "detail": "1",
+      "name": "classifier.bundle.schema_version",
+      "passed": true
+    },
+    {
+      "detail": "7 assets match",
+      "name": "classifier.bundle.asset_sha256",
+      "passed": true
+    },
+    {
+      "detail": "a962c94dab4dd3c39f45fce54f3af8235fa681857e7829080929fcc31350bea3",
+      "name": "classifier.bundle.bound_to_candidate_fusion",
+      "passed": true
+    },
+    {
+      "detail": "2 frontend sources match the repo",
+      "name": "classifier.bundle.frontend_source_pins",
+      "passed": true
+    },
+    {
+      "detail": "state unset; required contract matches the frozen policy",
+      "name": "classifier.bundle.rejection_slot_contract",
+      "passed": true
+    },
+    {
+      "detail": "accepted_known_classifier",
+      "name": "classifier.bundle.runtime_role",
+      "passed": true
+    },
+    {
+      "detail": "db216324da9b1ab8ec90cbe710c2b147b347ae29842cba20424f44c2869b99c8",
+      "name": "classifier.bundle.manifest_sha256",
+      "passed": true
+    },
+    {
+      "detail": "atomos.v3.time-domain-invariant-fusion.runtime-bundle",
+      "name": "rejector.bundle.schema",
+      "passed": true
+    },
+    {
+      "detail": "1",
+      "name": "rejector.bundle.schema_version",
+      "passed": true
+    },
+    {
+      "detail": "7 assets match",
+      "name": "rejector.bundle.asset_sha256",
+      "passed": true
+    },
+    {
+      "detail": "ddf0768bec34dead441a3c5dc26c6627cfa4830c395b5b1521d6337af634e3a2",
+      "name": "rejector.bundle.bound_to_candidate_fusion",
+      "passed": true
+    },
+    {
+      "detail": "2 frontend sources match the repo",
+      "name": "rejector.bundle.frontend_source_pins",
+      "passed": true
+    },
+    {
+      "detail": "state unset; required contract matches the frozen policy",
+      "name": "rejector.bundle.rejection_slot_contract",
+      "passed": true
+    },
+    {
+      "detail": "known_unknown_rejector",
+      "name": "rejector.bundle.runtime_role",
+      "passed": true
+    },
+    {
+      "detail": "80ee91f3f8577507a30fdae7adc47de7e7b448d9e563558f2d0becbadb4dee78",
+      "name": "rejector.bundle.manifest_sha256",
+      "passed": true
+    },
+    {
+      "detail": "4 probe cases replayed from bundle-only inputs, worst |error| 0 <= 1e-06, closed labels agree",
+      "name": "classifier.bundle.self_verification",
+      "passed": true
+    },
+    {
+      "detail": "4 probe cases replayed from bundle-only inputs, worst |error| 0 <= 1e-06, closed labels agree",
+      "name": "rejector.bundle.self_verification",
+      "passed": true
+    },
+    {
+      "detail": "noise-prefilter-v1",
+      "name": "prefilter.version",
+      "passed": true
+    },
+    {
+      "detail": "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2",
+      "name": "prefilter.set_sha256",
+      "passed": true
+    },
+    {
+      "detail": "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2",
+      "name": "prefilter.pinned_set_sha256",
+      "passed": true
+    },
+    {
+      "detail": "3 per-length bundles match",
+      "name": "prefilter.per_length_sha256",
+      "passed": true
+    },
+    {
+      "detail": "{'16384': '3d56108fc016d8fb8ff7f4c18f8fc2fa6a1443d5d32d30cd769d52de087384db', '4096': '5ef175f5ddc296ec9ae0ffb8ac6801504fd609d6a852dbd5c4b1bf9a10de0f85', '8192': 'e0e972be4d1b7e43929b6c45c69d2dada884b49b39e16555998c375edf744557'}",
+      "name": "prefilter.pinned_per_length_sha256",
+      "passed": true
+    },
+    {
+      "detail": "additive_only false, changes_closed_label true, gates_before_classification true, statement present",
+      "name": "prefilter.architecture_contract_keys",
+      "passed": true
+    },
+    {
+      "detail": "fitting seed 20261001 in namespace [20261000, 20261999], disjoint from the novelty namespace and the release seed",
+      "name": "prefilter.fitting_seed_hygiene",
+      "passed": true
+    },
+    {
+      "detail": "every per-length operating point declares the 0.01 enrollment known-false-positive budget",
+      "name": "prefilter.tightened_budget",
+      "passed": true
+    },
+    {
+      "detail": "3 thresholded per-length models load",
+      "name": "prefilter.models_loadable",
+      "passed": true
+    },
+    {
+      "detail": "{'known_false_unknown_ceiling': 0.1, 'noise_auroc': 0.8, 'noise_threshold_recall': 0.1}",
+      "name": "prefilter.gate_floors_match_frozen",
+      "passed": true
+    },
+    {
+      "detail": "artifact validates v3-staged-openset-policy-v2-composite-survivor (kind v3_staged_noise_prefilter_then_composite_survivor_lof_geometry, schema 2); module constant agrees",
+      "name": "staged.policy_version",
+      "passed": true
+    },
+    {
+      "detail": "development_openset_pass, role validate, gates are evidence, zero sealed/consumed rows",
+      "name": "staged.validation_status",
+      "passed": true
+    },
+    {
+      "detail": "validated on fresh seeds [20260950, 20260951], designed on 20260949",
+      "name": "staged.evidence_seeds",
+      "passed": true
+    },
+    {
+      "detail": "staged artifact bound to /Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/noise_prefilter_fit20261001_budget001/bundles (set 4751ae631f879bc2...)",
+      "name": "staged.prefilter_binding",
+      "passed": true
+    },
+    {
+      "detail": "3 npz artifacts match the report",
+      "name": "staged.npz_sha256",
+      "passed": true
+    },
+    {
+      "detail": "composite policy loads (threshold 0.974045 re-verified as the frozen quantile of the stored calibration)",
+      "name": "staged.composite_policy_loads",
+      "passed": true
+    },
+    {
+      "detail": "24241bcb2e47c96e855f2b3e1d213ed5c02ee7c392758af8c62ea41557ea848c",
+      "name": "staged.report_sha256",
+      "passed": true
+    },
+    {
+      "detail": "{'v3_branch_lof_components.npz': '0a66ca267356bdacf239de5512b9406e010526c990dc38c137cac84342a062a6', 'v3_open_policy_stage_two.npz': '9378f6eea893174b4f716f4db5ea6ea2b637d64b04a0e7672bb39b2e50600dd8', 'v3_staged_composite_policy.npz': '7a3d5b8b1bdd67053f5f48a16d97cc2eef1fce909bd68f514c89c8bb4a64c133'}",
+      "name": "staged.pinned_npz_sha256",
+      "passed": true
+    },
+    {
+      "detail": "report=0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5, artifact=0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5, pin=0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5",
+      "name": "staged.rejector_fusion_binding",
+      "passed": true
+    },
+    {
+      "detail": "time-domain-v3-dual-release-candidate-v1",
+      "name": "candidate.schema",
+      "passed": true
+    },
+    {
+      "detail": "release_candidate_frozen",
+      "name": "candidate.status",
+      "passed": true
+    },
+    {
+      "detail": "v3.3-decoupled-8k-classifier-4k-rejector",
+      "name": "candidate.id",
+      "passed": true
+    },
+    {
+      "detail": "dual runtime package and dual binding are schema v1 with status staging_not_release; legacy single-fusion packages are inadmissible",
+      "name": "candidate.package_binding_schemas",
+      "passed": true
+    },
+    {
+      "detail": "observed efe03e9ec9e5deffccd9513133ad887568f3935d3a42baeb3cafb4e0427a0cb7; pinned 'efe03e9ec9e5deffccd9513133ad887568f3935d3a42baeb3cafb4e0427a0cb7'",
+      "name": "candidate.manifest_sha256",
+      "passed": true
+    },
+    {
+      "detail": "final manifest, validation evidence, pre-validation contract, both role bundles/fusions, staged policy, prefilter, browser assets, staging package and dual binding all load under evaluator schema 3",
+      "name": "candidate.complete_binding_chain",
+      "passed": true
+    },
+    {
+      "detail": "1",
+      "name": "policy.schema",
+      "passed": true
+    },
+    {
+      "detail": "v3_known_only_lof_frequency_dispersion_rank_blend",
+      "name": "policy.kind",
+      "passed": true
+    },
+    {
+      "detail": "across_patch_frequency_dispersion",
+      "name": "policy.geometry_feature",
+      "passed": true
+    },
+    {
+      "detail": "0.8",
+      "name": "policy.v2_weight",
+      "passed": true
+    },
+    {
+      "detail": "0.2",
+      "name": "policy.geometry_weight",
+      "passed": true
+    },
+    {
+      "detail": "0.95",
+      "name": "policy.threshold_quantile",
+      "passed": true
+    },
+    {
+      "detail": "staged gates are the fit_v3_openset objects; weights are the frozen constants",
+      "name": "policy.import_identity_discipline",
+      "passed": true
+    },
+    {
+      "detail": "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry",
+      "name": "policy.staged_kind",
+      "passed": true
+    },
+    {
+      "detail": "release seed 20260735 reserved and unreachable from development; consumed releases [20260729, 20260731, 20260733, 20260734]; spent novelty seeds 20260938-20260951; spent design and consumed validation 20260949/[20260950, 20260951]",
+      "name": "policy.seed_ledger_constants",
+      "passed": true
+    },
+    {
+      "detail": "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541",
+      "name": "sources.v2_evaluator_sha256",
+      "passed": true
+    },
+    {
+      "detail": "byte-compiles; sha256 09b3ccd1fa9030f6dc1720b8faf3b1a60e5a8359bb300445bfa34a745c99351a",
+      "name": "sources.v3_evaluator_present",
+      "passed": true
+    },
+    {
+      "detail": "09b3ccd1fa9030f6dc1720b8faf3b1a60e5a8359bb300445bfa34a745c99351a",
+      "name": "sources.v3_evaluator_sha256",
+      "passed": true
+    },
+    {
+      "detail": "14 dependency sources hashed into the report",
+      "name": "sources.dependency_hashes_recorded",
+      "passed": true
+    },
+    {
+      "detail": "the 17 sealed gate floors are importable and the open-set subset equals the development floors",
+      "name": "sources.gate_floor_consistency",
+      "passed": true
+    },
+    {
+      "detail": "seed 20260735 appears in no release root under /Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases",
+      "name": "ledger.release_seed_unused",
+      "passed": true
+    },
+    {
+      "detail": "consumed sealed root JSONs match the pinned negative evidence",
+      "name": "ledger.consumed_root_intact.invariant_fusion_v2_sealed_seed20260729",
+      "passed": true
+    },
+    {
+      "detail": "consumed sealed root JSONs match the pinned negative evidence",
+      "name": "ledger.consumed_root_intact.invariant_fusion_v3_sealed_seed20260731",
+      "passed": true
+    },
+    {
+      "detail": "consumed sealed root JSONs match the pinned negative evidence",
+      "name": "ledger.consumed_root_intact.invariant_fusion_v3_sealed_seed20260733",
+      "passed": true
+    },
+    {
+      "detail": "consumed sealed root JSONs match the pinned negative evidence",
+      "name": "ledger.consumed_root_intact.invariant_fusion_v3_sealed_seed20260734",
+      "passed": true
+    },
+    {
+      "detail": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab",
+      "name": "isolated.root_exists",
+      "passed": true
+    },
+    {
+      "detail": "@atomos/dsp resolves to /private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP",
+      "name": "isolated.atom_dsp_symlink",
+      "passed": true
+    },
+    {
+      "detail": "('93bec60b8da571bd0cf4a51630bd2b053d95eaf1bf2da503251775545fb873c0', 81)",
+      "name": "isolated.signallab_source_digest",
+      "passed": true
+    },
+    {
+      "detail": "('80a8363407acfa60ea366a1b6f83401a07797ef7c9776579bc949eab16e04588', 20)",
+      "name": "isolated.atom_dsp_source_digest",
+      "passed": true
+    },
+    {
+      "detail": "fc6933a4c7e7d9aeaa2ca22043f6e22b2333671c08b81b1cd35b29a7de08c980",
+      "name": "isolated.atom_dsp_dist_index_dts",
+      "passed": true
+    },
+    {
+      "detail": "caef3a8b3cbf4c300f8ceab5619a1db6b4fcebb942d428577f50790a1fb360e7",
+      "name": "isolated.atom_dsp_dist_index_js",
+      "passed": true
+    },
+    {
+      "detail": "b1c8198c18a4b25ed605db0781ae57b6050e0123ab0696ca2bdcba112696c0ca",
+      "name": "isolated.atom_dsp_package_lock",
+      "passed": true
+    },
+    {
+      "detail": "5dd71450021febce4acbb9a835a3cadea659e5b4ee088217b9b697bf3f0a5fa6",
+      "name": "isolated.signallab_package_lock",
+      "passed": true
+    },
+    {
+      "detail": "1bf0dc38e66a60e7a57ae8b8a96d2a2947acd27753314642228a0783f6e276a8",
+      "name": "generation.launcher_sha256",
+      "passed": true
+    },
+    {
+      "detail": "305418a5bc7bd8f9a49799477f3a457b4c07d0c58b637766989fc9557565371b",
+      "name": "generation.corpus_generator_sha256",
+      "passed": true
+    },
+    {
+      "detail": "d9383a642d21a59f66f1f9e88fc7ce51ad50893a381985c4f53f2b0da9aec3a3",
+      "name": "generation.prefix_deriver_sha256",
+      "passed": true
+    },
+    {
+      "detail": "launcher source pins tsx@4.20.3, Node v22.23.1, npm/npx 10.9.8",
+      "name": "generation.launcher_frozen_pins",
+      "passed": true
+    },
+    {
+      "detail": "time-domain-v3-expected-evaluation-protocol-seed20260735.json predeclares seed 20260735 and hashes to the pin; launcher references it",
+      "name": "generation.v3_protocol_fixture",
+      "passed": true
+    },
+    {
+      "detail": "fixture evaluation_protocol exactly matches the final evaluator",
+      "name": "generation.v3_protocol_fixture_matches_evaluator",
+      "passed": true
+    },
+    {
+      "detail": "fixture uses all 17 strict imported v2 gate floors; the seed-20260734 0.12/0.84 redeclaration is retained only as explicitly inactive historical metadata",
+      "name": "generation.v3_fixture_gate_contract",
+      "passed": true
+    },
+    {
+      "detail": "v22.23.1",
+      "name": "runtime.node_version",
+      "passed": true
+    },
+    {
+      "detail": "10.9.8",
+      "name": "runtime.npm_version",
+      "passed": true
+    },
+    {
+      "detail": "10.9.8",
+      "name": "runtime.npx_version",
+      "passed": true
+    },
+    {
+      "detail": "PYTHONWARNINGS='error'",
+      "name": "runtime.pythonwarnings_error",
+      "passed": true
+    },
+    {
+      "detail": "noise_prefilter._dot neutralises the Apple Accelerate spurious IEEE flags (numpy 2.0.2, torch 2.8.0)",
+      "name": "runtime.accelerate_dot_smoke",
+      "passed": true
+    }
+  ],
+  "consumes_nothing": {
+    "corpus_rows_read": 0,
+    "novelty_realizations_generated": 0,
+    "release_seed_drawn": false,
+    "sealed_labels_read": false,
+    "writes_under_releases": false
+  },
+  "generated_at": "2026-07-28T17:38:18Z",
+  "generation_command": {
+    "candidate_manifest_sha256": "efe03e9ec9e5deffccd9513133ad887568f3935d3a42baeb3cafb4e0427a0cb7",
+    "command": "cd /Users/johnelliott/PersonalGitHub/Atom-Classifier && \\\n  env PATH=/Users/johnelliott/.nvm/versions/node/v22.23.1/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \\\n  RELEASE_ROOT=/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v3_sealed_seed20260735 \\\n  RELEASE_SEED=20260735 \\\n  RELEASE_EVALUATION_PROTOCOL=v3 \\\n  RELEASE_TARGET_PER_CLASS=192 \\\n  CANDIDATE_PATH=/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/v3_scale/evidence/v3_dual_release_candidate.json \\\n  CANDIDATE_SHA256=efe03e9ec9e5deffccd9513133ad887568f3935d3a42baeb3cafb4e0427a0cb7 \\\n  SIGNALLAB_ROOT=/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab \\\n  node tools/generate-signallab-iq-release-suite.mjs",
+    "environment": {
+      "CANDIDATE_PATH": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/v3_scale/evidence/v3_dual_release_candidate.json",
+      "CANDIDATE_SHA256": "efe03e9ec9e5deffccd9513133ad887568f3935d3a42baeb3cafb4e0427a0cb7",
+      "PATH": "/Users/johnelliott/.nvm/versions/node/v22.23.1/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+      "RELEASE_EVALUATION_PROTOCOL": "v3",
+      "RELEASE_ROOT": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v3_sealed_seed20260735",
+      "RELEASE_SEED": "20260735",
+      "RELEASE_TARGET_PER_CLASS": "192",
+      "SIGNALLAB_ROOT": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab"
+    },
+    "not_run_by_preflight": true,
+    "notes": [
+      "RELEASE_LENGTHS defaults to 4096,8192,16384,32768 and the launcher refuses any other value.",
+      "RELEASE_TARGET_PER_CLASS=192 keeps the metadata-only no-alias scale subset safely above 20 rows per class.",
+      "RELEASE_EVALUATION_PROTOCOL=v3 embeds the staged protocol from the pinned fixture time-domain-v3-expected-evaluation-protocol-seed20260735.json, which must predeclare exactly this release seed; the sealed evaluator refuses any suite whose intent protocol differs from its own expected object."
+    ]
+  },
+  "go": true,
+  "observed": {
+    "dependency_source_sha256": {
+      "training/time_domain_geometry.py": "a9735473f44105d20cffb9d4888ff8cf8e02503746f70b50e6d5d3737138da33",
+      "training/time_domain_invariant_patch_preprocess.py": "5cd1787aed0e5fd95adc2e4de56db460d753d0557350aa8f3aff0e393c0bb10a",
+      "v2_full_variation/evaluate_invariant_release_suite.py": "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541",
+      "v2_full_variation/invariant_fusion.py": "22a46a75c95cb4aa452bc44228b156b57474b981da20cf7095fff8a129f1c281",
+      "v2_full_variation/invariant_patch_cnn.py": "b402e8bb75a5809f4a57e8de231268e9ad18afc26b2cfcbf57d2f0b43804ede4",
+      "v2_full_variation/openset_eval.py": "1675b9ce60139e58b0d12dd287552b22d8bc47cfcb264a0ec347def251ed3354",
+      "v2_full_variation/v3_time_domain_openset.py": "1bf16837ac76a525d5f28e3357d9afa147cf2a618aa202e98ce30ddb0b96bd58",
+      "v3_scale/assemble_v3_fusion.py": "961e493697d1d941395dafe32570262dc09996b53fed9b2a0e82525e43560daa",
+      "v3_scale/evaluate_v3_release_suite.py": "09b3ccd1fa9030f6dc1720b8faf3b1a60e5a8359bb300445bfa34a745c99351a",
+      "v3_scale/export_v3_fusion_runtime.py": "aea6dcbf4d64778fd3e0e2e5b32963c68e6fb9732995cad1cac81481822cad0f",
+      "v3_scale/fit_v3_openset.py": "970e536087c0c4660424628a69e8bb08955885b337fd6ac560edf4bfaec1fba9",
+      "v3_scale/fit_v3_openset_staged.py": "1ebfecede89eb3d393c8922d0862827efda6356671995656594b536ed19f7514",
+      "v3_scale/noise_prefilter.py": "435495e5b0d11558a2e0edfd7d6e6112e7cebf716460d3d81ae741d97deaa7b4",
+      "v3_scale/pose_degeneracy.py": "431499124cd8470276a22356622b54f9c60c63c15e3770f49944bc626091aaf1"
+    },
+    "v3_evaluator_sha256": "09b3ccd1fa9030f6dc1720b8faf3b1a60e5a8359bb300445bfa34a745c99351a"
+  },
+  "paths": {
+    "candidate_manifest": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/v3_scale/evidence/v3_dual_release_candidate.json",
+    "classifier_bundle_dir": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_runtime_bundle_classifier8kreg_dual_seed20260730",
+    "classifier_fusion_dir": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_ml8000reg_seed20260730",
+    "evaluator": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/v3_scale/evaluate_v3_release_suite.py",
+    "isolated_root": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab",
+    "node_bin_dir": "/Users/johnelliott/.nvm/versions/node/v22.23.1/bin",
+    "prefilter_root": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/noise_prefilter_fit20261001_budget001",
+    "rejector_bundle_dir": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_runtime_bundle_rejector4k_dual_seed20260730",
+    "rejector_fusion_dir": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_multilength_seed20260730",
+    "releases_dir": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases",
+    "staged_dir": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_validate_decoupled_rejector4k_classifier8k_budget001_seeds20260950_20260951"
+  },
+  "pins": {
+    "atom_dsp": {
+      "dist_index_dts_sha256": "fc6933a4c7e7d9aeaa2ca22043f6e22b2333671c08b81b1cd35b29a7de08c980",
+      "dist_index_js_sha256": "caef3a8b3cbf4c300f8ceab5619a1db6b4fcebb942d428577f50790a1fb360e7",
+      "package_lock_sha256": "b1c8198c18a4b25ed605db0781ae57b6050e0123ab0696ca2bdcba112696c0ca",
+      "source_file_count": 20,
+      "source_tree_sha256": "80a8363407acfa60ea366a1b6f83401a07797ef7c9776579bc949eab16e04588"
+    },
+    "bundle_schema": "atomos.v3.time-domain-invariant-fusion.runtime-bundle",
+    "bundle_schema_version": 1,
+    "candidate_id": "v3.3-decoupled-8k-classifier-4k-rejector",
+    "candidate_manifest_schema": "time-domain-v3-dual-release-candidate-v1",
+    "candidate_manifest_sha256": "efe03e9ec9e5deffccd9513133ad887568f3935d3a42baeb3cafb4e0427a0cb7",
+    "classifier_bundle_manifest_sha256": "db216324da9b1ab8ec90cbe710c2b147b347ae29842cba20424f44c2869b99c8",
+    "classifier_fusion_directory_sha256": "ecd894281b4cbac0917304b22ad7be194d41f994dcf2c008ca6ea0643b58667b",
+    "consumed_release_seeds": [
+      20260729,
+      20260731,
+      20260733,
+      20260734
+    ],
+    "consumed_sealed_roots": {
+      "invariant_fusion_v2_sealed_seed20260729": {
+        "RELEASE_EVALUATION.json": "dfb815d604aeb234480dcbbe1712d08d6bba3a81c53fdb490c0707b8b3ce8e1b",
+        "RELEASE_INTENT.json": "62040f8edd81bdda0cd99eb6f1b89af41c7c28d33c62ed2a58d977f591b49d9c",
+        "RELEASE_MANIFEST.json": "a710f2139aab7c52399936be2bb45ba009ff90e73cdbab36848e4391267694d3"
+      },
+      "invariant_fusion_v3_sealed_seed20260731": {
+        "RELEASE_EVALUATION.json": "f408748f9c292090ecb8f93dc7b9d13eb95eb573fe0bf678ef9fd76cbfea58e5",
+        "RELEASE_INTENT.json": "996040b4cb4963b5a00f82d27dbc62c0609e0f83a0081c78951dd457ff99e786",
+        "RELEASE_MANIFEST.json": "c70831d82568932a75fbdc28a7af3331f28d94b6cf1858030f6eb8294b3c5da0"
+      },
+      "invariant_fusion_v3_sealed_seed20260733": {
+        "RELEASE_EVALUATION.json": "089da0b4f0f833221069b6553f336279d6cd87c0024fba6327aad14d3856ec8b",
+        "RELEASE_INTENT.json": "96b890b3a4f3c9031fd4cac9ebe676cf554e71d7005c4a86d2262d56250b418c",
+        "RELEASE_MANIFEST.json": "19076c3d0e758b7c958fafece190b082163f236a68188013902d6a441dbc9dee"
+      },
+      "invariant_fusion_v3_sealed_seed20260734": {
+        "RELEASE_EVALUATION.json": "701f296e55853c892bd169e75edec8ba7c4c4f9e36735d7d6aea1f7b8ca94bc2",
+        "RELEASE_INTENT.json": "0c0a42ea02daeef99b116981f62483e7112ad748c839fd6921fd2432ee309b20",
+        "RELEASE_MANIFEST.json": "a9e00543bb257659bb25aeebc738fc18a4096ff892f7c3b6c5836d4aa315bf06"
+      }
+    },
+    "corpus_generator_sha256": "305418a5bc7bd8f9a49799477f3a457b4c07d0c58b637766989fc9557565371b",
+    "dual_binding_schema": "atomos.v3.time-domain-dual-fusion.binding",
+    "dual_binding_schema_version": 1,
+    "frozen_candidate_contract_sha256": "2209a56df22ff0c3ffd152bf2973f94da2d3488536a9cfcbf3904d077a1ba706",
+    "frozen_policy": {
+      "geometry_feature": "across_patch_frequency_dispersion",
+      "geometry_weight": 0.2,
+      "kind": "v3_known_only_lof_frequency_dispersion_rank_blend",
+      "schema": 1,
+      "threshold_quantile": 0.95,
+      "v2_weight": 0.8
+    },
+    "historical_gate_redeclaration": {
+      "gates": {
+        "five_shot_worst_length_balanced": {
+          "v2_floor_key": "five_shot",
+          "v2_level": 0.85,
+          "v3_level": 0.84
+        },
+        "open_known_false_unknown_worst_length": {
+          "v2_floor_key": "open_known_false_unknown_max",
+          "v2_level": 0.1,
+          "v3_level": 0.12
+        }
+      },
+      "release_seed": 20260734
+    },
+    "launcher_sha256": "1bf0dc38e66a60e7a57ae8b8a96d2a2947acd27753314642228a0783f6e276a8",
+    "node_version": "v22.23.1",
+    "npm_version": "10.9.8",
+    "prefilter_bundle_sha256": {
+      "16384": "3d56108fc016d8fb8ff7f4c18f8fc2fa6a1443d5d32d30cd769d52de087384db",
+      "4096": "5ef175f5ddc296ec9ae0ffb8ac6801504fd609d6a852dbd5c4b1bf9a10de0f85",
+      "8192": "e0e972be4d1b7e43929b6c45c69d2dada884b49b39e16555998c375edf744557"
+    },
+    "prefilter_fitting_namespace": [
+      20261000,
+      20261999
+    ],
+    "prefilter_fitting_seed": 20261001,
+    "prefilter_known_false_positive_budget": 0.01,
+    "prefilter_lengths": [
+      4096,
+      8192,
+      16384
+    ],
+    "prefilter_recorded_release_seed": 20260731,
+    "prefilter_set_sha256": "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2",
+    "prefilter_version": "noise-prefilter-v1",
+    "prefix_deriver_sha256": "d9383a642d21a59f66f1f9e88fc7ce51ad50893a381985c4f53f2b0da9aec3a3",
+    "rejector_bundle_manifest_sha256": "80ee91f3f8577507a30fdae7adc47de7e7b448d9e563558f2d0becbadb4dee78",
+    "rejector_fusion_directory_sha256": "0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5",
+    "release_seed": 20260735,
+    "sealed_seed": 20260729,
+    "signallab": {
+      "package_lock_sha256": "5dd71450021febce4acbb9a835a3cadea659e5b4ee088217b9b697bf3f0a5fa6",
+      "source_file_count": 81,
+      "source_tree_sha256": "93bec60b8da571bd0cf4a51630bd2b053d95eaf1bf2da503251775545fb873c0"
+    },
+    "skipped_model_seed": 20260732,
+    "staged_artifact_sha256": {
+      "v3_branch_lof_components.npz": "0a66ca267356bdacf239de5512b9406e010526c990dc38c137cac84342a062a6",
+      "v3_open_policy_stage_two.npz": "9378f6eea893174b4f716f4db5ea6ea2b637d64b04a0e7672bb39b2e50600dd8",
+      "v3_staged_composite_policy.npz": "7a3d5b8b1bdd67053f5f48a16d97cc2eef1fce909bd68f514c89c8bb4a64c133"
+    },
+    "staged_design_novelty_seed": 20260949,
+    "staged_policy_kind": "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry",
+    "staged_policy_schema": 2,
+    "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+    "staged_validation_novelty_seeds": [
+      20260950,
+      20260951
+    ],
+    "staged_validation_report_sha256": "24241bcb2e47c96e855f2b3e1d213ed5c02ee7c392758af8c62ea41557ea848c",
+    "staging_package_schema": "atomos.v3.time-domain-classifier.dual-runtime-package",
+    "staging_package_schema_version": 1,
+    "staging_status": "staging_not_release",
+    "target_per_class": 192,
+    "tsx_package": "tsx@4.20.3",
+    "v2_evaluator_sha256": "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541",
+    "v3_evaluator_sha256": "09b3ccd1fa9030f6dc1720b8faf3b1a60e5a8359bb300445bfa34a745c99351a",
+    "v3_protocol_fixture_name": "time-domain-v3-expected-evaluation-protocol-seed20260735.json",
+    "v3_protocol_fixture_sha256": "40ef572beeabd18c38e55fdc5001dbfb0365dcd81dac5ff6ea1b95ceca163f7e",
+    "validation_evidence_sha256": "85d01b9154bb1d0e60c3f42d8d5cf1854dbcbb1366b0c918250e1a4bc8c8880e"
+  },
+  "preflight_source_sha256": "161f5a362d50c58c5c0ec327e88b84d06e94a831572cd36b4418bf665e2a917e",
+  "release_seed": 20260735,
+  "schema": "v3-release-preflight-v2-dual-fusion"
+}
