@@ -142,21 +142,30 @@ before any data is touched rather than silently degrading to the unstaged
 rejector, which would emit a report that looks like a staged result and is not
 one.
 
-STAGED POLICY VERSION 3 / v3.4: PREDECLARED q99 OPERATING POINT
-================================================================
+STAGED POLICY VERSION 3 / v3.4: FROZEN q99 DESIGN FAILURE
+==========================================================
 The sealed seed-20260735 v3.3 run passed 22/23 gates and failed only known
-false-unknown.  That result is frozen and the seed is consumed.  v3.4 changes
-one operating-point constant and nothing else: the composite-survivor
-enrollment quantile rises from q95 to a predeclared q99.  Stage 1 remains the
-frozen 1% enrollment-budget gate; the stage-1 coefficients and thresholds,
-both frozen CNN fusions, the survivor score, the LOF ensemble, blend weights,
-rank conventions and every release gate remain unchanged.
+false-unknown.  Policy-v3 changed one operating-point constant and nothing
+else: the composite-survivor enrollment quantile rose from q95 to q99.  Its
+one design draw, seed 20260952, is frozen and consumed: known false-unknown was
+0.019916, but N4096 chirp threshold recall was 0.003333 against the unchanged
+0.10 floor.  q99 therefore failed design and may not be redrawn or validated.
 
-On the enrollment population, a 1% stage-1 budget followed by a 1% survivor
-tail has a nominal union budget of 1.99%, leaving substantial headroom below
-the unchanged 10% known-false-unknown ceiling.  This is design rationale, not
-a population-shift guarantee: the candidate still has to pass every unchanged
-gate on fresh design and validation populations before any release run.
+STAGED POLICY VERSION 4: PREDECLARED q97 OPERATING POINT
+=========================================================
+Policy-v4 changes only the failed q99 survivor quantile to q97, derived from
+the same enrollment-only calibration.  Stage 1 remains the frozen 1%
+enrollment-budget gate; the stage-1 coefficients and thresholds, both frozen
+CNN fusions, the survivor score, the LOF ensemble, blend weights, rank
+conventions and every release gate remain unchanged.
+
+On the enrollment population, a 1% stage-1 budget followed by a 3% survivor
+tail has a nominal union budget of 3.97%, still leaving more than 2.5x
+headroom to the unchanged 10% known-false-unknown ceiling.  The frozen
+calibration gives q97 threshold 0.9844868317511343, between its q95 and q99
+thresholds.  This is design rationale, not a population-shift guarantee:
+policy-v4 must still pass every unchanged gate on fresh design and validation
+populations before any release run.
 
 This produces development evidence.  It is not release evidence.
 """
@@ -298,6 +307,13 @@ SPENT_NOVELTY_SEEDS: dict[int, str] = {
         "candidate: development_openset_pass; validation evidence is consumed "
         "and may not be reused"
     ),
+    20260952: (
+        "designed the frozen policy-v3/q99 v3.4 candidate: "
+        "design_selection_fail; only N4096 chirp threshold recall failed "
+        "(1/300 = 0.0033333333333333335 < 0.10), while known false-unknown "
+        "was 38/1908 = 0.019916142557651992. The seed is consumed and may not "
+        "be redrawn"
+    ),
 }
 
 # Consumed sealed release suites (evidence rule 2): never re-run, never fit,
@@ -325,12 +341,12 @@ CONSUMED_SEALED_RELEASE_SEEDS: dict[int, str] = {
 }
 RELEASE_SEED_NEVER_SPENT_HERE = 20260736
 
-# Seeds through 20260951 are consumed.  The v3.4 q99 choice is predeclared
-# before drawing 20260952, which remains clean until the design command is run
-# exactly once.  Seeds 20260953/20260954 are reserved for validation and must
-# remain untouched until a ledger-only transition marks the design seed spent.
-FIRST_CLEAN_NOVELTY_SEED = 20260952
-PROPOSED_DESIGN_NOVELTY_SEED = 20260952
+# Seeds through 20260952 are consumed.  The policy-v3/q99 design failure is
+# frozen and may not be redrawn.  Seeds 20260953/20260954 remain untouched and
+# reserved for validation; policy-v4/q97 uses the next unreserved clean seed,
+# 20260955, for its one design draw.
+FIRST_CLEAN_NOVELTY_SEED = 20260953
+PROPOSED_DESIGN_NOVELTY_SEED = 20260955
 DEFAULT_VALIDATION_NOVELTY_SEEDS = (20260953, 20260954)
 V34_DESIGN_PREFIX_LENGTHS = (4096, 8192, 16384, 32768)
 
@@ -342,7 +358,9 @@ SEED_LEDGER_NOTE = (
     f"{sorted(CONSUMED_SEALED_RELEASE_SEEDS)} are consumed sealed suites and "
     f"{RELEASE_SEED_NEVER_SPENT_HERE} is the next untouched release seed, and "
     f"none of them is a development novelty seed. {FIRST_CLEAN_NOVELTY_SEED} "
-    "onward are clean. The predeclared v3.4 q99 candidate reserves clean "
+    "onward are clean except for the explicit reservations below. The frozen "
+    "policy-v3/q99 design consumed seed 20260952 and failed only N4096 chirp "
+    "threshold recall. The predeclared policy-v4/q97 candidate reserves clean "
     f"design seed {PROPOSED_DESIGN_NOVELTY_SEED} and validation seeds "
     f"{list(DEFAULT_VALIDATION_NOVELTY_SEEDS)}. The design seed is intentionally "
     "not in SPENT_NOVELTY_SEEDS yet. Validation is refused until a ledger-only "
@@ -365,9 +383,10 @@ def v34_design_and_validation_commands(
 
     The design command is the only command currently admissible.  The
     validation command is predeclared here, but :func:`validate_seed_plan`
-    refuses it until seed 20260952 has been run exactly once and a ledger-only
-    transition records that design seed as spent.  Merely constructing these
-    argv vectors reads no data and consumes no seed.
+    refuses it until seed 20260955 has been run exactly once and a ledger-only
+    transition records that design seed as spent.  Seeds 20260953/20260954
+    remain untouched while this command is merely constructed; constructing
+    argv reads no data and consumes no seed.
     """
     common = [
         sys.executable,
@@ -502,7 +521,7 @@ STAGE_ONE_SCORE_OFFSET = 1.0
 SUBSET_SCORING_TOLERANCE = 1e-6
 
 # ---------------------------------------------------------------------------
-# STAGED POLICY -- FROZEN CONSTANTS.  Version 3: q99 composite survivor.
+# STAGED POLICY -- FROZEN CONSTANTS.  Version 4: q97 composite survivor.
 #
 # Every artifact this module emits states the policy version it validates, and
 # the sealed evaluator refuses a staged artifact whose recorded version is not
@@ -520,10 +539,13 @@ SUBSET_SCORING_TOLERANCE = 1e-6
 #      composite over enrollment stage-1 survivors.  The stage-1 gate (0.01
 #      enrollment budget set), prefilter coefficients, LOF ensemble, blend
 #      weights and every stage-2 internal are untouched.
-#   3  (v3.4, this file) changes ONLY that composite-survivor enrollment
-#      quantile from q95 to the predeclared q99.  The 1% stage-1 gate, both
-#      CNN fusions, score, calibration population, rank conventions, LOF,
-#      blend weights and every gate floor/ceiling remain frozen.
+#   3  changes ONLY that composite-survivor enrollment quantile from q95 to
+#      q99.  Its one design draw (20260952) failed only N4096 chirp threshold
+#      recall, 0.003333 < 0.10; known FUR was 0.019916.  Frozen failure.
+#   4  (this file) changes ONLY the failed q99 survivor quantile to the
+#      predeclared q97.  The 1% stage-1 gate, both CNN fusions, score,
+#      calibration population, rank conventions, LOF, blend weights and every
+#      gate floor/ceiling remain frozen.
 # ---------------------------------------------------------------------------
 #: The survivor score, stated once.  ``stage1_score_enrollment_rank`` is the
 #: empirical enrollment rank (searchsorted-left over a sorted calibration, the
@@ -551,9 +573,26 @@ LEGACY_COMPOSITE_RATIONALE = (
     "standalone), costing the noise AUROC floor (worst cell 0.7957 vs 0.80)"
 )
 
-#: v3.4's only operating-point change.  This literal is predeclared before
-#: design seed 20260952 is drawn; it is not searched on selection or novelty.
-COMPOSITE_THRESHOLD_QUANTILE = 0.99
+FAILED_Q99_STAGED_POLICY_SCHEMA = 3
+FAILED_Q99_STAGED_POLICY_VERSION = (
+    "v3-staged-openset-policy-v3-composite-survivor-q99"
+)
+FAILED_Q99_STAGED_POLICY_KIND = (
+    "v3_staged_noise_prefilter_then_q99_composite_survivor_lof_geometry"
+)
+FAILED_Q99_COMPOSITE_THRESHOLD_QUANTILE = 0.99
+FAILED_Q99_COMPOSITE_RATIONALE = (
+    "Policy-v3 changed only the composite survivor enrollment quantile q95 "
+    "-> q99. Its one design draw, seed 20260952, is frozen and consumed: "
+    "known false-unknown was 0.019916, but N4096 chirp threshold recall was "
+    "0.003333 against the unchanged 0.10 floor. It failed design and may not "
+    "be redrawn or validated"
+)
+
+#: Policy-v4's only operating-point change.  This literal is predeclared
+#: before design seed 20260955 is drawn; it is not searched on selection,
+#: novelty, sealed or release data.
+COMPOSITE_THRESHOLD_QUANTILE = 0.97
 STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET = 0.01
 SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET = (
     1.0 - COMPOSITE_THRESHOLD_QUANTILE
@@ -563,23 +602,31 @@ NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET = (
     + (1.0 - STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET)
     * SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET
 )
+FROZEN_POLICY_V2_Q95_ENROLLMENT_THRESHOLD = 0.9740452030878427
+FROZEN_POLICY_V4_Q97_ENROLLMENT_THRESHOLD = 0.9844868317511343
+FROZEN_POLICY_V3_Q99_ENROLLMENT_THRESHOLD = 0.9945961538794619
+if not (
+    FROZEN_POLICY_V2_Q95_ENROLLMENT_THRESHOLD
+    < FROZEN_POLICY_V4_Q97_ENROLLMENT_THRESHOLD
+    < FROZEN_POLICY_V3_Q99_ENROLLMENT_THRESHOLD
+):
+    raise AssertionError("frozen enrollment thresholds must satisfy q95 < q97 < q99")
 
-STAGED_POLICY_SCHEMA = 3
+STAGED_POLICY_SCHEMA = 4
 STAGED_POLICY_VERSION = (
-    "v3-staged-openset-policy-v3-composite-survivor-q99"
+    "v3-staged-openset-policy-v4-composite-survivor-q97"
 )
 STAGED_POLICY_KIND = (
-    "v3_staged_noise_prefilter_then_q99_composite_survivor_lof_geometry"
+    "v3_staged_noise_prefilter_then_q97_composite_survivor_lof_geometry"
 )
 COMPOSITE_RATIONALE = (
-    "The sealed seed-20260735 v3.3 candidate passed 22/23 gates and failed "
-    "only known false-unknown. v3.4 therefore raises only the composite "
-    "survivor enrollment quantile from q95 to the predeclared q99. The "
-    "stage-1 1% enrollment-budget gate and both CNN fusions are frozen. A "
-    "1% stage-1 budget followed by a 1% survivor tail has a nominal 1.99% "
-    "enrollment union budget, leaving headroom below the unchanged 10% "
-    "known-FUR ceiling; fresh design and validation must still pass every "
-    "unchanged gate"
+    "The frozen policy-v3/q99 design failed only N4096 chirp threshold recall "
+    "(0.003333 < 0.10), with known false-unknown 0.019916. Policy-v4 changes "
+    "only that survivor enrollment quantile q99 -> q97, a conservative "
+    "enrollment-only balance. The 1% stage-1 budget followed by a 3% survivor "
+    "tail has a nominal 3.97% union budget, leaving more than 2.5x headroom "
+    "to the unchanged 10% known-FUR ceiling. Stage 1, both CNN fusions, the "
+    "survivor score and every gate remain frozen"
 )
 
 
@@ -592,6 +639,7 @@ class StagedPolicySpec:
     kind: str
     threshold_quantile: float
     rationale: str
+    only_policy_change: str
 
 
 LEGACY_STAGED_POLICY_SPEC = StagedPolicySpec(
@@ -600,6 +648,17 @@ LEGACY_STAGED_POLICY_SPEC = StagedPolicySpec(
     kind=LEGACY_STAGED_POLICY_KIND,
     threshold_quantile=LEGACY_COMPOSITE_THRESHOLD_QUANTILE,
     rationale=LEGACY_COMPOSITE_RATIONALE,
+    only_policy_change="legacy q95 composite survivor policy",
+)
+FAILED_Q99_STAGED_POLICY_SPEC = StagedPolicySpec(
+    schema=FAILED_Q99_STAGED_POLICY_SCHEMA,
+    version=FAILED_Q99_STAGED_POLICY_VERSION,
+    kind=FAILED_Q99_STAGED_POLICY_KIND,
+    threshold_quantile=FAILED_Q99_COMPOSITE_THRESHOLD_QUANTILE,
+    rationale=FAILED_Q99_COMPOSITE_RATIONALE,
+    only_policy_change=(
+        "composite survivor enrollment threshold quantile q95 -> q99"
+    ),
 )
 STAGED_POLICY_SPEC = StagedPolicySpec(
     schema=STAGED_POLICY_SCHEMA,
@@ -607,9 +666,13 @@ STAGED_POLICY_SPEC = StagedPolicySpec(
     kind=STAGED_POLICY_KIND,
     threshold_quantile=COMPOSITE_THRESHOLD_QUANTILE,
     rationale=COMPOSITE_RATIONALE,
+    only_policy_change=(
+        "composite survivor enrollment threshold quantile q99 -> q97"
+    ),
 )
 STAGED_POLICY_SPECS = {
     LEGACY_STAGED_POLICY_VERSION: LEGACY_STAGED_POLICY_SPEC,
+    FAILED_Q99_STAGED_POLICY_VERSION: FAILED_Q99_STAGED_POLICY_SPEC,
     STAGED_POLICY_VERSION: STAGED_POLICY_SPEC,
 }
 
@@ -629,8 +692,15 @@ STAGED_POLICY_VERSION_HISTORY = {
     ),
     "3": (
         "v3.4: identical composite score and enrollment-survivor calibration; "
-        "only the predeclared threshold quantile changes q95 -> q99. The 1% "
-        "stage-1 gate, both CNN fusions and every gate remain frozen"
+        "only the predeclared threshold quantile changes q95 -> q99. Frozen "
+        "design seed 20260952 failed only N4096 chirp threshold recall "
+        "(0.003333 < 0.10); known FUR 0.019916"
+    ),
+    "4": (
+        "identical composite score and enrollment-survivor calibration; only "
+        "the predeclared threshold quantile changes failed q99 -> q97. The 1% "
+        "stage-1 gate, both CNN fusions and every gate remain frozen; nominal "
+        "enrollment union budget 3.97%, >2.5x headroom to 10%"
     ),
 }
 
@@ -965,11 +1035,23 @@ def _refuse_ledger_seed(seed: int, role_description: str) -> None:
 
 def validate_novelty_seeds(seeds: Sequence[int]) -> tuple[int, ...]:
     """Refuse an empty, duplicated, spent, sealed or release novelty seed set."""
-    values = tuple(int(seed) for seed in seeds)
+    raw_values = tuple(seeds)
+    for seed in raw_values:
+        if isinstance(seed, (bool, np.bool_)) or not isinstance(
+            seed, (int, np.integer)
+        ):
+            raise ValueError("novelty seeds must be integers, not coerced values")
+    values = tuple(int(seed) for seed in raw_values)
     if not values or len(set(values)) != len(values):
         raise ValueError("novelty seeds must be a non-empty set of distinct ints")
     for seed in values:
         _refuse_ledger_seed(seed, "development novelty")
+        if seed < FIRST_CLEAN_NOVELTY_SEED:
+            raise ValueError(
+                f"novelty seed {seed} predates the authoritative clean boundary "
+                f"{FIRST_CLEAN_NOVELTY_SEED} and is refused even though it is "
+                "not named in the local spent ledger"
+            )
     # Belt and braces: the base module's own refusals must also hold.
     base.validate_novelty_seeds(values)
     return values
@@ -1046,6 +1128,12 @@ def validate_seed_plan(
                 "seed in this run.  The seed a design was chosen on cannot "
                 "be the seed that validates it."
             )
+        if seeds != DEFAULT_VALIDATION_NOVELTY_SEEDS:
+            raise ValueError(
+                "a validation run must draw exactly the predeclared reserved "
+                f"novelty seeds {list(DEFAULT_VALIDATION_NOVELTY_SEEDS)} in "
+                f"that order; got {list(seeds)}"
+            )
     else:
         overlap = [
             seed for seed in seeds if seed in DEFAULT_VALIDATION_NOVELTY_SEEDS
@@ -1059,6 +1147,11 @@ def validate_seed_plan(
             raise ValueError(
                 f"a design run must draw novelty at its declared design seed "
                 f"{design}; got {list(seeds)}"
+            )
+        if seeds != (design,):
+            raise ValueError(
+                "a design run must draw exactly its declared design novelty "
+                f"seed [{design}]; got {list(seeds)}"
             )
     return role_value, design, seeds
 
@@ -1399,7 +1492,7 @@ def load_stage_one(
 
 
 # ---------------------------------------------------------------------------
-# the composite survivor policy (staged policy version 3; explicit v2 loader)
+# composite survivor policy (version 4; explicit read-only v2/v3 loaders)
 # ---------------------------------------------------------------------------
 
 
@@ -1426,8 +1519,9 @@ class CompositeSurvivorPolicy:
     ``threshold`` instead of trusting it.  ``stage_two_threshold`` is the
     stage-2 policy's own untouched enrollment q95, recorded for cross-checks;
     the staged decision threshold is ``threshold``.  ``policy_spec`` travels
-    with a loaded artifact so an explicitly requested legacy-v2 policy keeps
-    reporting q95 semantics after this module's default moves to v3/q99.
+    with a loaded artifact so explicitly requested legacy-v2/q95 and
+    failed-v3/q99 policies retain their own semantics after this module's
+    default moves to policy-v4/q97.
     """
 
     stage_one_calibration_raw: np.ndarray
@@ -1498,11 +1592,7 @@ class CompositeSurvivorPolicy:
                 + (1.0 - STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET)
                 * (1.0 - float(spec.threshold_quantile))
             ),
-            "only_policy_change": (
-                "composite survivor enrollment threshold quantile q95 -> q99"
-                if spec == STAGED_POLICY_SPEC
-                else "legacy q95 composite survivor policy"
-            ),
+            "only_policy_change": spec.only_policy_change,
             "stage_one_changed": False,
             "rejector_cnn_fusion_changed": False,
             "classifier_cnn_fusion_changed": False,
@@ -1535,7 +1625,7 @@ def fit_composite_policy(
     enrollment stage-1 feature matrix and the enrollment stage-2 scores are
     parameters, so no selection row, no novelty row and no release row can
     influence the calibration or the threshold.  Nothing here is searched: the
-    q99 quantile is the predeclared frozen policy-v3 constant.
+    q97 quantile is the predeclared frozen policy-v4 constant.
     """
     length = int(enrollment_capture_length)
     if length not in stage_one.models:
@@ -1582,9 +1672,10 @@ def fit_composite_policy(
 def save_composite_policy(path: Path, policy: CompositeSurvivorPolicy) -> None:
     """Serialize the current composite policy without pickle.
 
-    Legacy policy-v2 objects are read-only compatibility objects.  Refusing to
-    re-save one through the v3 writer prevents an old q95 threshold from being
-    relabelled with policy-v3/q99 metadata.
+    Historical policy-v2/q95 and failed-policy-v3/q99 objects are read-only
+    compatibility objects.  Refusing to re-save either through the v4 writer
+    prevents an old threshold from being relabelled with policy-v4/q97
+    metadata.
     """
     if policy.policy_spec != STAGED_POLICY_SPEC:
         raise ValueError(
@@ -1634,9 +1725,7 @@ def save_composite_policy(path: Path, policy: CompositeSurvivorPolicy) -> None:
         nominal_enrollment_false_unknown_budget=np.asarray(
             NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET, dtype=np.float64
         ),
-        only_policy_change=np.asarray(
-            "composite survivor enrollment threshold quantile q95 -> q99"
-        ),
+        only_policy_change=np.asarray(policy.policy_spec.only_policy_change),
         stage_one_changed=np.asarray(False, dtype=np.bool_),
         rejector_cnn_fusion_changed=np.asarray(False, dtype=np.bool_),
         classifier_cnn_fusion_changed=np.asarray(False, dtype=np.bool_),
@@ -1654,6 +1743,36 @@ def _policy_spec_for(version: str) -> StagedPolicySpec:
         ) from exc
 
 
+def _policy_hygiene_expected(
+    spec: StagedPolicySpec,
+) -> dict[str, str | int | float | bool] | None:
+    """Schema-3+ declarations shared by failed q99 and current q97."""
+    if spec.schema < FAILED_Q99_STAGED_POLICY_SCHEMA:
+        return None
+    survivor_budget = 1.0 - float(spec.threshold_quantile)
+    return {
+        "threshold_population": "enrollment_stage_one_survivors_only",
+        "training_rows_used_for_threshold": 0,
+        "selection_rows_used_for_threshold": 0,
+        "novelty_rows_used_for_threshold": 0,
+        "release_rows_used_for_threshold": 0,
+        "stage_one_known_false_positive_budget": (
+            STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+        ),
+        "survivor_known_false_positive_budget": survivor_budget,
+        "nominal_enrollment_false_unknown_budget": (
+            STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+            + (1.0 - STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET)
+            * survivor_budget
+        ),
+        "only_policy_change": spec.only_policy_change,
+        "stage_one_changed": False,
+        "rejector_cnn_fusion_changed": False,
+        "classifier_cnn_fusion_changed": False,
+        "gate_contract_changed": False,
+    }
+
+
 def load_composite_policy(
     path: Path,
     *,
@@ -1662,12 +1781,11 @@ def load_composite_policy(
 ) -> CompositeSurvivorPolicy:
     """Load and verify a serialized composite policy.
 
-    The default admits only current policy-v3/q99.  A historical q95 artifact
-    remains inspectable only when the caller explicitly supplies
-    ``expected_policy_version=LEGACY_STAGED_POLICY_VERSION``; this prevents a
-    v3.3 artifact from silently acquiring v3.4 semantics.  In both cases the
-    threshold is recomputed from the stored enrollment-survivor composite
-    calibration instead of trusting the stored scalar.
+    The default admits only current policy-v4/q97.  Historical v2/q95 and
+    failed-v3/q99 artifacts remain inspectable only when the caller explicitly
+    requests their exact version; neither can silently acquire q97 semantics.
+    In every case the threshold is recomputed from the stored
+    enrollment-survivor composite calibration instead of trusting the scalar.
     """
     spec = _policy_spec_for(expected_policy_version)
     file_path = Path(path)
@@ -1708,8 +1826,9 @@ def load_composite_policy(
                     f"{expected!r}.  A staged artifact may only be scored "
                     "with the policy version that produced it"
                 )
-        if spec == STAGED_POLICY_SPEC:
-            policy_v3_required = [
+        hygiene = _policy_hygiene_expected(spec)
+        if hygiene is not None:
+            versioned_hygiene_required = [
                 "threshold_population",
                 "training_rows_used_for_threshold",
                 "selection_rows_used_for_threshold",
@@ -1726,7 +1845,7 @@ def load_composite_policy(
             ]
             missing = [
                 name
-                for name in policy_v3_required
+                for name in versioned_hygiene_required
                 if name not in payload.files
             ]
             if missing:
@@ -1738,40 +1857,14 @@ def load_composite_policy(
                 f"the frozen {float(spec.threshold_quantile)} for "
                 f"{spec.version}"
             )
-        if spec == STAGED_POLICY_SPEC:
-            exact = {
-                "threshold_population": (
-                    "enrollment_stage_one_survivors_only"
-                ),
-                "training_rows_used_for_threshold": 0,
-                "selection_rows_used_for_threshold": 0,
-                "novelty_rows_used_for_threshold": 0,
-                "release_rows_used_for_threshold": 0,
-                "stage_one_known_false_positive_budget": (
-                    STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
-                ),
-                "survivor_known_false_positive_budget": (
-                    SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET
-                ),
-                "nominal_enrollment_false_unknown_budget": (
-                    NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET
-                ),
-                "only_policy_change": (
-                    "composite survivor enrollment threshold quantile "
-                    "q95 -> q99"
-                ),
-                "stage_one_changed": False,
-                "rejector_cnn_fusion_changed": False,
-                "classifier_cnn_fusion_changed": False,
-                "gate_contract_changed": False,
-            }
-            for name, expected in exact.items():
+        if hygiene is not None:
+            for name, expected in hygiene.items():
                 found = payload[name].item()
                 if found != expected:
                     raise ValueError(
                         f"{file_path} records {name}={found!r}, expected "
-                        f"{expected!r}; policy-v3 calibration hygiene may not "
-                        "be weakened"
+                        f"{expected!r}; {spec.version} calibration hygiene "
+                        "may not be weakened"
                     )
         calibration = np.asarray(
             payload["stage_one_calibration_raw"], dtype=np.float64
@@ -1855,18 +1948,21 @@ def load_composite_policy(
 def rethreshold_legacy_composite_policy(
     legacy: CompositeSurvivorPolicy,
 ) -> CompositeSurvivorPolicy:
-    """Derive policy-v3/q99 from a verified policy-v2/q95 calibration.
+    """Derive policy-v4/q97 from a verified v2/q95 or failed-v3/q99 policy.
 
     This is deliberately a pure enrollment-calibration transformation: it
     receives no selection, novelty, sealed or release rows, and it preserves
     every stored calibration value and the untouched stage-2 threshold.  It is
-    useful both as a migration check and as a proof that v3.4 changes only the
-    survivor operating-point quantile.
+    useful both as a migration check and as proof that q97 lies between q95
+    and q99 on byte-identical enrollment calibration.
     """
-    if legacy.policy_spec != LEGACY_STAGED_POLICY_SPEC:
+    if legacy.policy_spec not in (
+        LEGACY_STAGED_POLICY_SPEC,
+        FAILED_Q99_STAGED_POLICY_SPEC,
+    ):
         raise ValueError(
             "rethreshold_legacy_composite_policy requires an explicitly "
-            "loaded policy-v2/q95 artifact"
+            "loaded policy-v2/q95 or failed-policy-v3/q99 artifact"
         )
     threshold = float(
         np.quantile(
@@ -1874,9 +1970,19 @@ def rethreshold_legacy_composite_policy(
             COMPOSITE_THRESHOLD_QUANTILE,
         )
     )
-    if threshold < legacy.threshold:
+    if (
+        legacy.policy_spec == LEGACY_STAGED_POLICY_SPEC
+        and threshold < legacy.threshold
+    ):
         raise AssertionError(
-            "q99 threshold is below the verified q95 threshold"
+            "q97 threshold is below the verified q95 threshold"
+        )
+    if (
+        legacy.policy_spec == FAILED_Q99_STAGED_POLICY_SPEC
+        and threshold > legacy.threshold
+    ):
+        raise AssertionError(
+            "q97 threshold is above the verified q99 threshold"
         )
     return CompositeSurvivorPolicy(
         stage_one_calibration_raw=np.array(
@@ -3375,11 +3481,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "the novelty seed the staged system's own choices were (or will be) "
-            "made on. Emitted into the report. Refused if it is spent "
-            f"{sorted(SPENT_NOVELTY_SEEDS)}, consumed sealed seeds "
-            f"{sorted(CONSUMED_SEALED_RELEASE_SEEDS)}, the "
-            f"release seed {RELEASE_SEED_NEVER_SPENT_HERE}, or a default "
-            f"validation seed {list(DEFAULT_VALIDATION_NOVELTY_SEEDS)}."
+            "made on. Emitted into the report. A design run requires the "
+            "unspent reserved design seed; a validation run requires that "
+            "same seed to have been frozen in the spent ledger. Consumed "
+            f"sealed seeds {sorted(CONSUMED_SEALED_RELEASE_SEEDS)}, release "
+            f"seed {RELEASE_SEED_NEVER_SPENT_HERE}, and reserved validation "
+            f"seeds {list(DEFAULT_VALIDATION_NOVELTY_SEEDS)} are never legal "
+            "design seeds."
         ),
     )
     parser.add_argument(

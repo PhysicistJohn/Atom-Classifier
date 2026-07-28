@@ -1,9 +1,11 @@
 """Unit tests for the STAGED v3 open-set rejector.
 
 These tests never touch the development corpus, the consumed test half, or any
-sealed release suite.  Every population is synthetic, small, and constructed in
-the test.  No spent, sealed or release novelty seed is used except where the
-test exists to prove that such a seed is refused.
+sealed release suite.  Every scored population is synthetic, small, and
+constructed in the test.  A serialization-compatibility test reads the tracked
+frozen q99 policy NPZ (enrollment calibration only, no population rows) so the
+machine constants cannot drift from their evidence.  No spent, sealed or
+release novelty seed is used except where a test proves that it is refused.
 """
 from __future__ import annotations
 
@@ -43,7 +45,7 @@ DESIGN_SEED = subject.PROPOSED_DESIGN_NOVELTY_SEED
 VALIDATION_SEED = subject.DEFAULT_VALIDATION_NOVELTY_SEEDS[0]
 # Unreserved clean seed used only by tiny synthetic unit fixtures. It is not
 # scored as project evidence and is never written to an artifact.
-UNIT_NOVELTY_SEED = 20260955
+UNIT_NOVELTY_SEED = 20260956
 FITTING_SEED = prefilter.PROPOSED_FITTING_SEED
 
 # Short lengths so the tests stay fast.  The prefilter is length dependent, so
@@ -378,14 +380,26 @@ class SeedLedgerTests(unittest.TestCase):
                 20260949,
                 20260950,
                 20260951,
+                20260952,
             ],
         )
-        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260952)
-        self.assertEqual(subject.PROPOSED_DESIGN_NOVELTY_SEED, 20260952)
-        self.assertNotIn(20260952, subject.SPENT_NOVELTY_SEEDS)
+        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260953)
+        self.assertEqual(subject.PROPOSED_DESIGN_NOVELTY_SEED, 20260955)
+        self.assertIn(20260952, subject.SPENT_NOVELTY_SEEDS)
+        self.assertIn(
+            "1/300 = 0.0033333333333333335 < 0.10",
+            subject.SPENT_NOVELTY_SEEDS[20260952],
+        )
+        self.assertIn(
+            "38/1908 = 0.019916142557651992",
+            subject.SPENT_NOVELTY_SEEDS[20260952],
+        )
+        self.assertNotIn(20260955, subject.SPENT_NOVELTY_SEEDS)
         self.assertEqual(
             subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, (20260953, 20260954)
         )
+        for seed in subject.DEFAULT_VALIDATION_NOVELTY_SEEDS:
+            self.assertNotIn(seed, subject.SPENT_NOVELTY_SEEDS)
         self.assertEqual(
             sorted(subject.CONSUMED_SEALED_RELEASE_SEEDS),
             [20260729, 20260731, 20260733, 20260734, 20260735],
@@ -442,6 +456,25 @@ class SeedLedgerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "SPENT"):
                 subject.validate_novelty_seeds([DESIGN_SEED])
 
+    def test_validation_must_draw_exactly_the_predeclared_pair(self) -> None:
+        with mock.patch.dict(
+            subject.SPENT_NOVELTY_SEEDS,
+            {DESIGN_SEED: "froze the selected design"},
+            clear=True,
+        ):
+            for seeds in (
+                [subject.DEFAULT_VALIDATION_NOVELTY_SEEDS[0]],
+                [*subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, UNIT_NOVELTY_SEED],
+                list(reversed(subject.DEFAULT_VALIDATION_NOVELTY_SEEDS)),
+                [UNIT_NOVELTY_SEED],
+            ):
+                with self.assertRaisesRegex(
+                    ValueError, "exactly the predeclared reserved"
+                ):
+                    subject.validate_seed_plan(
+                        "validate", DESIGN_SEED, seeds
+                    )
+
     def test_validation_cannot_reference_an_unrelated_spent_seed(self) -> None:
         with self.assertRaisesRegex(ValueError, "design seed is reserved"):
             subject.validate_seed_plan(
@@ -476,9 +509,19 @@ class SeedLedgerTests(unittest.TestCase):
 
     def test_a_clean_seed_is_accepted(self) -> None:
         self.assertEqual(
-            subject.validate_novelty_seeds([20260952, 20260953, 20260954]),
-            (20260952, 20260953, 20260954),
+            subject.validate_novelty_seeds([20260953, 20260954, 20260955]),
+            (20260953, 20260954, 20260955),
         )
+
+    def test_novelty_seed_validation_is_typed_and_respects_clean_boundary(
+        self,
+    ) -> None:
+        for value in (True, np.bool_(False), 20260953.0, "20260953"):
+            with self.assertRaisesRegex(ValueError, "must be integers"):
+                subject.validate_novelty_seeds([value])
+        for seed in (1, 20260937):
+            with self.assertRaisesRegex(ValueError, "clean boundary"):
+                subject.validate_novelty_seeds([seed])
 
     def test_duplicate_and_empty_seed_sets_are_refused(self) -> None:
         with self.assertRaisesRegex(ValueError, "distinct"):
@@ -508,6 +551,14 @@ class SeedLedgerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "must draw novelty"):
                 subject.validate_seed_plan(
                     "design", DESIGN_SEED, [UNIT_NOVELTY_SEED]
+                )
+            with self.assertRaisesRegex(
+                ValueError, "exactly its declared design"
+            ):
+                subject.validate_seed_plan(
+                    "design",
+                    DESIGN_SEED,
+                    [DESIGN_SEED, UNIT_NOVELTY_SEED],
                 )
             self.assertEqual(
                 subject.validate_seed_plan(
@@ -557,7 +608,7 @@ class SeedLedgerTests(unittest.TestCase):
         self.assertEqual(design[design.index("--role") + 1], "design")
         self.assertEqual(
             design[design.index("--novelty-seeds") + 1 :],
-            ["20260952"],
+            ["20260955"],
         )
         prefix = design.index("--prefix-lengths")
         output = design.index("--output-dir")
@@ -806,7 +857,7 @@ class StageOneLoadingTests(unittest.TestCase):
 
 
 class CompositeSurvivorPolicyTests(unittest.TestCase):
-    """Policy version 3: the q99 composite score, fit on enrollment."""
+    """Policy version 4: the q97 composite score, fit on enrollment."""
 
     def _gate(self, root: Path) -> "subject.StageOneGate":
         source, posedegen = _sources()
@@ -826,27 +877,43 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
         return features, stage_two
 
     def test_the_frozen_constants_are_the_bumped_policy_version(self) -> None:
-        self.assertEqual(subject.STAGED_POLICY_SCHEMA, 3)
+        self.assertEqual(subject.STAGED_POLICY_SCHEMA, 4)
         self.assertEqual(
             subject.STAGED_POLICY_VERSION,
-            "v3-staged-openset-policy-v3-composite-survivor-q99",
+            "v3-staged-openset-policy-v4-composite-survivor-q97",
         )
         self.assertIn("composite_survivor", subject.STAGED_POLICY_KIND)
         self.assertIn("1", subject.STAGED_POLICY_VERSION_HISTORY)
         self.assertIn("2", subject.STAGED_POLICY_VERSION_HISTORY)
         self.assertIn("3", subject.STAGED_POLICY_VERSION_HISTORY)
-        # Stage 2 stays at the imported q95; only the composite threshold moves.
+        self.assertIn("4", subject.STAGED_POLICY_VERSION_HISTORY)
+        # Stage 2 stays at imported q95; q99 is frozen read-only; current is q97.
         self.assertIs(
             subject.LEGACY_COMPOSITE_THRESHOLD_QUANTILE,
             subject.THRESHOLD_QUANTILE,
         )
         self.assertEqual(subject.THRESHOLD_QUANTILE, 0.95)
-        self.assertEqual(subject.COMPOSITE_THRESHOLD_QUANTILE, 0.99)
+        self.assertEqual(
+            subject.FAILED_Q99_COMPOSITE_THRESHOLD_QUANTILE, 0.99
+        )
+        self.assertEqual(subject.COMPOSITE_THRESHOLD_QUANTILE, 0.97)
         self.assertEqual(
             subject.STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET, 0.01
         )
         self.assertAlmostEqual(
-            subject.NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET, 0.0199
+            subject.NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET, 0.0397
+        )
+        self.assertEqual(
+            subject.FROZEN_POLICY_V4_Q97_ENROLLMENT_THRESHOLD,
+            0.9844868317511343,
+        )
+        self.assertLess(
+            subject.FROZEN_POLICY_V2_Q95_ENROLLMENT_THRESHOLD,
+            subject.FROZEN_POLICY_V4_Q97_ENROLLMENT_THRESHOLD,
+        )
+        self.assertLess(
+            subject.FROZEN_POLICY_V4_Q97_ENROLLMENT_THRESHOLD,
+            subject.FROZEN_POLICY_V3_Q99_ENROLLMENT_THRESHOLD,
         )
         self.assertEqual(
             subject.COMPOSITE_SURVIVOR_SCORE,
@@ -887,7 +954,7 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
         np.testing.assert_array_equal(
             rank, frozen.empirical_rank(raw[survivors], np.sort(raw[survivors]))
         )
-        # The composite is unchanged, and only its threshold moves to q99.
+        # The composite is unchanged, and only its threshold moves to q97.
         composite = policy.composite(stage_two[survivors], raw[survivors])
         np.testing.assert_array_equal(
             composite, np.maximum(stage_two[survivors], rank)
@@ -915,7 +982,7 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
             )
         self.assertEqual(
             provenance["only_policy_change"],
-            "composite survivor enrollment threshold quantile q95 -> q99",
+            "composite survivor enrollment threshold quantile q99 -> q97",
         )
         self.assertFalse(provenance["stage_one_changed"])
         self.assertFalse(provenance["rejector_cnn_fusion_changed"])
@@ -1030,70 +1097,162 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
         data.update(overrides)
         np.savez_compressed(path, **data)
 
-    def _legacy_saved(self, root: Path) -> Path:
+    def _historical_saved(
+        self, root: Path, spec: "subject.StagedPolicySpec"
+    ) -> Path:
         path = self._saved(root)
         with np.load(path) as payload:
-            data = {
-                name: payload[name]
-                for name in payload.files
-                if name
-                not in {
-                    "threshold_population",
-                    "training_rows_used_for_threshold",
-                    "selection_rows_used_for_threshold",
-                    "novelty_rows_used_for_threshold",
-                    "release_rows_used_for_threshold",
-                    "stage_one_known_false_positive_budget",
-                    "survivor_known_false_positive_budget",
-                    "nominal_enrollment_false_unknown_budget",
-                    "only_policy_change",
-                    "stage_one_changed",
-                    "rejector_cnn_fusion_changed",
-                    "classifier_cnn_fusion_changed",
-                    "gate_contract_changed",
-                }
-            }
+            data = {name: payload[name] for name in payload.files}
         data.update(
-            schema=np.asarray(
-                subject.LEGACY_STAGED_POLICY_SCHEMA, dtype=np.int64
-            ),
-            kind=np.asarray(subject.LEGACY_STAGED_POLICY_KIND),
-            policy_version=np.asarray(subject.LEGACY_STAGED_POLICY_VERSION),
+            schema=np.asarray(spec.schema, dtype=np.int64),
+            kind=np.asarray(spec.kind),
+            policy_version=np.asarray(spec.version),
             threshold_quantile=np.asarray(
-                subject.LEGACY_COMPOSITE_THRESHOLD_QUANTILE,
-                dtype=np.float64,
+                spec.threshold_quantile, dtype=np.float64
             ),
             threshold=np.asarray(
                 np.quantile(
                     data["composite_calibration_raw"],
-                    subject.LEGACY_COMPOSITE_THRESHOLD_QUANTILE,
+                    spec.threshold_quantile,
                 ),
                 dtype=np.float64,
             ),
         )
+        hygiene_names = {
+            "threshold_population",
+            "training_rows_used_for_threshold",
+            "selection_rows_used_for_threshold",
+            "novelty_rows_used_for_threshold",
+            "release_rows_used_for_threshold",
+            "stage_one_known_false_positive_budget",
+            "survivor_known_false_positive_budget",
+            "nominal_enrollment_false_unknown_budget",
+            "only_policy_change",
+            "stage_one_changed",
+            "rejector_cnn_fusion_changed",
+            "classifier_cnn_fusion_changed",
+            "gate_contract_changed",
+        }
+        hygiene = subject._policy_hygiene_expected(spec)
+        if hygiene is None:
+            for name in hygiene_names:
+                data.pop(name, None)
+        else:
+            data.update(
+                {
+                    name: np.asarray(value)
+                    for name, value in hygiene.items()
+                }
+            )
         np.savez_compressed(path, **data)
         return path
 
-    def test_q99_is_monotone_from_the_same_verified_q95_calibration(self) -> None:
+    def _legacy_saved(self, root: Path) -> Path:
+        return self._historical_saved(
+            root, subject.LEGACY_STAGED_POLICY_SPEC
+        )
+
+    def _failed_q99_saved(self, root: Path) -> Path:
+        return self._historical_saved(
+            root, subject.FAILED_Q99_STAGED_POLICY_SPEC
+        )
+
+    def test_q97_is_between_q95_and_q99_on_identical_calibration(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            path = self._legacy_saved(Path(root))
-            legacy = subject.load_composite_policy(
-                path,
+            base_path = Path(root)
+            q95_path = self._legacy_saved(base_path / "q95")
+            q99_path = self._failed_q99_saved(base_path / "q99")
+            q95 = subject.load_composite_policy(
+                q95_path,
                 expected_policy_version=subject.LEGACY_STAGED_POLICY_VERSION,
             )
-            current = subject.rethreshold_legacy_composite_policy(legacy)
-        self.assertGreaterEqual(current.threshold, legacy.threshold)
-        np.testing.assert_array_equal(
-            current.stage_one_calibration_raw,
-            legacy.stage_one_calibration_raw,
-        )
-        np.testing.assert_array_equal(
-            current.composite_calibration_raw,
-            legacy.composite_calibration_raw,
+            q99 = subject.load_composite_policy(
+                q99_path,
+                expected_policy_version=(
+                    subject.FAILED_Q99_STAGED_POLICY_VERSION
+                ),
+            )
+            q97_from_q95 = subject.rethreshold_legacy_composite_policy(q95)
+            q97_from_q99 = subject.rethreshold_legacy_composite_policy(q99)
+        self.assertLess(q95.threshold, q97_from_q95.threshold)
+        self.assertLess(q97_from_q95.threshold, q99.threshold)
+        self.assertEqual(q97_from_q95.threshold, q97_from_q99.threshold)
+        self.assertEqual(
+            q95.threshold,
+            float(
+                np.quantile(
+                    q95.composite_calibration_raw,
+                    subject.LEGACY_COMPOSITE_THRESHOLD_QUANTILE,
+                )
+            ),
         )
         self.assertEqual(
-            current.stage_two_threshold, legacy.stage_two_threshold
+            q97_from_q95.threshold,
+            float(
+                np.quantile(
+                    q95.composite_calibration_raw,
+                    subject.COMPOSITE_THRESHOLD_QUANTILE,
+                )
+            ),
         )
+        self.assertEqual(
+            q99.threshold,
+            float(
+                np.quantile(
+                    q95.composite_calibration_raw,
+                    subject.FAILED_Q99_COMPOSITE_THRESHOLD_QUANTILE,
+                )
+            ),
+        )
+        self.assertEqual(
+            q95.stage_one_calibration_raw.tobytes(),
+            q99.stage_one_calibration_raw.tobytes(),
+        )
+        self.assertEqual(
+            q95.composite_calibration_raw.tobytes(),
+            q99.composite_calibration_raw.tobytes(),
+        )
+        self.assertEqual(
+            q97_from_q95.composite_calibration_raw.tobytes(),
+            q99.composite_calibration_raw.tobytes(),
+        )
+        self.assertEqual(q95.stage_two_threshold, q99.stage_two_threshold)
+        self.assertEqual(
+            q97_from_q95.stage_two_threshold, q99.stage_two_threshold
+        )
+
+    def test_exact_thresholds_are_bound_to_frozen_q99_evidence(self) -> None:
+        path = (
+            HERE.parent
+            / "artifacts"
+            / "invariant_patch"
+            / "v3_scale"
+            / "staged_design_v34_q99_rejector4k_budget001_seed20260952"
+            / "v3_staged_composite_policy.npz"
+        )
+        self.assertTrue(path.is_file(), f"missing frozen q99 evidence: {path}")
+        q99 = subject.load_composite_policy(
+            path,
+            expected_policy_version=subject.FAILED_Q99_STAGED_POLICY_VERSION,
+        )
+        for quantile, expected in (
+            (
+                subject.LEGACY_COMPOSITE_THRESHOLD_QUANTILE,
+                subject.FROZEN_POLICY_V2_Q95_ENROLLMENT_THRESHOLD,
+            ),
+            (
+                subject.COMPOSITE_THRESHOLD_QUANTILE,
+                subject.FROZEN_POLICY_V4_Q97_ENROLLMENT_THRESHOLD,
+            ),
+            (
+                subject.FAILED_Q99_COMPOSITE_THRESHOLD_QUANTILE,
+                subject.FROZEN_POLICY_V3_Q99_ENROLLMENT_THRESHOLD,
+            ),
+        ):
+            self.assertEqual(
+                float(np.quantile(q99.composite_calibration_raw, quantile)),
+                expected,
+            )
 
     def test_old_artifact_loads_only_when_old_version_is_explicit(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -1111,16 +1270,51 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
             legacy.provenance()["threshold_quantile"], 0.95
         )
 
-    def test_current_artifact_is_refused_under_the_old_version(self) -> None:
+    def test_failed_q99_loads_only_when_its_version_is_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = self._failed_q99_saved(Path(root))
+            with self.assertRaisesRegex(ValueError, "policy version mismatch"):
+                subject.load_composite_policy(path)
+            failed = subject.load_composite_policy(
+                path,
+                expected_policy_version=(
+                    subject.FAILED_Q99_STAGED_POLICY_VERSION
+                ),
+            )
+        self.assertEqual(
+            failed.policy_spec, subject.FAILED_Q99_STAGED_POLICY_SPEC
+        )
+        self.assertEqual(failed.provenance()["threshold_quantile"], 0.99)
+
+    def test_q95_and_q99_historical_specs_cannot_cross_load(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            base_path = Path(root)
+            q95_path = self._legacy_saved(base_path / "q95")
+            q99_path = self._failed_q99_saved(base_path / "q99")
+            for path, wrong_version in (
+                (q95_path, subject.FAILED_Q99_STAGED_POLICY_VERSION),
+                (q99_path, subject.LEGACY_STAGED_POLICY_VERSION),
+            ):
+                with self.assertRaisesRegex(
+                    ValueError, "policy version mismatch"
+                ):
+                    subject.load_composite_policy(
+                        path, expected_policy_version=wrong_version
+                    )
+
+    def test_current_artifact_is_refused_under_historical_versions(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             path = self._saved(Path(root))
-            with self.assertRaisesRegex(ValueError, "policy version mismatch"):
-                subject.load_composite_policy(
-                    path,
-                    expected_policy_version=(
-                        subject.LEGACY_STAGED_POLICY_VERSION
-                    ),
-                )
+            for version in (
+                subject.LEGACY_STAGED_POLICY_VERSION,
+                subject.FAILED_Q99_STAGED_POLICY_VERSION,
+            ):
+                with self.assertRaisesRegex(
+                    ValueError, "policy version mismatch"
+                ):
+                    subject.load_composite_policy(
+                        path, expected_policy_version=version
+                    )
 
     def test_a_wrong_policy_version_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -1143,7 +1337,7 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "frozen quantile"):
                 subject.load_composite_policy(path)
 
-    def test_policy_v3_hygiene_counts_cannot_be_tampered(self) -> None:
+    def test_policy_v4_hygiene_counts_cannot_be_tampered(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             path = self._saved(Path(root))
             self._tamper(
@@ -1957,8 +2151,17 @@ class EndToEndRunTests(unittest.TestCase):
             if args.role == "validate"
             else dict(subject.SPENT_NOVELTY_SEEDS)
         )
+        validation_seed_contract = (
+            (UNIT_NOVELTY_SEED,)
+            if args.role == "validate"
+            else subject.DEFAULT_VALIDATION_NOVELTY_SEEDS
+        )
         with mock.patch.dict(
             subject.SPENT_NOVELTY_SEEDS, active_ledger, clear=True
+        ), mock.patch.object(
+            subject,
+            "DEFAULT_VALIDATION_NOVELTY_SEEDS",
+            validation_seed_contract,
         ), mock.patch.object(
             subject, "rebuild_populations", return_value=rebuilt
         ), contextlib.redirect_stdout(io.StringIO()):
@@ -2042,7 +2245,7 @@ class EndToEndRunTests(unittest.TestCase):
         )
         self.assertEqual(len(report["fusion"]["directory_sha256"]), 64)
 
-    # -- the composite policy (staged policy version 3 / q99) ---------------
+    # -- the composite policy (staged policy version 4 / q97) ---------------
 
     def test_the_report_states_the_policy_version_it_validates(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -2058,9 +2261,10 @@ class EndToEndRunTests(unittest.TestCase):
             architecture["survivor_score"], subject.COMPOSITE_SURVIVOR_SCORE
         )
         self.assertIn("composite", architecture)
-        self.assertIn("q95", architecture["why_composite"])
         self.assertIn("q99", architecture["why_composite"])
-        self.assertIn("both CNN fusions are frozen", architecture["why_composite"])
+        self.assertIn("q97", architecture["why_composite"])
+        self.assertIn("both CNN fusions", architecture["why_composite"])
+        self.assertIn("remain frozen", architecture["why_composite"])
 
     def test_the_composite_block_is_recorded_and_consistent(self) -> None:
         with tempfile.TemporaryDirectory() as root:
