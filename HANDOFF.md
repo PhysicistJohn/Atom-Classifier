@@ -1317,3 +1317,75 @@ If v2 lands near 0.85 on dev, the regression is real and v3-specific.
 That control does not exist yet because the script takes a v3 fusion directory and the v2
 bundle has a different frontend and schema. Building the adapter is the next step, and it is
 strictly more informative than either lowering the gate or spending a release seed.
+
+## 22. 8000-episode rerun: closed-set improves, chirp novelty detection is destroyed
+
+Reran the full v3 chain at 8000 episodes, seed 20260730, both branches multilength.
+
+### 22.1 Closed-set, scale and length all improve
+
+| metric | 4k fusion | 8k fusion | delta |
+|---|---:|---:|---:|
+| closed balanced | 0.8675 | **0.8893** | +0.022 |
+| clean | 0.8921 | 0.9066 | +0.015 |
+| N4096 | 0.7678 | **0.7833** | +0.016 |
+| N8192 | 0.8095 | 0.8255 | +0.016 |
+| N16384 | 0.8848 | **0.9032** | +0.018 |
+| worst scale | 0.7956 | **0.8117** | +0.016 |
+| N4096 clean | 0.9208 | 0.9235 | +0.003 |
+
+4000 episodes was inherited from the v2 invariant-patch work, never chosen from a curve, and
+it was leaving roughly +0.02 on the table across the board.
+
+### 22.2 Five-shot is NOT budget-limited
+
+| | 4k | 8k | delta |
+|---|---:|---:|---:|
+| five-shot enrollment_support | 0.7564 | 0.7680 | +0.012 |
+| five-shot selection_support | 0.7576 | 0.7651 | +0.008 |
+
+Doubling the budget bought about half the improvement five-shot would need per doubling to
+reach 0.85 in any reasonable number of doublings. It is saturating well below the bar, not
+climbing toward it. That rules out the cheap explanation and leaves the protocol mismatch of
+section 21 or something structural.
+
+### 22.3 And it destroys chirp rejection
+
+| gate | 4k | 8k | bound | |
+|---|---:|---:|---:|---|
+| chirp AUROC | 0.9668 | **0.7111** | >= 0.80 | **FAIL** |
+| chirp threshold recall | 0.9967 | **0.0000** | >= 0.10 | **FAIL** |
+| noise AUROC | 0.8559 | 0.8493 | >= 0.80 | pass |
+| noise threshold recall | 0.6200 | 0.6367 | >= 0.10 | pass |
+| known false-unknown | 0.0681 | 0.0613 | <= 0.10 | pass |
+| overall AUROC | 0.9154 | 0.7819 | >= 0.72 | pass |
+
+`status: development_openset_fail`. Confirmed across all six cells: chirp recall 0.000-0.050
+at 8k against 0.72-1.00 at 4k.
+
+**The mechanism is identifiable from the artifact.** The prefilter gates 0.000-0.050 of chirp
+at BOTH budgets, identically, so stage 1 is unchanged. The failure is entirely stage 2: the
+branch LOF on 8k embeddings no longer treats chirps as outliers. The encoder is trained only
+on the seven known classes; training it longer maps everything more confidently onto the
+learned manifold, including out-of-class input. Novelty detection depends on OOD inputs
+landing off-manifold, and better fitting is precisely what removes that.
+
+### 22.4 What this means
+
+**8k is not simply better and must not be adopted as a default.** It trades chirp rejection,
+which v2 sealed already failed and v3 had fixed, for about +0.02 of closed-set accuracy.
+
+This is a genuine capacity/novelty tension and it should be treated as a design axis, not a
+budget setting. Options, none yet tested:
+
+1. Keep 4000 for the encoder and take the closed-set cost. Currently the only configuration
+   with all six open-set gates passing.
+2. Train longer but freeze the LOF reference statistics at an earlier checkpoint, so novelty
+   is judged against a less over-fitted manifold.
+3. Give chirp its own prefilter, exactly as noise now has. Section 19 showed chirp is carried
+   by DIFFERENT pose-degeneracy features (prefix_centre_dispersion 0.9612), which are computed
+   from raw I/Q and are therefore immune to encoder over-fitting. This is the most promising
+   option and it is the same move that already worked for noise.
+
+Note option 3 would make the open-set path entirely frontend-based and independent of training
+budget, which would remove this tension rather than balance it.
