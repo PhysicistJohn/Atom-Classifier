@@ -50,6 +50,9 @@ import {
   loadTimeDomainFusionAssetV3,
   type TimeDomainFusionAssetV3,
 } from './time-domain-fusion-v3.js';
+import {
+  createTimeDomainEncodersV3 as createTimeDomainEncoderPairV3,
+} from './time-domain-encoder-v3.js';
 
 export const TIME_DOMAIN_CLASSIFIER_SCHEMA =
   'atomos.v3.time-domain-invariant-fusion.browser-decision' as const;
@@ -87,41 +90,20 @@ export interface TimeDomainEncoderPairV3 {
   complex: TimeDomainBranchEncoderV3;
 }
 
-/** Module specifier of the sibling encoder port. */
+/** Module specifier retained as public provenance for the sibling encoder port. */
 export const TIME_DOMAIN_ENCODER_MODULE_V3 = './time-domain-encoder-v3.js';
 
 /**
- * Load the sibling encoder module dynamically, failing loudly when it is not
- * present. The expected module shape is
- * `createTimeDomainEncodersV3(encoderAsset: unknown): TimeDomainEncoderPairV3`.
+ * Construct the sibling encoders through a statically analyzable import. A
+ * computed dynamic import worked in Node-local tests but could not be resolved
+ * when Atomizer source-bundled this module through Vite's `/@fs/` boundary.
  */
 export async function loadTimeDomainEncodersV3(
   encoderAsset: unknown,
 ): Promise<TimeDomainEncoderPairV3> {
-  let module: Record<string, unknown>;
-  try {
-    module = (await import(
-      /* @vite-ignore */ TIME_DOMAIN_ENCODER_MODULE_V3
-    )) as Record<string, unknown>;
-  } catch (cause) {
-    throw new Error(
-      `the sibling v3 encoder module ${TIME_DOMAIN_ENCODER_MODULE_V3} is not `
-      + 'present. The time-domain v3 decision layer refuses to run without '
-      + 'the real encoder forward passes; inject encoders explicitly via '
-      + 'createTimeDomainClassifierV3 if you are testing the decision layer '
-      + 'alone.',
-      { cause },
-    );
-  }
-  const factory = module['createTimeDomainEncodersV3'];
-  if (typeof factory !== 'function') {
-    throw new Error(
-      `${TIME_DOMAIN_ENCODER_MODULE_V3} does not export `
-      + 'createTimeDomainEncodersV3(encoderAsset); the sibling encoder '
-      + 'contract changed and this module must be updated with it.',
-    );
-  }
-  const encoders = factory(encoderAsset) as TimeDomainEncoderPairV3;
+  const encoders = createTimeDomainEncoderPairV3(
+    encoderAsset,
+  ) as TimeDomainEncoderPairV3;
   if (
     typeof encoders !== 'object'
     || encoders === null
