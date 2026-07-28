@@ -1260,3 +1260,60 @@ that v2 passed and v3 had broken.** Five-shot is the sole remaining failure.
 Release seed 20260731 still unspent. Also still required before any release: the v3 runtime
 bundle export, and the TypeScript encoder/fusion/prototype/rejection port with fresh parity
 fixtures.
+
+## 21. CORRECTION to section 18: multilength is not the five-shot cause, and the comparison was invalid
+
+Two corrections, both to my own section 18.
+
+### 21.1 The hypothesis is refuted, and backwards
+
+Section 18 hypothesised that multilength training caused the five-shot regression by widening
+within-class variance. Assembled the control fusion from the non-multilength baseline branches
+(`timecorr_real_4000_seed20260730_rerun1` + `timecorr_complex_4000_seed20260730_run1`, same
+assembler, same neutral 0.5 weight, budget- and seed-matched):
+
+| five-shot variant | multilength | non-multilength |
+|---|---:|---:|
+| enrollment_support (primary) | **0.7564** | 0.6886 |
+| selection_support | **0.7576** | 0.7025 |
+
+**Multilength IMPROVES five-shot by +0.068.** It is not the cause. Acting on section 18's
+hypothesis would have removed the thing that was helping.
+
+For completeness the non-multilength fusion also scores closed 0.8952 / clean 0.9627 and
+N4096 length 0.7008 against multilength's 0.8623 / 0.9025 / 0.7508, so it is the better
+closed-set model and the worse length model, as expected.
+
+### 21.2 The 0.7564-vs-0.8495 comparison is not valid
+
+`measure_v3_remaining_gates.py` documents five deviations from the sealed protocol in its own
+docstring, and the substantive one is point 5:
+
+> The sealed protocol draws support and query from the same sealed corpus. The development
+> corpus cannot do that without breaking an evidence rule: five-shot support *is* a prototype
+> fit, and the selection population is scored, never fit.
+
+So the dev measurement uses **enrollment support against selection query**, a cross-population
+task that is strictly harder than the sealed same-corpus protocol. v2's 0.8495 came from the
+release evaluator on the sealed suite. **The two numbers measure different things and should
+never have been placed in the same table.**
+
+This is the same error class already recorded in section 14.2 for the length audit: no v2
+number exists under this dev protocol, so **no v3 five-shot regression can be claimed from
+current evidence.** Section 18's scorecard row for five-shot is withdrawn.
+
+Do not read this as a reprieve. The `selection_support` variant is closer to the sealed
+protocol and still scores 0.7576, so "it is purely protocol" is equally unestablished. The
+honest position is that the gate is UNMEASURED for v3 in a way comparable to v2, not that it
+passes or fails.
+
+### 21.3 What would actually settle it
+
+Score the frozen v2 runtime bundle (`invariant_fusion_runtime_bundle_v2_seed20260727`) through
+`measure_v3_remaining_gates.py`'s exact protocol. If v2 also lands near 0.75 on dev, there is
+no regression and the 0.85 bar is a sealed-population figure that dev cannot be compared to.
+If v2 lands near 0.85 on dev, the regression is real and v3-specific.
+
+That control does not exist yet because the script takes a v3 fusion directory and the v2
+bundle has a different frontend and schema. Building the adapter is the next step, and it is
+strictly more informative than either lowering the gate or spending a release seed.
