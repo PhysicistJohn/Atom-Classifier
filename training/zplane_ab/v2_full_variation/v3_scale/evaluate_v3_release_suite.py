@@ -412,6 +412,22 @@ _INTEGER_FIELD_NAMES = frozenset(
         "target_per_class",
     }
 )
+_STRING_LIST_FIELD_NAMES = frozenset(
+    {
+        # Schema-4 parity records the names of rows on which the two accepted
+        # role winners disagree.  The plural ``_rows`` suffix describes row
+        # identities, not an integer count or integer indices.
+        "accepted_role_winner_disagreement_rows",
+    }
+)
+_NULLABLE_INTEGER_FIELD_NAMES = frozenset(
+    {
+        # A stage-one short circuit has no rejector winner, and an unknown
+        # public result intentionally has no known-class winner.
+        "known_winner_index",
+        "rejector_closed_winner_index",
+    }
+)
 
 
 def _snake_field_name(value: str) -> str:
@@ -509,6 +525,14 @@ def _validate_json_scalar_types(
             )
         return
     if isinstance(value, list):
+        semantic_field = _snake_field_name(collection_field or field)
+        if semantic_field in _STRING_LIST_FIELD_NAMES:
+            for index, item in enumerate(value):
+                if type(item) is not str:
+                    raise ValueError(
+                        f"{field}[{index}] must be a JSON string row identity"
+                    )
+            return
         for index, item in enumerate(value):
             _validate_json_scalar_types(
                 item,
@@ -519,6 +543,12 @@ def _validate_json_scalar_types(
         return
     leaf = field.rsplit(".", 1)[-1].split("[", 1)[0]
     semantic_field = collection_field or leaf
+    if (
+        value is None
+        and _snake_field_name(semantic_field)
+        in _NULLABLE_INTEGER_FIELD_NAMES
+    ):
+        return
     if _field_requires_bool(semantic_field):
         if type(value) is not bool:
             raise ValueError(f"{field} must be a JSON boolean")
@@ -1130,8 +1160,155 @@ if len(TRANSITIVE_DEPENDENCY_PATHS) != 49:  # pragma: no cover - import guard
 # Filled only once every source is final.  Until then a canonical release
 # fails closed, while synthetic unit candidates explicitly disable canonical
 # evidence and remain usable.
-EXPECTED_TRANSITIVE_DEPENDENCY_SHA256: dict[str, str | None] = {
-    key: None for key in TRANSITIVE_DEPENDENCY_PATHS
+EXPECTED_TRANSITIVE_DEPENDENCY_SHA256: dict[str, str] = {
+    "training/canonical_probe.py": (
+        "b51387eabb06c740b6a94cefe720546ee2b5d3cbfabde32a82594bb010095acc"
+    ),
+    "training/dataset.py": (
+        "8561d3397c9e7d71884cdada681f59d46c8ce05cc7fb7f34f93a1f3ea94fe12c"
+    ),
+    "training/invariant_patch_preprocess.py": (
+        "04c66362e6978bc1827791653963d0921bcdde51f93b9dd74e6eb9b4e8217420"
+    ),
+    "training/model.py": (
+        "dbe135b9b69dce088f52917b702c1d41f04e97a60a25b41facbc5f9c29b94801"
+    ),
+    "training/preprocess.py": (
+        "5369ea8277f64fcd6367a8a363bf7a5a28298663c39315126160ded5bcc0091d"
+    ),
+    "training/rfgen.py": (
+        "c5ccb74007328abc3cb43908dd69f032391612feb3f8c848c72e67141e5811ba"
+    ),
+    "training/time_domain_geometry.py": (
+        "a9735473f44105d20cffb9d4888ff8cf8e02503746f70b50e6d5d3737138da33"
+    ),
+    "training/time_domain_invariant_patch_preprocess.py": (
+        "5cd1787aed0e5fd95adc2e4de56db460d753d0557350aa8f3aff0e393c0bb10a"
+    ),
+    "training/train.py": (
+        "0669704ff4933b2ab7f8e35b0b6fb58553a06a8d75c93f54ee928ad33e2e257c"
+    ),
+    "training/zplane_ab/common_split.py": (
+        "9e3170631dfc5d1a1b3f534844a48c67c77b48ba49e5265e504414e69ef485db"
+    ),
+    "training/zplane_ab/train_common.py": (
+        "05251d47665b8b8a68f9008e6d39c6858f81a68a537249e29730b67e595280e9"
+    ),
+    "training/zplane_ab/zplane_backbone.py": (
+        "1c4c840b9f18bc871ca133386a537756ac871cefd71db9e1ee5e8cbfdb8d39bf"
+    ),
+    "training/zplane_ab/v2_full_variation/assemble_invariant_candidate.py": (
+        "de2215ffa73cc046bd5de817ca2516ecf396ff9f1767022bb1d99cccc4fb9f09"
+    ),
+    "training/zplane_ab/v2_full_variation/canonical_probe_net.py": (
+        "c778c908021347084d0e92f5de0fb1b3adb4e39333aad734edee2fa1cae58e79"
+    ),
+    "training/zplane_ab/v2_full_variation/complex_multiscale_backbone.py": (
+        "ff029ff9380a9a6f13d99cf9cdec2cbe0755d175a2ba9f9147c99c8c74cc9350"
+    ),
+    "training/zplane_ab/v2_full_variation/denoise_eval.py": (
+        "262c4d8e5f35296466f4c1dd7cfbbdd139ec1e6457158f0c7a1eff7d2c818ccb"
+    ),
+    "training/zplane_ab/v2_full_variation/equalizer_frontend.py": (
+        "fc495924b9dee934f6fc4e6fcd5acfa3c09ee86381dcfa5c284442b1e50c8381"
+    ),
+    "training/zplane_ab/v2_full_variation/evaluate_ab_v2.py": (
+        "f8ecc75b569cc89fbf91bc94a826b3371cdc97069f02d7f68653f07fd1d5070d"
+    ),
+    "training/zplane_ab/v2_full_variation/evaluate_invariant_release_suite.py": (
+        "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541"
+    ),
+    "training/zplane_ab/v2_full_variation/full_split.py": (
+        "7ecb6bcd73549107fb3f4423b43509f471e7253711dfea12b6e4a578060417ba"
+    ),
+    "training/zplane_ab/v2_full_variation/ground_state_data.py": (
+        "67071dc1690d546830323efde0af0e2285e6efe318eb1aea01241645908081cd"
+    ),
+    "training/zplane_ab/v2_full_variation/invariant_fusion.py": (
+        "22a46a75c95cb4aa452bc44228b156b57474b981da20cf7095fff8a129f1c281"
+    ),
+    "training/zplane_ab/v2_full_variation/invariant_patch_cnn.py": (
+        "b402e8bb75a5809f4a57e8de231268e9ad18afc26b2cfcbf57d2f0b43804ede4"
+    ),
+    "training/zplane_ab/v2_full_variation/invariant_patch_data.py": (
+        "63e6134bddb927149a54c73fb011c580d1423b8b9977bab0e0b88655c3d0a798"
+    ),
+    "training/zplane_ab/v2_full_variation/known_only_patch_openset.py": (
+        "4764a9997331bb657787dcff211ab8d7098f98536208c1c0432af8f373763785"
+    ),
+    "training/zplane_ab/v2_full_variation/length_aug.py": (
+        "e356b73f5bdee5c3ccd24cfd1473e89216b742789183db7bd9b16456fa1ff428"
+    ),
+    "training/zplane_ab/v2_full_variation/multitask_autoencoder.py": (
+        "af4a7b6f44eaaa94a2c312520e0f48ea15f46b115bfb7c95c250c1cf4912f53f"
+    ),
+    "training/zplane_ab/v2_full_variation/native_preprocess.py": (
+        "6752cb2c83f5dc6f4b634017d2c3ab16e4da4e85eea83c777378a37dbb9a4227"
+    ),
+    "training/zplane_ab/v2_full_variation/openset_eval.py": (
+        "1675b9ce60139e58b0d12dd287552b22d8bc47cfcb264a0ec347def251ed3354"
+    ),
+    "training/zplane_ab/v2_full_variation/pool_cache.py": (
+        "59dc10d2ee0c0b6ff1722ab93fa43bda8d0e63257397ae8dca6674d301f40d53"
+    ),
+    "training/zplane_ab/v2_full_variation/run_bounded_dev.py": (
+        "8564e66208a1eb5051df4cbe74f61124c208bd3b6209cb909c33ec56bb7e6869"
+    ),
+    "training/zplane_ab/v2_full_variation/run_corrected_unet.py": (
+        "73482231d2d5eb3ae73221ed702adf9cd2e0709fd3a788b66d8a067e747977ca"
+    ),
+    "training/zplane_ab/v2_full_variation/run_invariant_cnn_dev.py": (
+        "22036917af78e48e00dcfe0922c464d0cab352750c00fcb45d6aece1f4fd9cfb"
+    ),
+    "training/zplane_ab/v2_full_variation/scalar_transfer.py": (
+        "2e5d8380d9663127a89f96cf2bfca8cc6d4d4df3f73b1d804eacfcffafa54848"
+    ),
+    "training/zplane_ab/v2_full_variation/train_common_v2.py": (
+        "9be6b5d08a3fc5c3aff1e3110c8df440aad6bde9d21ad1059d9ba666439cebca"
+    ),
+    "training/zplane_ab/v2_full_variation/train_transfer.py": (
+        "d5e68558657ba96348bef30cf749f199497c7b3c306126f09086b009c51c2592"
+    ),
+    "training/zplane_ab/v2_full_variation/unet_multitask.py": (
+        "23178c9d18b7cc9aed95df5288f0543abd6659961c0f68c8fd417daafbd059af"
+    ),
+    "training/zplane_ab/v2_full_variation/unet_transfer.py": (
+        "3b9f7e0998d11f83328cd9295a46c54ab656630a3f0c4800f3479d0a99da05a1"
+    ),
+    "training/zplane_ab/v2_full_variation/v3_time_domain_openset.py": (
+        "ae1ddb6c14777cd27be591345a23ca567bd1e20accd4b7729804a5453144ea64"
+    ),
+    "training/zplane_ab/v2_full_variation/vit_backbone.py": (
+        "ea0255c82d222b2bd8a3d3bf84d4b2b8dfaa49819950193495fcda824a280f9c"
+    ),
+    "training/zplane_ab/v2_full_variation/v3_scale/assemble_v3_fusion.py": (
+        "961e493697d1d941395dafe32570262dc09996b53fed9b2a0e82525e43560daa"
+    ),
+    "training/zplane_ab/v2_full_variation/v3_scale/"
+    "export_v3_openset_browser_assets.py": (
+        "13722adf59c49826a7d356d8b3ce538a3da46ef30b0ea6bb0194e53fe40fbdb1"
+    ),
+    "training/zplane_ab/v2_full_variation/v3_scale/fit_v3_openset.py": (
+        "970e536087c0c4660424628a69e8bb08955885b337fd6ac560edf4bfaec1fba9"
+    ),
+    "training/zplane_ab/v2_full_variation/v3_scale/fit_v3_openset_staged.py": (
+        "da79f85b68ffd5ab7b4bdba8f78e336af698bbeef9bfabdf766f0eb96f23ad88"
+    ),
+    "training/zplane_ab/v2_full_variation/v3_scale/measure_pose_degeneracy.py": (
+        "7a532f2420dfd7c77deed1337c2b8d710a8e5546955452b89855aa55ef653565"
+    ),
+    "training/zplane_ab/v2_full_variation/v3_scale/measure_v3_remaining_gates.py": (
+        "fd8765614b9cadbbf852845ef11e26e861ab77d510d2a91c87513eea4e6cb405"
+    ),
+    "training/zplane_ab/v2_full_variation/v3_scale/noise_prefilter.py": (
+        "435495e5b0d11558a2e0edfd7d6e6112e7cebf716460d3d81ae741d97deaa7b4"
+    ),
+    "training/zplane_ab/v2_full_variation/v3_scale/pose_degeneracy.py": (
+        "431499124cd8470276a22356622b54f9c60c63c15e3770f49944bc626091aaf1"
+    ),
+    "training/zplane_ab/v2_full_variation/v3_scale/run_time_domain_dev.py": (
+        "9446a23b8d80c86fd7984307d3a2c04530e12f553df5b778967a4fd54dd193c4"
+    ),
 }
 EXPECTED_EVALUATOR_RUNTIME_IDENTITY = {
     "python": "3.9.6",

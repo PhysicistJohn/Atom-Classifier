@@ -3734,11 +3734,25 @@ class V4AdmissionHardeningTests(unittest.TestCase):
                     expected_runtime=runtime,
                 )
 
-    def test_unbound_canonical_dependency_hashes_fail_closed(self):
+    def test_bound_canonical_dependency_hashes_admit_and_none_fails_closed(self):
+        report = evaluator._admit_transitive_execution_contract(
+            canonical_release_candidate=True,
+            device=torch.device("cpu"),
+        )
+        self.assertTrue(report["passes"])
+        self.assertEqual(report["dependency_file_count"], 49)
+        self.assertEqual(
+            report["dependency_source_sha256"],
+            evaluator.EXPECTED_TRANSITIVE_DEPENDENCY_SHA256,
+        )
+
+        unbound = dict(evaluator.EXPECTED_TRANSITIVE_DEPENDENCY_SHA256)
+        unbound[next(iter(unbound))] = None
         with self.assertRaisesRegex(ValueError, "SHA-256"):
             evaluator._admit_transitive_execution_contract(
                 canonical_release_candidate=True,
                 device=torch.device("cpu"),
+                expected_sha256=unbound,
             )
 
     def test_json_scalar_admission_rejects_bool_and_integer_aliases_broadly(self):
@@ -3826,6 +3840,30 @@ class V4AdmissionHardeningTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 with self.assertRaisesRegex(ValueError, "JSON integer"):
                     evaluator._validate_json_scalar_types(payload)
+        evaluator._validate_json_scalar_types(
+            {
+                "accepted_role_winner_disagreement_rows": [
+                    "N4096/known/0001"
+                ]
+            }
+        )
+        for alias in (0, 1.0, False, None):
+            with self.subTest(disagreement_row_alias=alias):
+                with self.assertRaisesRegex(ValueError, "string row identity"):
+                    evaluator._validate_json_scalar_types(
+                        {
+                            "accepted_role_winner_disagreement_rows": [
+                                alias
+                            ]
+                        }
+                    )
+        for field in ("knownWinnerIndex", "rejector_closed_winner_index"):
+            evaluator._validate_json_scalar_types({field: None})
+            evaluator._validate_json_scalar_types({field: 3})
+            for alias in (False, 3.0, "3"):
+                with self.subTest(nullable_integer=field, alias=alias):
+                    with self.assertRaisesRegex(ValueError, "JSON integer"):
+                        evaluator._validate_json_scalar_types({field: alias})
 
     def test_strict_scalar_reader_accepts_real_frozen_json_shapes(self):
         paths = (
@@ -3846,6 +3884,10 @@ class V4AdmissionHardeningTests(unittest.TestCase):
             evaluator.TRAINING
             / "artifacts/releases/invariant_fusion_v3_sealed_seed20260735/"
             "RELEASE_EVALUATION.json",
+            evaluator.REPO
+            / "training/zplane_ab/v2_full_variation/artifacts/staging/"
+            "time_domain_v3_openset_dual/"
+            "time-domain-openset-parity-v1.json",
         )
         for path in paths:
             with self.subTest(path=path):

@@ -16,9 +16,9 @@ Hygiene properties asserted explicitly:
   under test;
 * the reconstructed generation command is exactly the sealed mechanics
   re-aimed at seed 20260736 with 192 rows per class, and is never executed;
-* the q99 failure and q97 pass are immutable hash-pinned design evidence,
-  while every future validation/candidate/browser/package/fixture digest is
-  an explicit fail-closed placeholder rather than a fabricated value;
+* the q99 failure, q97 design pass, independent validation, candidate,
+  browser/package assets and evaluator protocol are immutable hash-pinned
+  evidence; replacing any final pin with a placeholder still fails closed;
 * an existing report path is refused before any check runs, and a report can
   never be written under the release tree.
 
@@ -431,7 +431,7 @@ class FrozenDesignEvidenceTest(TempDirTestCase):
 
 
 class FutureReleasePinsTest(TempDirTestCase):
-    def test_unknown_future_hashes_and_validation_reasons_fail_closed(self) -> None:
+    def test_final_hashes_and_validation_reasons_are_all_bound(self) -> None:
         checks = _by_name(
             preflight.check_future_release_pins(preflight.DEFAULT_PINS)
         )
@@ -452,26 +452,16 @@ class FutureReleasePinsTest(TempDirTestCase):
         }
         self.assertTrue(expected.issubset(checks))
         self.assertTrue(
-            all(not checks[name]["passed"] for name in expected),
+            all(checks[name]["passed"] for name in expected),
             checks,
         )
-        self.assertTrue(
-            all(
-                value is None
-                for value in (
-                    preflight.DEFAULT_PINS["v3_evaluator_sha256"],
-                    preflight.DEFAULT_PINS["candidate_manifest_sha256"],
-                    preflight.DEFAULT_PINS["validation_evidence_sha256"],
-                    preflight.DEFAULT_PINS[
-                        "frozen_candidate_contract_sha256"
-                    ],
-                    preflight.DEFAULT_PINS[
-                        "staging_package_manifest_sha256"
-                    ],
-                    preflight.DEFAULT_PINS["dual_binding_sha256"],
-                    preflight.DEFAULT_PINS["v3_protocol_fixture_sha256"],
-                )
-            )
+        unbound = copy.deepcopy(preflight.DEFAULT_PINS)
+        unbound["candidate_manifest_sha256"] = None
+        unbound["validation_seed_reasons"][20260953] = None
+        refused = _by_name(preflight.check_future_release_pins(unbound))
+        self.assertFalse(refused["future_pin.candidate_manifest"]["passed"])
+        self.assertFalse(
+            refused["future_pin.validation_seed_reason.20260953"]["passed"]
         )
         self.assertEqual(
             preflight.DEFAULT_PINS["candidate_manifest_schema"],
@@ -498,7 +488,7 @@ class FutureReleasePinsTest(TempDirTestCase):
 
 
 class FrozenPolicyCheckTest(TempDirTestCase):
-    def test_q97_constants_pass_but_unspent_validation_ledger_fails_closed(
+    def test_q97_constants_and_spent_validation_ledger_pass(
         self,
     ) -> None:
         checks = _by_name(preflight.check_frozen_policy(preflight.DEFAULT_PINS))
@@ -511,9 +501,13 @@ class FrozenPolicyCheckTest(TempDirTestCase):
             all(item["passed"] for item in identity_checks.values()),
             checks,
         )
-        self.assertFalse(checks["policy.seed_ledger_constants"]["passed"])
+        self.assertTrue(checks["policy.seed_ledger_constants"]["passed"])
         self.assertIn("policy.import_identity_discipline", checks)
         self.assertIn("policy.seed_ledger_constants", checks)
+        unbound = copy.deepcopy(preflight.DEFAULT_PINS)
+        unbound["validation_seed_reasons"][20260954] = None
+        refused = _by_name(preflight.check_frozen_policy(unbound))
+        self.assertFalse(refused["policy.seed_ledger_constants"]["passed"])
 
     def test_drifted_pin_fails(self) -> None:
         pins = copy.deepcopy(preflight.DEFAULT_PINS)
@@ -536,7 +530,7 @@ class FrozenPolicyCheckTest(TempDirTestCase):
 
 
 class EvaluatorSourcesCheckTest(TempDirTestCase):
-    def test_working_evaluator_has_exact_schema4_q97_identity_but_no_final_pin(
+    def test_working_evaluator_has_exact_schema4_q97_identity_and_final_pin(
         self,
     ) -> None:
         checks = _by_name(
@@ -548,8 +542,11 @@ class EvaluatorSourcesCheckTest(TempDirTestCase):
         )
         self.assertTrue(checks["sources.v3_evaluator_present"]["passed"])
         self.assertTrue(checks["sources.v3_evaluator_identity"]["passed"])
-        self.assertFalse(checks["sources.v3_evaluator_sha256"]["passed"])
-        self.assertIsNone(preflight.DEFAULT_PINS["v3_evaluator_sha256"])
+        self.assertTrue(checks["sources.v3_evaluator_sha256"]["passed"])
+        self.assertEqual(
+            preflight.DEFAULT_PINS["v3_evaluator_sha256"],
+            preflight._sha256(preflight.DEFAULT_EVALUATOR),
+        )
 
     def test_missing_v3_evaluator_fails(self) -> None:
         missing = (
@@ -611,10 +608,19 @@ class EvaluatorSourcesCheckTest(TempDirTestCase):
             checks["sources.evaluator_dependency_path_contract"]["passed"]
         )
         self.assertTrue(checks["sources.static_import_closure"]["passed"])
-        self.assertFalse(
-            checks["sources.dependency_hashes_pinned"]["passed"],
-            "pre-validation None pins must fail closed",
+        self.assertTrue(checks["sources.dependency_hashes_pinned"]["passed"])
+        unbound = copy.deepcopy(preflight.DEFAULT_PINS)
+        unbound["dependency_source_sha256"][
+            next(iter(unbound["dependency_source_sha256"]))
+        ] = None
+        refused = _by_name(
+            preflight.check_evaluator_sources(
+                preflight.DEFAULT_EVALUATOR,
+                unbound,
+                {},
+            )
         )
+        self.assertFalse(refused["sources.dependency_hashes_pinned"]["passed"])
 
     def test_dependency_pin_tamper_and_key_drift_fail(self) -> None:
         pins = copy.deepcopy(preflight.DEFAULT_PINS)
@@ -1115,10 +1121,23 @@ class GenerationCommandTest(TempDirTestCase):
                 preflight.DEFAULT_NODE_BIN_DIR,
             )
 
-    def test_exact_path_still_refuses_unbound_future_pins(self) -> None:
+    def test_exact_path_builds_only_with_bound_future_pins(self) -> None:
+        command = preflight.build_generation_command(
+            preflight.DEFAULT_PINS,
+            preflight.DEFAULT_CANDIDATE_MANIFEST,
+            preflight.DEFAULT_ISOLATED_ROOT,
+            preflight.DEFAULT_NODE_BIN_DIR,
+        )
+        self.assertTrue(command["not_run_by_preflight"])
+        self.assertEqual(
+            command["candidate_manifest_sha256"],
+            preflight.DEFAULT_PINS["candidate_manifest_sha256"],
+        )
+        unbound = copy.deepcopy(preflight.DEFAULT_PINS)
+        unbound["v3_protocol_fixture_sha256"] = None
         with self.assertRaisesRegex(ValueError, "unbound fail-closed"):
             preflight.build_generation_command(
-                preflight.DEFAULT_PINS,
+                unbound,
                 preflight.DEFAULT_CANDIDATE_MANIFEST,
                 preflight.DEFAULT_ISOLATED_ROOT,
                 preflight.DEFAULT_NODE_BIN_DIR,
@@ -1294,9 +1313,9 @@ class HarnessTest(TempDirTestCase):
     "full frozen environment not present",
 )
 class EndToEndTest(TempDirTestCase):
-    """The current pre-validation environment refuses release36 safely."""
+    """The final pre-release environment admits release36 without spending it."""
 
-    def test_full_preflight_is_no_go_until_future_chain_is_bound(self) -> None:
+    def test_full_preflight_is_go_and_consumes_nothing(self) -> None:
         tmp = Path(self.tmpdir())
         output = tmp / "preflight_report.json"
         previous = os.environ.get("PYTHONWARNINGS")
@@ -1314,10 +1333,10 @@ class EndToEndTest(TempDirTestCase):
             else:
                 os.environ["PYTHONWARNINGS"] = previous
         text = stdout.getvalue()
-        self.assertEqual(status, 1, text)
+        self.assertEqual(status, 0, text)
         final = text.splitlines()[-1]
-        self.assertTrue(final.startswith("NO-GO:"), final)
-        self.assertIn("do not spend release seed 20260736", final)
+        self.assertTrue(final.startswith("GO:"), final)
+        self.assertIn("safe to spend release seed 20260736 once", final)
         # Exactly one GO / NO-GO line, every check itemised above it.
         go_lines = [
             line
@@ -1326,21 +1345,18 @@ class EndToEndTest(TempDirTestCase):
         ]
         self.assertEqual(len(go_lines), 1)
         report = json.loads(output.read_text())
-        self.assertFalse(report["go"])
+        self.assertTrue(report["go"])
         failed = [item["name"] for item in report["checks"] if not item["passed"]]
-        self.assertIn("future_pin.protocol_fixture", failed)
-        self.assertIn("future_pin.validation_evidence", failed)
-        self.assertIn("future_pin.staging_package_manifest", failed)
-        self.assertIn("policy.seed_ledger_constants", failed)
-        self.assertIn("candidate", failed)
+        self.assertEqual(failed, [])
         self.assertGreaterEqual(len(report["checks"]), 40)
-        # The report carries the work-in-progress evaluator hash but refuses
-        # to treat it as final while the exact pin is intentionally unbound.
         self.assertEqual(
             report["observed"]["v3_evaluator_sha256"],
             preflight._sha256(preflight.DEFAULT_EVALUATOR),
         )
-        self.assertIsNone(preflight.DEFAULT_PINS["v3_evaluator_sha256"])
+        self.assertEqual(
+            preflight.DEFAULT_PINS["v3_evaluator_sha256"],
+            report["observed"]["v3_evaluator_sha256"],
+        )
         self.assertIn(
             "training/zplane_ab/v2_full_variation/"
             "evaluate_invariant_release_suite.py",
@@ -1359,9 +1375,10 @@ class EndToEndTest(TempDirTestCase):
             path.name for path in preflight.DEFAULT_RELEASES_DIR.iterdir()
         )
         self.assertEqual(releases_before, releases_after)
-        # The exact command is not reconstructed until the candidate manifest
-        # exists and its independent final SHA-256 is pinned.
-        self.assertNotIn("generation_command", report)
+        self.assertIn("generation_command", report)
+        self.assertTrue(
+            report["generation_command"]["not_run_by_preflight"]
+        )
         release_root = (
             preflight.REPO
             / "training/artifacts/releases"

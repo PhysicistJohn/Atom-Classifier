@@ -19,15 +19,15 @@ original strict imported gates: known FUR <= 0.10 and five-shot >= 0.85.
   the 0.02 set, threshold only;
 * the frozen q99 design failure on seed 20260952 and passing q97 design on
   seed 20260955 are independently hash-pinned;
-* the next staged artifact must validate policy-v4's COMPOSITE survivor score
-  with its enrollment-only q97 threshold on untouched validation novelty
-  seeds 20260953/20260954;
+* the staged artifact validates policy-v4's COMPOSITE survivor score with its
+  enrollment-only q97 threshold on the single consumed validation draw at
+  novelty seeds 20260953/20260954;
 * the launcher's pinned evaluator-v4 fixture must predeclare seed 20260736,
   carry the strict imported gates and corrected historical audit.
 
-Until the future validation evidence, candidate contract, browser/package
-assets, final evaluator hash and seed-20260736 fixture are frozen, their pins
-remain explicit ``None`` placeholders.  Every placeholder is a hard NO-GO;
+The validation evidence, candidate contract, browser/package assets, final
+evaluator and seed-20260736 fixture are now independently frozen and pinned.
+The same checks retain explicit hard-refusal behavior for any missing pin;
 the preflight never substitutes old v3.3 bytes or fabricates a digest.
 
 What it verifies, each as an itemised PASS/FAIL check:
@@ -167,15 +167,17 @@ DEFAULT_PINS: dict[str, Any] = {
     "evaluation_version": (
         "time-domain-v3-release-evaluation-v4-q97-dual-fusion"
     ),
-    # Fail-closed until evaluator-v4 is final.  Never copy the v3.3 hash here.
-    "v3_evaluator_sha256": None,
+    "v3_evaluator_sha256": (
+        "ac728f7f1059260814e74e9825d2ab937ed5cb29136fd4c8e2bf388d4ff454e3"
+    ),
     "candidate_manifest_schema": "time-domain-v3-dual-release-candidate-v2",
     "candidate_evidence_schema": (
         "time-domain-v3-decoupled-validation-evidence-v2"
     ),
     "candidate_contract_schema": "time-domain-v3-q97-candidate-v1",
-    # Future release-chain pins.  Each None is intentional and a hard NO-GO.
-    "candidate_manifest_sha256": None,
+    "candidate_manifest_sha256": (
+        "7f824eb734466cb697ee28387a470e8e669e19567542d928130a2b4ad9f59053"
+    ),
     "candidate_id": "v3.4-q97-decoupled-8k-classifier-4k-rejector",
     "staging_package_schema": (
         "atomos.v3.time-domain-classifier.dual-runtime-package"
@@ -192,8 +194,12 @@ DEFAULT_PINS: dict[str, Any] = {
     "browser_openset_schema_version": 4,
     "parity_schema": "time-domain-openset-parity-v1",
     "parity_schema_version": 4,
-    "validation_evidence_sha256": None,
-    "frozen_candidate_contract_sha256": None,
+    "validation_evidence_sha256": (
+        "355f0a201178431a53b9b38bb184650f764e50651e230a768f620fce7778a3c7"
+    ),
+    "frozen_candidate_contract_sha256": (
+        "0be5ebf35dea6e2ab160353f4f42e95445e8bb30ea4742a8c0ea0b9b0a001c7d"
+    ),
     "classifier_fusion_directory_sha256": (
         "ecd894281b4cbac0917304b22ad7be194d41f994dcf2c008ca6ea0643b58667b"
     ),
@@ -206,19 +212,37 @@ DEFAULT_PINS: dict[str, Any] = {
     "rejector_bundle_manifest_sha256": (
         "80ee91f3f8577507a30fdae7adc47de7e7b448d9e563558f2d0becbadb4dee78"
     ),
-    "staged_validation_report_sha256": None,
+    "staged_validation_report_sha256": (
+        "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7"
+    ),
     "staged_artifact_sha256": {
-        "v3_branch_lof_components.npz": None,
-        "v3_open_policy_stage_two.npz": None,
-        "v3_staged_composite_policy.npz": None,
+        "v3_branch_lof_components.npz": (
+            "0a66ca267356bdacf239de5512b9406e010526c990dc38c137cac84342a062a6"
+        ),
+        "v3_open_policy_stage_two.npz": (
+            "9378f6eea893174b4f716f4db5ea6ea2b637d64b04a0e7672bb39b2e50600dd8"
+        ),
+        "v3_staged_composite_policy.npz": (
+            "15554c0fec5f7770c3b0c7a01c5250b61b4ce0b45fed9dfdf7e8785bb328d19e"
+        ),
     },
     "browser_asset_sha256": {
-        "classifier": None,
-        "rejector": None,
-        "openset_policy": None,
+        "classifier": (
+            "55ab6b0374f1c82491b745c2e6bef7614702c4a3a7e9a68b76e8771f3fba501b"
+        ),
+        "rejector": (
+            "588bb7de6c802a8c44c1ba6c01d6693fb3e39926de918274f16042c15f1863a1"
+        ),
+        "openset_policy": (
+            "4110332985ea13e3d93f83e51c027efc63f4c11380bd6020cfef240c590fffbc"
+        ),
     },
-    "staging_package_manifest_sha256": None,
-    "dual_binding_sha256": None,
+    "staging_package_manifest_sha256": (
+        "4c27afa382fbdf16da1215d807945710b264d03d876231a2b01af12313f60952"
+    ),
+    "dual_binding_sha256": (
+        "f820d390368266cdf266adbd915559ae3986caad622c67b21352dbbddb7e766f"
+    ),
     "prefilter_set_sha256": (
         "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2"
     ),
@@ -227,9 +251,8 @@ DEFAULT_PINS: dict[str, Any] = {
         "8192": "e0e972be4d1b7e43929b6c45c69d2dada884b49b39e16555998c375edf744557",
         "16384": "3d56108fc016d8fb8ff7f4c18f8fc2fa6a1443d5d32d30cd769d52de087384db",
     },
-    # Immutable development evidence.  These pins are complete now: unlike
-    # the future validation/package pins above, they must never be replaced by
-    # a new draw or silently relabelled.
+    # Immutable development evidence.  These pins must never be replaced by a
+    # new draw or silently relabelled.
     "q99_design_evidence": {
         "novelty_seed": 20260952,
         "role": "design",
@@ -342,9 +365,9 @@ DEFAULT_PINS: dict[str, Any] = {
     # Frozen generation source hash.  The v2 default remains byte-compatible
     # with its historical protocol; v3 reads only the versioned seed-20260736
     # fixture and refuses all five consumed release seeds before generating.
-    # Filled after the release-36 guards in the launcher are final.  A
-    # self-changing launcher cannot be truthfully pinned in advance.
-    "launcher_sha256": None,
+    "launcher_sha256": (
+        "c8fe3ff6239387714a27e1ae79e168535af7e6596ad88692c93b33ff220daf11"
+    ),
     "corpus_generator_sha256": (
         "305418a5bc7bd8f9a49799477f3a457b4c07d0c58b637766989fc9557565371b"
     ),
@@ -505,9 +528,30 @@ DEFAULT_PINS: dict[str, Any] = {
             "seed is consumed and may not be redrawn"
         ),
     },
-    # Filled only after the one exact validation draw and its ledger-only
-    # transition.  Unknown reasons must not be invented in advance.
-    "validation_seed_reasons": {20260953: None, 20260954: None},
+    "validation_seed_reasons": {
+        20260953: (
+            "validated the frozen policy-v4/q97 v3.4 candidate in the one "
+            "exact ordered validation draw: development_openset_pass; all six "
+            "unchanged validation gates passed across seeds 20260953/20260954 "
+            "and prefix lengths [4096, 8192, 16384, 32768]. Known "
+            "false-unknown was 80/1908 = 0.041928721174004195, worst noise "
+            "AUROC was 0.9576589797344515, and worst chirp threshold recall "
+            "was 57/300 = 0.19. Report sha256 "
+            "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7. "
+            "Validation evidence is consumed and may not be reused"
+        ),
+        20260954: (
+            "validated the frozen policy-v4/q97 v3.4 candidate in the one "
+            "exact ordered validation draw: development_openset_pass; all six "
+            "unchanged validation gates passed across seeds 20260953/20260954 "
+            "and prefix lengths [4096, 8192, 16384, 32768]. Known "
+            "false-unknown was 80/1908 = 0.041928721174004195, worst noise "
+            "AUROC was 0.9576589797344515, and worst chirp threshold recall "
+            "was 57/300 = 0.19. Report sha256 "
+            "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7. "
+            "Validation evidence is consumed and may not be reused"
+        ),
+    },
     # The launcher's pinned v3 expected-protocol fixture for this seed.
     # Pinned after verifying the fixture's evaluation_protocol object is
     # byte-equal to a fresh
@@ -518,7 +562,9 @@ DEFAULT_PINS: dict[str, Any] = {
     "v3_protocol_fixture_name": (
         "time-domain-v3-expected-evaluation-protocol-v4-q97-seed20260736.json"
     ),
-    "v3_protocol_fixture_sha256": None,
+    "v3_protocol_fixture_sha256": (
+        "40d29042f844e2169f1025b75d0a63545f669b25ab7d7f9e46ae630599668fdd"
+    ),
     "seed35_preflight_evidence_name": (
         "v3_dual_release_preflight_seed20260735.json"
     ),
@@ -686,21 +732,21 @@ KNOWN_CURRENT_DEPENDENCY_SOURCE_SHA256: dict[str, str | None] = {
     "training/zplane_ab/v2_full_variation/train_transfer.py": "d5e68558657ba96348bef30cf749f199497c7b3c306126f09086b009c51c2592",
     "training/zplane_ab/v2_full_variation/unet_multitask.py": "23178c9d18b7cc9aed95df5288f0543abd6659961c0f68c8fd417daafbd059af",
     "training/zplane_ab/v2_full_variation/unet_transfer.py": "3b9f7e0998d11f83328cd9295a46c54ab656630a3f0c4800f3479d0a99da05a1",
-    "training/zplane_ab/v2_full_variation/v3_time_domain_openset.py": "1bf16837ac76a525d5f28e3357d9afa147cf2a618aa202e98ce30ddb0b96bd58",
+    "training/zplane_ab/v2_full_variation/v3_time_domain_openset.py": "ae1ddb6c14777cd27be591345a23ca567bd1e20accd4b7729804a5453144ea64",
     "training/zplane_ab/v2_full_variation/vit_backbone.py": "ea0255c82d222b2bd8a3d3bf84d4b2b8dfaa49819950193495fcda824a280f9c",
     "training/zplane_ab/v2_full_variation/v3_scale/assemble_v3_fusion.py": "961e493697d1d941395dafe32570262dc09996b53fed9b2a0e82525e43560daa",
-    "training/zplane_ab/v2_full_variation/v3_scale/export_v3_openset_browser_assets.py": None,
+    "training/zplane_ab/v2_full_variation/v3_scale/export_v3_openset_browser_assets.py": "13722adf59c49826a7d356d8b3ce538a3da46ef30b0ea6bb0194e53fe40fbdb1",
     "training/zplane_ab/v2_full_variation/v3_scale/fit_v3_openset.py": "970e536087c0c4660424628a69e8bb08955885b337fd6ac560edf4bfaec1fba9",
-    "training/zplane_ab/v2_full_variation/v3_scale/fit_v3_openset_staged.py": None,
+    "training/zplane_ab/v2_full_variation/v3_scale/fit_v3_openset_staged.py": "da79f85b68ffd5ab7b4bdba8f78e336af698bbeef9bfabdf766f0eb96f23ad88",
     "training/zplane_ab/v2_full_variation/v3_scale/measure_pose_degeneracy.py": "7a532f2420dfd7c77deed1337c2b8d710a8e5546955452b89855aa55ef653565",
     "training/zplane_ab/v2_full_variation/v3_scale/measure_v3_remaining_gates.py": "fd8765614b9cadbbf852845ef11e26e861ab77d510d2a91c87513eea4e6cb405",
     "training/zplane_ab/v2_full_variation/v3_scale/noise_prefilter.py": "435495e5b0d11558a2e0edfd7d6e6112e7cebf716460d3d81ae741d97deaa7b4",
     "training/zplane_ab/v2_full_variation/v3_scale/pose_degeneracy.py": "431499124cd8470276a22356622b54f9c60c63c15e3770f49944bc626091aaf1",
     "training/zplane_ab/v2_full_variation/v3_scale/run_time_domain_dev.py": "9446a23b8d80c86fd7984307d3a2c04530e12f553df5b778967a4fd54dd193c4",
 }
-DEPENDENCY_SOURCE_SHA256: dict[str, str | None] = {
-    label: None for label in DEPENDENCY_SOURCE_LABELS
-}
+DEPENDENCY_SOURCE_SHA256: dict[str, str] = copy.deepcopy(
+    KNOWN_CURRENT_DEPENDENCY_SOURCE_SHA256
+)
 DEFAULT_PINS["dependency_source_sha256"] = copy.deepcopy(
     DEPENDENCY_SOURCE_SHA256
 )

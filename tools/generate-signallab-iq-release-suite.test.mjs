@@ -130,7 +130,7 @@ test('refuses an unknown RELEASE_EVALUATION_PROTOCOL before any output', () => {
   assert.equal(existsSync(root), false);
 });
 
-test('v3 fails closed while the seed-20260736 evaluator-v4 fixture is absent', () => {
+test('v3 seed is hard-bound to the frozen q97 candidate before output', () => {
   const result = run({
     RELEASE_ROOT: RELEASE36_ROOT,
     RELEASE_EVALUATION_PROTOCOL: 'v3',
@@ -142,11 +142,7 @@ test('v3 fails closed while the seed-20260736 evaluator-v4 fixture is absent', (
   assert.notEqual(result.status, 0);
   assert.match(
     result.stderr,
-    /evaluator-v4\/q97 seed-20260736 protocol fixture is not frozen yet/,
-  );
-  assert.match(
-    result.stderr,
-    /--print-expected-protocol 20260736/,
+    /requires CANDIDATE_SHA256 7f824eb734466cb697ee28387a470e8e669e19567542d928130a2b4ad9f59053/,
   );
   assert.equal(existsSync(RELEASE36_ROOT), false);
 });
@@ -359,7 +355,7 @@ test('consumed seed-20260735 fixture remains immutable historical evidence', () 
   }
 });
 
-test('launcher selects only the future versioned seed-20260736 fixture', () => {
+test('launcher binds only the frozen versioned seed-20260736 fixture', () => {
   const source = readFileSync(SCRIPT, 'utf8');
   const futureName =
     'time-domain-v3-expected-evaluation-protocol-v4-q97-seed20260736.json';
@@ -368,7 +364,24 @@ test('launcher selects only the future versioned seed-20260736 fixture', () => {
     source,
     /time-domain-v3-release-evaluation-v4-q97-dual-fusion/,
   );
-  assert.equal(existsSync(join(REPO, 'tools', futureName)), false);
+  const fixturePath = join(REPO, 'tools', futureName);
+  assert.equal(existsSync(fixturePath), true);
+  const fixtureBytes = readFileSync(fixturePath);
+  assert.equal(
+    createHash('sha256').update(fixtureBytes).digest('hex'),
+    '40d29042f844e2169f1025b75d0a63545f669b25ab7d7f9e46ae630599668fdd',
+  );
+  const fixture = JSON.parse(fixtureBytes.toString('utf8'));
+  assert.equal(fixture.release_seed, 20260736);
+  assert.equal(fixture.evaluation_protocol.novelty.seed, 20260736);
+  assert.equal(
+    fixture.evaluation_protocol.version,
+    'time-domain-v3-release-evaluation-v4-q97-dual-fusion',
+  );
+  assert.equal(
+    fixture.evaluation_protocol.open_set.composite_threshold_quantile,
+    0.97,
+  );
   const fixtureDeclaration = source.match(
     /const V3_EXPECTED_PROTOCOL_FIXTURE = resolve\([\s\S]*?\n\);/,
   )?.[0];
@@ -377,8 +390,18 @@ test('launcher selects only the future versioned seed-20260736 fixture', () => {
     fixtureDeclaration,
     /seed20260735\.json/,
   );
-  assert.match(source, /const V3_EXPECTED_PROTOCOL_FIXTURE_SHA256 = null;/);
-  assert.match(source, /const RESERVED_CANDIDATE_SHA256 = null;/);
+  assert.match(
+    source,
+    /const V3_EXPECTED_PROTOCOL_FIXTURE_SHA256 =\s*'40d29042f844e2169f1025b75d0a63545f669b25ab7d7f9e46ae630599668fdd';/,
+  );
+  assert.match(
+    source,
+    /const RESERVED_CANDIDATE_SHA256 =\s*'7f824eb734466cb697ee28387a470e8e669e19567542d928130a2b4ad9f59053';/,
+  );
+  assert.equal(
+    createHash('sha256').update(readFileSync(RELEASE36_CANDIDATE)).digest('hex'),
+    '7f824eb734466cb697ee28387a470e8e669e19567542d928130a2b4ad9f59053',
+  );
   assert.ok(
     source.indexOf("createHash('sha256').update(fixtureBytes)")
       < source.indexOf("JSON.parse(fixtureBytes.toString('utf8'))"),

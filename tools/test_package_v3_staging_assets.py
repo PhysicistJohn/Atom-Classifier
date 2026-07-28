@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import math
 from pathlib import Path
 import tempfile
 import unittest
@@ -820,6 +821,49 @@ class SyntheticInputs:
 
 
 class PackageTests(unittest.TestCase):
+    def test_rederived_float_allows_one_ulp_without_boundary_crossing(
+        self,
+    ) -> None:
+        observed = math.nextafter(1.0, math.inf)
+        packager._require_rederived_float_within_ulps(
+            observed,
+            1.0,
+            "independent arithmetic",
+            gate_boundary=2.0,
+            rank_boundaries=[-1.0, 0.0, 2.0],
+        )
+
+    def test_rederived_float_refuses_meaningful_drift(self) -> None:
+        observed = 1.0
+        for _ in range(packager.MAX_REDERIVED_FLOAT_ULPS + 1):
+            observed = math.nextafter(observed, math.inf)
+        with self.assertRaisesRegex(
+            packager.PackageError, "IEEE-754 binary64 ULPs"
+        ):
+            packager._require_rederived_float_within_ulps(
+                observed, 1.0, "independent arithmetic"
+            )
+
+    def test_rederived_float_refuses_gate_or_rank_boundary_flip(self) -> None:
+        with self.subTest(boundary="gate"):
+            with self.assertRaisesRegex(packager.PackageError, "gate boundary"):
+                packager._require_rederived_float_within_ulps(
+                    1.0,
+                    math.nextafter(1.0, -math.inf),
+                    "independent arithmetic",
+                    gate_boundary=1.0,
+                )
+        with self.subTest(boundary="rank"):
+            with self.assertRaisesRegex(
+                packager.PackageError, "empirical-rank"
+            ):
+                packager._require_rederived_float_within_ulps(
+                    math.nextafter(1.0, math.inf),
+                    1.0,
+                    "independent arithmetic",
+                    rank_boundaries=[1.0],
+                )
+
     def test_materializes_only_four_runtime_assets_and_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = SyntheticInputs(Path(temporary))

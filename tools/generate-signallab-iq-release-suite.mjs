@@ -68,10 +68,10 @@ const RESERVED_CANDIDATE_PATH = resolve(
   'training/zplane_ab/v2_full_variation/v3_scale/evidence/'
     + 'v3_4_q97_dual_release_candidate.json',
 );
-// Bound only after the final candidate and protocol fixture are frozen.
-// Null is a deliberate hard refusal, never a wildcard.
-const RESERVED_CANDIDATE_SHA256 = null;
-const V3_EXPECTED_PROTOCOL_FIXTURE_SHA256 = null;
+const RESERVED_CANDIDATE_SHA256 =
+  '7f824eb734466cb697ee28387a470e8e669e19567542d928130a2b4ad9f59053';
+const V3_EXPECTED_PROTOCOL_FIXTURE_SHA256 =
+  '40d29042f844e2169f1025b75d0a63545f669b25ab7d7f9e46ae630599668fdd';
 const CORPUS_GENERATOR_SHA256 =
   '305418a5bc7bd8f9a49799477f3a457b4c07d0c58b637766989fc9557565371b';
 const PREFIX_DERIVER_SHA256 =

@@ -152,6 +152,75 @@ def _require_exact_scalar(value: Any, expected: Any, label: str) -> None:
         )
 
 
+MAX_REDERIVED_FLOAT_ULPS = 4
+_FLOAT64_SIGN_BIT = 1 << 63
+_FLOAT64_MASK = (1 << 64) - 1
+
+
+def _float64_order_key(value: float) -> int:
+    """Map a finite IEEE-754 binary64 to an integer ordered by value."""
+    bits = struct.unpack(">Q", struct.pack(">d", value))[0]
+    if bits & _FLOAT64_SIGN_BIT:
+        return (~bits) & _FLOAT64_MASK
+    return bits | _FLOAT64_SIGN_BIT
+
+
+def _require_rederived_float_within_ulps(
+    value: Any,
+    expected: Any,
+    label: str,
+    *,
+    max_ulps: int = MAX_REDERIVED_FLOAT_ULPS,
+    gate_boundary: float | None = None,
+    rank_boundaries: list[float] | None = None,
+) -> None:
+    """Compare independently rederived binary64 arithmetic without drift.
+
+    The exporter obtains the fitted stage-one score from NumPy/BLAS while the
+    browser and this stdlib-only verifier use the runtime's explicit
+    left-to-right multiply/add loop.  Those two IEEE-754 reduction orders can
+    differ by a handful of representable values.  This exception is deliberately
+    narrow: both values must be finite JSON floats, at most four binary64 ULPs
+    apart, and the difference must not cross either the hard gate threshold or
+    an empirical-rank calibration boundary.  All serialized types, policy
+    values, counts, ranks and decisions remain exact checks.
+    """
+    observed = _finite_float(value, label)
+    rederived = _finite_float(expected, f"{label} independently rederived")
+    if type(max_ulps) is not int or max_ulps < 0:
+        raise ValueError("max_ulps must be a nonnegative exact integer")
+    distance = (
+        0
+        if observed == rederived
+        else abs(
+            _float64_order_key(observed)
+            - _float64_order_key(rederived)
+        )
+    )
+    if distance > max_ulps:
+        raise PackageError(
+            f"{label}={observed!r} differs from independently rederived "
+            f"{rederived!r} by {distance} IEEE-754 binary64 ULPs; "
+            f"maximum is {max_ulps}"
+        )
+    if gate_boundary is not None:
+        boundary = _finite_float(gate_boundary, f"{label} gate boundary")
+        if (observed >= boundary) != (rederived >= boundary):
+            raise PackageError(
+                f"{label} tolerated arithmetic delta crosses the gate "
+                f"boundary {boundary!r}"
+            )
+    if rank_boundaries is not None:
+        if (
+            bisect_left(rank_boundaries, observed)
+            != bisect_left(rank_boundaries, rederived)
+        ):
+            raise PackageError(
+                f"{label} tolerated arithmetic delta crosses an empirical-rank "
+                "calibration boundary"
+            )
+
+
 def _require_exact_int_list(
     value: Any, expected: list[int], label: str
 ) -> None:
@@ -2082,10 +2151,12 @@ def _load_openset_export(
             expected_stage_one_score += coefficient * (
                 (feature - mean) / scale
             )
-        _require_exact_scalar(
+        _require_rederived_float_within_ulps(
             stage_one_score,
             expected_stage_one_score,
             f"{row_label}.stage_one.score from fitted model",
+            gate_boundary=stage_one_threshold,
+            rank_boundaries=stage_one_calibration,
         )
         stage_one_rank = 0.5 * (
             stage_one_score / (1.0 + abs(stage_one_score))

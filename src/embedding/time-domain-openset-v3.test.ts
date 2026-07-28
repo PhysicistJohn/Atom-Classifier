@@ -42,6 +42,9 @@ import {
 } from './time-domain-invariant-patch-preprocess-v3.js';
 
 interface FixtureStageOne {
+  capture_length: number;
+  evaluated_length: number;
+  causal_prefix_applied: boolean;
   features: number[];
   score: number;
   rank: number;
@@ -195,13 +198,13 @@ describeCurrent('time-domain openset v3 asset', () => {
     );
   });
 
-  it('exposes per-length prefilters for every fixture length', () => {
+  it('exposes a fitted prefilter for every fixture evaluation length', () => {
     const gate = new StageOneGateV3(asset.stage_one, {
       patchLength: asset.frontend.patch_length,
       targetFrac: asset.frontend.target_frac,
     });
     for (const row of fixture.rows) {
-      expect(gate.lengths()).toContain(row.capture_length);
+      expect(gate.lengths()).toContain(row.stage_one.evaluated_length);
     }
   });
 
@@ -800,7 +803,10 @@ describeCurrent('stage-1 causal-prefix rule for long captures', () => {
   });
 
   it('never applies the prefix rule at fitted lengths', () => {
-    for (const row of fixture.rows) {
+    const fitted = new Set(gate.lengths());
+    for (const row of fixture.rows.filter(
+      ({ capture_length }) => fitted.has(capture_length),
+    )) {
       const evaluation = gate.evaluate(row.iq.in_phase, row.iq.quadrature);
       expect(evaluation.causalPrefixApplied).toBe(false);
       expect(evaluation.evaluatedLength).toBe(row.capture_length);
