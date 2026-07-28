@@ -1389,3 +1389,68 @@ budget setting. Options, none yet tested:
 
 Note option 3 would make the open-set path entirely frontend-based and independent of training
 budget, which would remove this tension rather than balance it.
+
+## 23. The 8k collapse is over-aggressive convergence, not a structural tension
+
+User's hypothesis: 8k collapsed because training is too aggressive and hits an extremum too
+hard. Supported, with a caveat that matters for which configuration to pick.
+
+### 23.1 Two mechanisms found in the code
+
+`v3_scale/run_time_domain_dev.py`:
+
+1. **The LR schedule stretches with the budget.** `CosineAnnealingLR(T_max=episodes - warmup)`
+   (line 408). 8k is not 4k plus more steps; it is a different schedule shape that spends
+   twice as long at low LR grinding into a minimum.
+2. **Model selection maximises closed-set accuracy** (`best_selection_balanced_accuracy`,
+   line 618). The loop saves the checkpoint that best optimises the one criterion that trades
+   against novelty detection. A longer run gives it more chances to find a sharp closed-set
+   optimum and it takes it. This is true at 4k too; 4k simply has fewer opportunities.
+
+### 23.2 Regularisation recovers the gates
+
+8k, both branches, `--dropout 0.35` (was 0.2) and `--weight-decay 5e-4` (was 2e-4), all else
+identical. Validated on clean novelty seeds 20260942/20260943.
+
+| gate | 4k | 8k plain | 8k regularised | bound |
+|---|---:|---:|---:|---:|
+| closed balanced | 0.8675 | 0.8893 | 0.8793 | - |
+| chirp AUROC | 0.9668 | 0.7111 FAIL | **0.8513** | >= 0.80 |
+| chirp threshold recall | 0.9967 | 0.0000 FAIL | **0.1600** | >= 0.10 |
+| noise AUROC | 0.8559 | 0.8493 | **0.8777** | >= 0.80 |
+| noise threshold recall | 0.6200 | 0.6367 | **0.6867** | >= 0.10 |
+| known false-unknown | 0.0681 | 0.0613 | 0.0666 | <= 0.10 |
+| overall AUROC | 0.9154 | 0.7819 | **0.8731** | >= 0.72 |
+
+`status: development_openset_pass`.
+
+Regularisation moved chirp from dead to passing for only 0.010 of closed-set against plain
+8k. **That asymmetry is the evidence.** A genuine capacity/novelty tension would not yield
+that much novelty for that little accuracy. The collapse was optimisation hygiene.
+
+### 23.3 The caveat, and it decides the recommendation
+
+Chirp recall is 0.1600 against a 0.10 bound. 4k gives 0.9967. Regularised-8k clears the gate
+by 0.06; 4k clears it by 0.90. The purchase is 0.012 of closed-set.
+
+**A 0.06 margin on a worst-of-6 dev statistic is not a safe thing to take into a one-shot
+sealed run**, particularly given section 16 already documented a related recall statistic
+varying 6x across model seeds. 4k remains the recommended configuration on robustness, and
+regularised-8k is evidence about the mechanism rather than a candidate to ship.
+
+Note also that chirp is a PROBE for generalised novelty rejection, not a class anyone wants
+detected. A thin chirp margin should be read as a thin margin on unknown-signal rejection in
+general, not as a chirp-specific number.
+
+### 23.4 The deeper issue, which stands regardless
+
+The model-selection criterion is the more important of the two findings and is unfixed. The
+loop chooses, from every checkpoint it evaluates, the one that maximises closed-set accuracy,
+i.e. the one most likely to have collapsed novelty. Cheap improvements, none yet done:
+
+1. Record novelty metrics at every eval so the trade is visible rather than silently resolved.
+2. Select on a joint criterion, or select the closed-set best subject to a novelty floor.
+3. Freeze the novelty reference statistics at an earlier checkpoint than the classifier.
+
+Regularisation sweeps beyond the single point tested here would need a fresh design seed and
+should not be run against the validation seeds.
