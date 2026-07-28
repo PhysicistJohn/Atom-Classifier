@@ -1595,3 +1595,57 @@ composite rather than paid for by the gate.
 Seed ledger: release 20260729/20260731 consumed; next release seed 20260733 (20260732 is a
 dev model seed). Novelty: 938-41 spent (design), 942/3 (validated v3.0), 944/5 (validated
 v3.1 FAIL), 946 (v3.2 design), 947/8 (v3.2 validation, single use), fit band 20261000-1999.
+
+## 27. SEALED RUN #2, SEED 20260733: 21/23. FUR worse, five-shot flipped. FROZEN.
+
+`invariant_fusion_v3_sealed_seed20260733/RELEASE_EVALUATION.json` is immutable. Consumed.
+
+| gate | run 1 (v3.0) | run 2 (v3.2 composite) | bound |
+|---|---:|---:|---:|
+| known FUR worst length | 0.1024 FAIL | **0.1108 FAIL** | <= 0.10 |
+| five-shot worst balanced | 0.8503 pass | **0.8449 FAIL** | >= 0.85 |
+| noise AUROC | 0.8693 | **0.9398** | >= 0.80 |
+| noise recall | 0.7200 | 0.7867 | >= 0.10 |
+| chirp AUROC / recall | 0.9387 / 0.9900 | 0.9157 / 0.6000 | 0.80 / 0.10 |
+| scale balanced | 0.8400 | 0.7996 | >= 0.75 |
+| everything else | pass | pass | |
+
+The composite did exactly what it promised on its target axis (noise AUROC 0.87 -> 0.94
+sealed) and known FUR still got WORSE. Why: the composite score for a known row is
+max(stage2_rank, stage1_rank), and sealed knowns carry systematically higher stage-1 scores
+than enrollment knowns, so the added term pushes MORE knowns over the q95 threshold. The
+population shift moved from the gate to the score.
+
+### The pattern two consumed seeds establish
+
+1. **Enrollment-calibrated operating points realise 1.5-1.7x their dev rates on sealed
+   populations.** v3.0: dev FUR 0.068 -> sealed 0.102. v3.2: dev 0.064 -> sealed 0.111. Any
+   q95-on-enrollment threshold lands at 0.09-0.12 sealed against a 0.10 ceiling.
+2. **Five-shot for these weights sits ON the floor.** Same candidate, two independent sealed
+   draws: 0.8503 and 0.8449 around a 0.85 floor. Run 1's pass was a coin flip landing well.
+
+The candidate is dramatically better than v2 (which failed eight gates, several by 0.1-0.7).
+v3.2 fails two gates by 0.011 and 0.005. But both failures are systematic, not unlucky:
+the true sealed FUR is ~0.10-0.11 and the true five-shot is ~0.845-0.850. Another seed on
+the same candidate is a gamble at roughly 25% joint odds, and burning seeds on redraws is
+gambling, not engineering.
+
+### The two real options before any seed #3
+
+A. **One more candidate cycle, both knives addressed.** FUR: re-fit the composite threshold
+   at ~q97 on enrollment (chosen from the two frozen dev->sealed realisation factors --
+   design arithmetic, not tuning: target sealed ~0.075). Recall headroom pays (noise 0.79,
+   chirp 0.60 vs floors of 0.10). Five-shot: swap the fusion weights to the 8k-regularised
+   branches (dev five-shot 0.7680 vs 0.7564, closed +0.017, all six open-set gates green on
+   dev under the old policy) -- projected sealed five-shot ~0.855-0.86. Full dev
+   design/validation cycle on fresh seeds (design 20260949, validate 20260950/1), then seed
+   20260734. Cost: one cycle, one seed, honest odds well above run 2's.
+
+B. **Re-declare the two gate levels for the v3 architecture, BEFORE seed #3, in the release
+   intent, with rationale.** The 0.10 FUR ceiling and 0.85 five-shot floor were declared
+   against v2's architecture and v2 never came close to today's failure margins. A
+   pre-declared change (e.g. FUR <= 0.12, five-shot >= 0.84) stated plainly in the intent
+   and in any release claim is legitimate; editing after a result is not, and has not been
+   done. This is the owner's call, not the agent's.
+
+Seed ledger: releases 20260729, 20260731, 20260733 consumed. Next unused: 20260734.
