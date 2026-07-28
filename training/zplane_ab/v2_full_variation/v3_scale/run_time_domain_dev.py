@@ -55,6 +55,39 @@ SCALE_EDGE_MARGIN = 1.0 / 512.0
 SCALE_MIN_PER_CLASS = 20
 HIGH_SNR_DB = 18.0
 
+# --- checkpoint selection policy (HANDOFF 23.1/23.4) -----------------------
+#
+# The historical loop kept whichever eval checkpoint maximised closed-set
+# selection balanced accuracy, the one criterion that trades directly against
+# novelty detection.  ``closed`` preserves that behaviour bit-for-bit.
+# ``closed-with-floor`` still maximises the same closed-set score, but only
+# among checkpoints whose novelty proxy has not fallen more than
+# ``NOVELTY_FLOOR_FRACTION`` below its running maximum at the time the
+# checkpoint was evaluated (prefix-max semantics: a later rise in the proxy
+# never retroactively disqualifies an earlier checkpoint).
+SELECTION_POLICIES = ("closed", "closed-with-floor")
+
+# Pre-declared constant, fixed BEFORE any comparison run and not fitted to any
+# observed training curve or novelty result.  Do not adjust it after seeing a
+# run; that would repeat the gate-weakening failure mode rule 4 forbids.
+NOVELTY_FLOOR_FRACTION = 0.25
+
+# The proxy driving the floor.  HANDOFF 22.3 identified the 8k chirp collapse
+# mechanism as the encoder mapping every input, in-class or not, ever more
+# confidently onto the learned class manifold, at which point the branch LOF
+# no longer sees out-of-class rows as outliers.  That collapse is visible on
+# the KNOWN populations alone as dimensional collapse of the embedding cloud,
+# so no noise/chirp generation and no novelty seed is needed during training.
+# Effective rank (the exponential of the Shannon entropy of the centered
+# variance spectrum) of the held-out selection embeddings measures how many
+# directions the representation still spans; when it falls, the off-manifold
+# room that novelty rejection depends on shrinks.  It is deterministic,
+# consumes no RNG, and reuses embeddings already computed at every eval.
+# The nearest-prototype distance statistics are recorded alongside it for
+# visibility but do not drive the floor, because they also shrink under
+# legitimate closed-set improvement.
+NOVELTY_PROXY_KEY = "selection_embedding_effective_rank"
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -352,6 +385,168 @@ def _sample_multiview_episode(
     return result
 
 
+def _effective_rank(embeddings: np.ndarray) -> float:
+    """Exponential of the entropy of the centered variance spectrum.
+
+    A cloud spread isotropically over ``k`` directions scores ``k``; a cloud
+    collapsed onto one line scores 1; a fully degenerate cloud (every row
+    identical, zero variance) scores 0 by convention.  The SVD runs inside a
+    narrow ``errstate`` with an explicit finiteness check because this
+    platform's Accelerate BLAS raises spurious IEEE flags on clean float64
+    factorizations, which ``PYTHONWARNINGS=error`` would turn into an abort
+    (same treatment as ``noise_prefilter._dot``).
+    """
+    value = np.asarray(embeddings, dtype=np.float64)
+    if value.ndim != 2 or len(value) < 2:
+        raise ValueError("effective rank requires a (rows>=2, dims) matrix")
+    if not np.isfinite(value).all():
+        raise ValueError("embeddings contain a non-finite value")
+    centered = value - value.mean(axis=0, keepdims=True)
+    with np.errstate(all="ignore"):
+        singular = np.linalg.svd(centered, compute_uv=False)
+        power = singular * singular
+        total = float(np.sum(power))
+        if total <= 0.0:
+            return 0.0
+        shares = power / total
+        shares = shares[shares > 0.0]
+        result = float(np.exp(-np.sum(shares * np.log(shares))))
+    if not np.isfinite(result):
+        raise FloatingPointError("non-finite effective rank")
+    return result
+
+
+def _novelty_proxies(
+    selection_embeddings: np.ndarray,
+    enrollment_embeddings: np.ndarray,
+    squared_distances: np.ndarray,
+) -> dict[str, float]:
+    """Seed-free novelty statistics computed on known dev populations only.
+
+    No noise or chirp is generated and no novelty seed is consumed; every
+    input already exists at each eval checkpoint.  ``squared_distances`` is
+    the (rows, classes) matrix ``nearest`` returns for the selection
+    population against the enrollment prototypes.
+    """
+    squared = np.asarray(squared_distances, dtype=np.float64)
+    if squared.ndim != 2:
+        raise ValueError("squared_distances must be a (rows, classes) matrix")
+    if not np.isfinite(squared).all():
+        raise ValueError("squared_distances contain a non-finite value")
+    distance = np.sqrt(np.maximum(squared.min(axis=1), 0.0))
+    return {
+        NOVELTY_PROXY_KEY: _effective_rank(selection_embeddings),
+        "enrollment_embedding_effective_rank": _effective_rank(
+            enrollment_embeddings
+        ),
+        "selection_nearest_prototype_distance_mean": float(distance.mean()),
+        "selection_nearest_prototype_distance_p05": float(
+            np.quantile(distance, 0.05)
+        ),
+    }
+
+
+class _CheckpointSelector:
+    """Online checkpoint choice under a declared selection policy.
+
+    Both trackers always run so every emitted history shows whether the two
+    policies would have chosen different checkpoints:
+
+    * ``closed`` reproduces the historical criterion exactly: keep the
+      strictly greatest ``(balanced_accuracy, accuracy)`` tuple.
+    * ``closed-with-floor`` keeps the same criterion but only over
+      checkpoints whose novelty proxy is at least
+      ``(1 - floor_fraction) * running_max`` at the time they are evaluated.
+      The first checkpoint is always eligible, so a selection always exists.
+    """
+
+    def __init__(
+        self,
+        policy: str,
+        *,
+        floor_fraction: float = NOVELTY_FLOOR_FRACTION,
+        proxy_key: str = NOVELTY_PROXY_KEY,
+    ) -> None:
+        if policy not in SELECTION_POLICIES:
+            raise ValueError(f"unknown selection policy: {policy!r}")
+        fraction = float(floor_fraction)
+        if not np.isfinite(fraction) or not 0.0 < fraction < 1.0:
+            raise ValueError("floor_fraction must lie strictly inside (0, 1)")
+        self.policy = policy
+        self.floor_fraction = fraction
+        self.proxy_key = str(proxy_key)
+        self.closed_best: tuple[float, float] = (-1.0, -1.0)
+        self.closed_best_episode: int | None = None
+        self.floor_best: tuple[float, float] = (-1.0, -1.0)
+        self.floor_best_episode: int | None = None
+        self.running_proxy_max: float | None = None
+
+    def observe(
+        self,
+        episode: int,
+        *,
+        accuracy: float,
+        balanced: float,
+        proxies: dict[str, float],
+    ) -> tuple[bool, bool]:
+        """Record one eval checkpoint.
+
+        Returns ``(selected_improved, floor_eligible)`` where
+        ``selected_improved`` means the ACTIVE policy wants this checkpoint's
+        weights saved as the new best.
+        """
+        score = (float(balanced), float(accuracy))
+        closed_improved = score > self.closed_best
+        if closed_improved:
+            self.closed_best = score
+            self.closed_best_episode = int(episode)
+        proxy = float(proxies[self.proxy_key])
+        if not np.isfinite(proxy):
+            raise ValueError("novelty proxy must be finite")
+        if self.running_proxy_max is None or proxy > self.running_proxy_max:
+            self.running_proxy_max = proxy
+        eligible = proxy >= (
+            (1.0 - self.floor_fraction) * self.running_proxy_max
+        )
+        floor_improved = eligible and score > self.floor_best
+        if floor_improved:
+            self.floor_best = score
+            self.floor_best_episode = int(episode)
+        if self.policy == "closed":
+            return closed_improved, eligible
+        return floor_improved, eligible
+
+    @property
+    def selected_best(self) -> tuple[float, float]:
+        return self.closed_best if self.policy == "closed" else self.floor_best
+
+    @property
+    def selected_best_episode(self) -> int | None:
+        if self.policy == "closed":
+            return self.closed_best_episode
+        return self.floor_best_episode
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "selection_policy": self.policy,
+            "novelty_proxy_key": self.proxy_key,
+            "novelty_floor_fraction": self.floor_fraction,
+            "novelty_floor_contract": (
+                "a checkpoint is floor-eligible when its novelty proxy is at "
+                "least (1 - fraction) * the running proxy maximum at the time "
+                "it is evaluated; the fraction is a pre-declared constant, "
+                "never fitted to a result; proxies are computed on known "
+                "train/enroll/selection populations only and consume no "
+                "novelty seed and no RNG"
+            ),
+            "selected_checkpoint_episode": self.selected_best_episode,
+            "closed_best_episode": self.closed_best_episode,
+            "closed_best_balanced_accuracy": self.closed_best[0],
+            "floor_best_episode": self.floor_best_episode,
+            "floor_best_balanced_accuracy": self.floor_best[0],
+        }
+
+
 def _train_model_multiview(
     net: InvariantPatchCNN,
     data: dict[str, Any],
@@ -366,6 +561,8 @@ def _train_model_multiview(
     label_smoothing: float,
     phase_augmentation: bool,
     consistency_weight: float,
+    selection_policy: str = "closed",
+    novelty_floor_fraction: float = NOVELTY_FLOOR_FRACTION,
 ) -> tuple[InvariantPatchCNN, dict[str, Any]]:
     """Train on distinct base rows, selecting one prefix view per episode.
 
@@ -373,6 +570,10 @@ def _train_model_multiview(
     ``consistency_weight`` is positive.  It never enters the support/query
     classification sets, so one physical capture cannot masquerade as two
     independent prototypical examples.
+
+    Novelty proxies are recorded at every eval checkpoint regardless of
+    ``selection_policy``; the default ``closed`` policy consumes the same RNG
+    stream and keeps the same checkpoint as the historical loop.
     """
     if episodes <= 0 or eval_every <= 0:
         raise ValueError("episodes and eval_every must be positive")
@@ -409,18 +610,23 @@ def _train_model_multiview(
         optimizer, T_max=max(episodes - warmup, 1)
     )
 
-    def evaluate_selection() -> tuple[float, float]:
+    def evaluate_selection() -> tuple[float, float, dict[str, float]]:
         enrollment = embed_all(net, data["xen"], data["fen"], device)
         prototypes = prototypes_from(
             enrollment, data["yen"], data["n_classes"]
         )
         selection = embed_all(net, data["xva"], data["fva"], device)
-        prediction, _ = nearest(selection, prototypes)
+        prediction, squared_distances = nearest(selection, prototypes)
         recalls = [
             np.mean(prediction[data["yva"] == class_index] == class_index)
             for class_index in range(data["n_classes"])
         ]
-        return float(np.mean(prediction == data["yva"])), float(np.mean(recalls))
+        proxies = _novelty_proxies(selection, enrollment, squared_distances)
+        return (
+            float(np.mean(prediction == data["yva"])),
+            float(np.mean(recalls)),
+            proxies,
+        )
 
     history: dict[str, Any] = {
         "loss": [],
@@ -429,7 +635,9 @@ def _train_model_multiview(
         "selection": [],
         "logit_scale": [],
     }
-    best_score = (-1.0, -1.0)
+    selector = _CheckpointSelector(
+        selection_policy, floor_fraction=novelty_floor_fraction
+    )
     best_state: tuple[dict[str, torch.Tensor], float] | None = None
     running = {"total": 0.0, "ce": 0.0, "consistency": 0.0}
     started = time.perf_counter()
@@ -586,18 +794,24 @@ def _train_model_multiview(
             )
 
         if (episode + 1) % eval_every == 0 or episode + 1 == episodes:
-            accuracy, balanced = evaluate_selection()
+            accuracy, balanced, proxies = evaluate_selection()
+            selected_improved, floor_eligible = selector.observe(
+                episode + 1,
+                accuracy=accuracy,
+                balanced=balanced,
+                proxies=proxies,
+            )
             history["selection"].append(
                 {
                     "episode": episode + 1,
                     "accuracy": accuracy,
                     "balanced_accuracy": balanced,
+                    "novelty_proxies": proxies,
+                    "novelty_floor_eligible": floor_eligible,
                 }
             )
-            score = (balanced, accuracy)
             marker = ""
-            if score > best_score:
-                best_score = score
+            if selected_improved:
                 best_state = (
                     copy.deepcopy(net.state_dict()),
                     float(log_scale.detach().cpu()),
@@ -608,15 +822,23 @@ def _train_model_multiview(
                 f"acc {accuracy:.4f} bal {balanced:.4f}{marker}",
                 flush=True,
             )
+            print(
+                f"    [{net.cfg.encoder}/multiview] novelty proxy "
+                f"erank {proxies[NOVELTY_PROXY_KEY]:.3f} "
+                f"protodist {proxies['selection_nearest_prototype_distance_mean']:.4f} "
+                f"floor_eligible {floor_eligible}",
+                flush=True,
+            )
 
     if best_state is None:
         raise RuntimeError("training completed without a selection checkpoint")
     net.load_state_dict(best_state[0], strict=True)
+    history.update(selector.summary())
     history.update(
         {
             "episodes": episodes,
-            "best_selection_balanced_accuracy": best_score[0],
-            "best_selection_accuracy": best_score[1],
+            "best_selection_balanced_accuracy": selector.selected_best[0],
+            "best_selection_accuracy": selector.selected_best[1],
             "final_logit_scale": float(math.exp(best_state[1])),
             "wall_clock_s": time.perf_counter() - started,
             "view_consistency_weight": float(consistency_weight),
@@ -1010,6 +1232,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     if output.exists() and any(output.iterdir()):
         raise FileExistsError(f"{output} is not empty")
+    if args.selection_policy not in SELECTION_POLICIES:
+        raise ValueError(
+            f"unknown selection policy: {args.selection_policy!r}"
+        )
+    floor_fraction = float(args.novelty_floor_fraction)
+    if not np.isfinite(floor_fraction) or not 0.0 < floor_fraction < 1.0:
+        raise ValueError(
+            "--novelty-floor-fraction must lie strictly inside (0, 1)"
+        )
+    if args.selection_policy != "closed" and not args.multilength_train:
+        raise ValueError(
+            "--selection-policy closed-with-floor requires "
+            "--multilength-train; the shared single-length trainer records "
+            "no novelty proxies"
+        )
     output.mkdir(parents=True, exist_ok=True)
     source = invariant_data.load(
         patch_length=args.patch_length,
@@ -1055,6 +1292,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             label_smoothing=args.label_smoothing,
             phase_augmentation=args.phase_augmentation,
             consistency_weight=args.view_consistency_weight,
+            selection_policy=args.selection_policy,
+            novelty_floor_fraction=floor_fraction,
         )
     else:
         if args.view_consistency_weight != 0.0:
@@ -1206,6 +1445,29 @@ def build_parser() -> argparse.ArgumentParser:
         "--phase-augmentation",
         action=argparse.BooleanOptionalAction,
         default=True,
+    )
+    parser.add_argument(
+        "--selection-policy",
+        choices=SELECTION_POLICIES,
+        default="closed",
+        help=(
+            "checkpoint selection criterion: 'closed' is the historical "
+            "closed-set balanced-accuracy maximum (default, bit-identical); "
+            "'closed-with-floor' is the same maximum restricted to "
+            "checkpoints whose novelty proxy has not degraded more than "
+            "--novelty-floor-fraction from its running best; requires "
+            "--multilength-train"
+        ),
+    )
+    parser.add_argument(
+        "--novelty-floor-fraction",
+        type=float,
+        default=NOVELTY_FLOOR_FRACTION,
+        help=(
+            "maximum tolerated fractional decline of the novelty proxy from "
+            "its running best under closed-with-floor; the default is a "
+            "pre-declared constant, never fitted to a result"
+        ),
     )
     return parser
 

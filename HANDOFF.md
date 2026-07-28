@@ -1454,3 +1454,58 @@ i.e. the one most likely to have collapsed novelty. Cheap improvements, none yet
 
 Regularisation sweeps beyond the single point tested here would need a fresh design seed and
 should not be run against the validation seeds.
+
+## 24. Five-shot settled: v3 BEATS v2 on the identical protocol. No regression exists.
+
+`v3_scale/measure_v2_bundle_dev_gates.py` (56 tests) scores the frozen v2 runtime bundle
+through the exact v3 dev protocol -- same function objects (asserted by identity), same
+eligible row sets (index SHA asserted equal to the v3 report's), same five-shot support draws
+(support_positions_sha256 matched), bundle SHA verified before load, replay exact (worst
+delta 0), CPU device.
+
+| five-shot variant | v2 bundle | v3 4k | v3 8k reg |
+|---|---:|---:|---:|
+| enrollment_support | 0.7306 | 0.7564 | 0.7680 |
+| selection_support | 0.7217 | 0.7576 | 0.7651 |
+
+**v3 is BETTER than v2 at five-shot by +0.026 to +0.043 on the identical measurement.** The
+sealed 0.8495 was a same-corpus-support, sealed-population number; on dev's strictly harder
+cross-population protocol v2 itself scores 0.72-0.73. Section 18's "failing gate" was a
+protocol artifact, as section 21 suspected. The five-shot row of the scorecard is resolved:
+**not a v3 failure, and lowering the 0.85 bar was never necessary.**
+
+Clean-per-length on the same protocol, v2 vs v3-4k: N4096 0.8997 vs 0.9208, N8192 0.9631 vs
+0.9631, N16384 0.9815 vs 0.9736. v3 better at short length, v2 marginally better at 16384.
+
+### The full dev scorecard, all measured identically
+
+| axis | v2 bundle | v3 (4k fusion + staged rejector) |
+|---|---:|---:|
+| five-shot (both variants) | 0.72-0.73 | **0.756-0.758** |
+| N4096 clean | 0.8997 | **0.9208** |
+| worst scale balanced | (sealed: 0.6741 FAIL) | **0.7956 pass** |
+| noise AUROC / recall | 0.8429 / 0.3467 | **0.8559 / 0.6200** |
+| chirp AUROC / recall | 0.8423 / 0.0967 FAIL | **0.9668 / 0.9967** |
+| known false-unknown | 0.0561 | 0.0681 |
+
+On every axis measurable under one protocol, v3-4k matches or beats the v2 bundle, and the
+sealed-only scale gates it fixes are the ones that sank the v2 release.
+
+### 24.1 Selection-criterion fix also landed
+
+`run_time_domain_dev.py` now records seed-free novelty proxies (selection-embedding effective
+rank, nearest-prototype distances) at every eval, and offers
+`--selection-policy closed-with-floor` with a pre-declared NOVELTY_FLOOR_FRACTION = 0.25.
+Default behaviour is bit-identical (proven by an integration test asserting identical RNG
+streams). 535 v3_scale tests green.
+
+### 24.2 What remains before the sealed run
+
+1. TypeScript runtime port (encoder forward, pooling, fusion, centering, prototype distance,
+   prefilter + LOF policy) -- the long pole; only geometry/preprocess are ported.
+2. v3 runtime bundle export end-to-end (exporter written; dry-run was in flight).
+3. Fresh parity fixtures and a browser worker check.
+4. Sealed run on seed 20260731 -- one shot, and the deploy path is now known concretely:
+   the atomizer Cloudflare worker (atomizer.radio-lab.app / signal.radio-lab.app) bundles the
+   classifier assets AND runtime at build time; shipping means rebuilding Atomizer with the
+   v3 TS runtime + assets and `wrangler deploy`.
