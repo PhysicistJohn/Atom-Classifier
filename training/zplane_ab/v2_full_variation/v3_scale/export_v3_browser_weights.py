@@ -24,8 +24,10 @@ runtime can apply torch's exact evaluation-mode arithmetic; folding would
 introduce an avoidable reduction-order difference.
 
 This produces a development staging asset.  It is not release evidence, and it
-refuses to write into ``src/embedding/assets`` (the live model) or any release
-or sealed path.
+refuses to write into ``src/embedding/assets`` (the live model), any release or
+sealed path, or a non-empty output directory.  Both input and output are
+required CLI arguments so an old default candidate cannot be exported by
+accident.
 """
 from __future__ import annotations
 
@@ -57,15 +59,6 @@ PROBE_NAME = "probe_fixture.json"
 WEIGHTS_NAME = "time-domain-fusion-weights-v3.json"
 FIXTURE_COPY_NAME = "time-domain-probe-fixture-v3.json"
 EXPORT_MANIFEST_NAME = "export-manifest.json"
-
-DEFAULT_BUNDLE = (
-    V2
-    / "artifacts"
-    / "invariant_patch"
-    / "v3_scale"
-    / "v3_runtime_bundle_seed20260730"
-)
-DEFAULT_OUTPUT = REPO / "src" / "embedding" / "assets-v3-staging"
 
 # torch defaults baked into the trained modules; recorded explicitly so the
 # TypeScript runtime never has to guess a framework default.
@@ -136,6 +129,21 @@ def reject_unsafe_output(path: Path) -> Path:
     return resolved
 
 
+def validate_empty_output(path: Path) -> Path:
+    """Return a safe fresh output path, refusing silent asset replacement."""
+    output = reject_unsafe_output(path)
+    if output.exists():
+        if not output.is_dir():
+            raise FileExistsError(f"browser output is not a directory: {output}")
+        contents = sorted(item.name for item in output.iterdir())
+        if contents:
+            raise FileExistsError(
+                f"refusing to overwrite non-empty browser output {output} "
+                f"(contains {', '.join(contents[:5])})"
+            )
+    return output
+
+
 def load_verified_bundle(bundle_dir: Path) -> dict[str, Any]:
     """Load the bundle manifest and SHA-verify every asset it names."""
     bundle_dir = Path(bundle_dir).resolve()
@@ -155,6 +163,46 @@ def load_verified_bundle(bundle_dir: Path) -> dict[str, Any]:
                 f"{recorded['sha256']}"
             )
     return {"dir": bundle_dir, "manifest": manifest}
+
+
+def validate_external_staged_rejection(manifest: Mapping[str, Any]) -> None:
+    """Require the classifier bundle's explicit external-policy separation.
+
+    The browser fusion export contains no rejector.  Accepting a bundle with a
+    fitted legacy additive slot, or an older "not refit yet" placeholder, would
+    silently describe a different classifier from the staged release path.
+    """
+    rejection = manifest.get("rejection")
+    if not isinstance(rejection, Mapping):
+        raise ValueError("runtime bundle carries no rejection contract")
+    if rejection.get("state") != "unset":
+        raise ValueError(
+            "browser fusion export requires an unset classifier rejection "
+            "slot; staged rejection is exported separately"
+        )
+    if rejection.get("external_staged_policy_required_for_abstention") is not True:
+        raise ValueError(
+            "runtime bundle does not declare the external staged-policy "
+            "requirement"
+        )
+    contract = rejection.get("required_contract")
+    if not isinstance(contract, Mapping) or "stage-one survivors" not in str(
+        contract.get("scope", "")
+    ):
+        raise ValueError(
+            "runtime bundle rejection contract does not scope stage two to "
+            "stage-one survivors"
+        )
+    blockers = manifest.get("release_blockers")
+    if not isinstance(blockers, list) or not blockers:
+        raise ValueError("runtime bundle carries no release requirements")
+    serialized = " ".join(str(item) for item in blockers).lower()
+    stale = ("not refit", "unmeasured", "unported", "no untouched release seed")
+    found = [token for token in stale if token in serialized]
+    if found:
+        raise ValueError(
+            f"runtime bundle carries stale release blockers: {found}"
+        )
 
 
 def _f32_vector(tensor: torch.Tensor, name: str, shape: tuple[int, ...]) -> list:
@@ -298,6 +346,7 @@ def _scalar(state: Mapping[str, torch.Tensor], name: str) -> float:
 
 def build_payload(bundle: dict[str, Any]) -> dict[str, Any]:
     manifest = bundle["manifest"]
+    validate_external_staged_rejection(manifest)
     bundle_dir: Path = bundle["dir"]
     architecture = manifest["architecture"]
     state = torch.load(
@@ -398,8 +447,9 @@ def build_payload(bundle: dict[str, Any]) -> dict[str, Any]:
             "embedding": manifest["classification"]["embedding"],
         },
         "rejection": {
-            "state": "unset",
+            "state": manifest["rejection"]["state"],
             "runtime_behaviour": manifest["rejection"]["runtime_behaviour"],
+            "external_staged_policy_required_for_abstention": True,
         },
         "not_compatible_with_schema_ids": list(
             manifest["not_compatible_with_schema_ids"]
@@ -422,7 +472,7 @@ def build_payload(bundle: dict[str, Any]) -> dict[str, Any]:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     bundle = load_verified_bundle(Path(args.bundle))
-    output = reject_unsafe_output(Path(args.output))
+    output = validate_empty_output(Path(args.output))
     output.mkdir(parents=True, exist_ok=True)
 
     payload = build_payload(bundle)
@@ -473,10 +523,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--bundle", default=str(DEFAULT_BUNDLE),
-                        help="v3 runtime bundle directory")
-    parser.add_argument("--output", default=str(DEFAULT_OUTPUT),
-                        help="browser staging asset directory")
+    parser.add_argument(
+        "--bundle",
+        required=True,
+        help="v3 runtime bundle directory",
+    )
+    parser.add_argument(
+        "--output",
+        required=True,
+        help="fresh browser staging asset directory",
+    )
     return parser
 
 

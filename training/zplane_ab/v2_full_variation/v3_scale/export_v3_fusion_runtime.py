@@ -27,12 +27,14 @@ otherwise identical exports; arrays are therefore written as plain ``.npy`` and
 metadata as ``sort_keys=True`` JSON.  Exporting the same source twice must
 produce byte-identical files, and the unit suite asserts exactly that.
 
-Open-set rejection.  HANDOFF 10.5 requires the rejector to be refit against the
-final v3 embeddings.  Until that happens the bundle carries an explicit unset
-rejection slot: the field exists, states that it is unset, states why, and
-records the contract a future policy must satisfy.  A fitted policy may be
-attached with ``--rejector-dir``; it is accepted only if its provenance binds it
-to *this* fusion assembly.
+Open-set rejection is deliberately a separate, staged artifact.  This bundle
+contains the classifier and the stage-2 policy contract only; it does not
+pretend that the stage-1 gate, composite calibration, or their validation
+evidence are embedded here.  The explicit unset rejection slot records that
+separation and the contract the independently validated staged policy must
+satisfy.  The legacy ``--rejector-dir`` attachment remains available for
+backward-compatible development experiments and is accepted only when its
+provenance binds it to *this* fusion assembly.
 
 This produces a development bundle.  It is not release evidence.
 """
@@ -648,7 +650,7 @@ def _closed_set(
 
 
 def required_rejector_contract() -> dict[str, Any]:
-    """The contract any attached v3 rejector policy must satisfy."""
+    """The stage-2 contract an external staged v3 policy must satisfy."""
     return {
         "module": "v3_time_domain_openset",
         "policy_schema": int(openset.FROZEN_POLICY_SCHEMA),
@@ -663,6 +665,10 @@ def required_rejector_contract() -> dict[str, Any]:
             "the embeddings of this exact fusion assembly, identified by "
             "provenance.source_dev_metrics_sha256"
         ),
+        "scope": (
+            "stage two on stage-one survivors only; the validated stage-one "
+            "gate and composite survivor policy are separate artifacts"
+        ),
         "cannot_change_closed_label": True,
     }
 
@@ -675,14 +681,18 @@ def unset_rejection_slot() -> dict[str, Any]:
         "policy": None,
         "asset_directory": None,
         "reason": (
-            "the v3 open-set rejector has not been refit against these v3 "
-            "embeddings; HANDOFF 10.5 requires that refit before any policy may "
-            "be frozen into a bundle"
+            "the release candidate uses a staged rejector whose stage-1 gate, "
+            "stage-2 fitted state, composite survivor policy and validation "
+            "report are exported and hash-bound separately; this classifier "
+            "bundle must not collapse those artifacts into an unvalidated "
+            "additive slot"
         ),
         "runtime_behaviour": (
-            "closed-set only; a consumer of this bundle must not abstain and "
-            "must not substitute a v2 rejector"
+            "classifier-only unless a separately validated staged v3 policy "
+            "is supplied; a consumer must not abstain from this slot alone and "
+            "must never substitute a v2 or unvalidated rejector"
         ),
+        "external_staged_policy_required_for_abstention": True,
         "cannot_change_closed_label": True,
         "required_contract": required_rejector_contract(),
     }
@@ -717,8 +727,8 @@ def load_rejector_policy(
     if bound != dev_metrics_sha256:
         raise RuntimeError(
             "rejector policy was not fit against this fusion assembly "
-            f"({bound!r} != {dev_metrics_sha256!r}); HANDOFF 10.5 forbids "
-            "attaching a rejector fitted on other embeddings"
+            f"({bound!r} != {dev_metrics_sha256!r}); attaching a rejector "
+            "fitted on other embeddings is forbidden"
         )
     for key, expected in (
         ("density_fit_population", "training only"),
@@ -1096,10 +1106,15 @@ def export_bundle(
             ),
         },
         "release_blockers": [
-            "open-set rejector is not refit against these v3 embeddings",
-            "N4096 clean accuracy and worst five-shot balanced are unmeasured",
-            "TypeScript encoder/fusion/prototype/rejection parity is unported",
-            "no untouched release seed has been spent on a sealed suite",
+            "this is a development classifier bundle, not sealed release evidence",
+            (
+                "the separately exported staged open-set policy must be a "
+                "passing validate-role artifact bound to this exact fusion"
+            ),
+            (
+                "release promotion requires the current candidate preflight, "
+                "a passing sealed suite, and explicit owner authorization"
+            ),
         ],
     }
 

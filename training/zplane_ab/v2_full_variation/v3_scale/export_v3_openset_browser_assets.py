@@ -19,9 +19,9 @@ What this produces (staging only, never release):
       without.
   ``time-domain-classifier-weights-v1.json``
       The decision-layer half of the v3 runtime bundle
-      (``v3_runtime_bundle_seed20260730``): feature standardization, fusion
-      centers/constants, class order and fused prototypes.  Encoder weights
-      are the sibling exporter's job and are deliberately NOT here.
+      supplied through ``--bundle-dir``: feature standardization, fusion
+      centers/constants, class order and fused prototypes. Encoder weights are
+      the sibling exporter's job and are deliberately NOT here.
   ``time-domain-openset-parity-v1.json``
       Known + noise + chirp rows pushed through the STAGED Python path with
       every per-stage intermediate and the final decision, INCLUDING which
@@ -56,10 +56,15 @@ Self-checks before anything is written:
 - the closed label of every survivor is asserted unchanged by the rejector
   (``assert_closed_label_unchanged`` runs inside ``score_rows``).
 
-Run with the training venv:
+Run with the training venv and explicit, freshly validated inputs:
 
     .venv-training/bin/python \
-        training/zplane_ab/v2_full_variation/v3_scale/export_v3_openset_browser_assets.py
+        training/zplane_ab/v2_full_variation/v3_scale/export_v3_openset_browser_assets.py \
+        --bundle-dir <runtime-bundle> \
+        --fusion-dir <fusion-artifact> \
+        --staged-dir <passing-validate-artifact> \
+        --prefilter-dir <prefilter-bundles> \
+        --output-dir <fresh-staging-output>
 """
 from __future__ import annotations
 
@@ -127,26 +132,17 @@ MANIFEST_NAME = "manifest.json"
 #: evidence and is recorded as such in the fixture.
 PARITY_NOVELTY_SEED = 20269101
 NOVELTY_ROWS_PER_FAMILY = 6
-FIXTURE_LENGTHS = (4096, 8192)
-
-DEFAULT_BUNDLE = (
-    V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "v3_runtime_bundle_seed20260730"
+# Full fitted-length parity plus two compact long-capture rows exercising the
+# release suite's causal-prefix rule.  The development corpus has no N32768
+# known rows, so long parity uses the fixed, non-evidence novelty fixture.
+FIXTURE_LENGTHS = (4096, 8192, 16384)
+CAUSAL_PREFIX_FIXTURE_LENGTH = 32768
+REQUIRED_VALIDATION_PREFIX_LENGTHS = (
+    *FIXTURE_LENGTHS,
+    CAUSAL_PREFIX_FIXTURE_LENGTH,
 )
-DEFAULT_FUSION = (
-    V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "v3_fusion_multilength_seed20260730"
-)
-DEFAULT_STAGED = (
-    V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "staged_validate_composite_budget001_seed20260730"
-)
-DEFAULT_PREFILTERS = (
-    V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "noise_prefilter_fit20261001_budget001" / "bundles"
-)
-DEFAULT_OUTPUT = V2 / "artifacts" / "staging" / "time_domain_v3_openset"
-
+CAUSAL_PREFIX_GATED_ROW_NAME = "causal-prefix-gated-N32768"
+CAUSAL_PREFIX_SURVIVOR_ROW_NAME = "causal-prefix-survivor-N32768"
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -209,6 +205,166 @@ def validate_parity_seed(seed: int) -> int:
     return value
 
 
+def validate_staged_evidence_report(report: Mapping[str, Any]) -> None:
+    """Admit only a passing, strict-gate validation artifact for export.
+
+    Export is a release-boundary operation, not a way to turn a design or a
+    failed validation run into runtime bytes.  This checks the report before
+    any output directory is created and retains the original development
+    gates, including known FUR <= 0.10.
+    """
+    required_scalars = (
+        ("status", "development_openset_pass"),
+        ("role", "validate"),
+        ("gates_are_evidence", True),
+        ("development_only", True),
+        ("release_evidence", False),
+        ("sealed_release_data_used", 0),
+        ("consumed_test_rows_used", 0),
+        ("all_pass", True),
+        ("closed_label_can_be_gated", True),
+        ("additive_only", False),
+        ("changes_closed_label", True),
+        ("gates_before_classification", True),
+    )
+    mismatched = [
+        f"{key}={report.get(key)!r}, expected {expected!r}"
+        for key, expected in required_scalars
+        if report.get(key) != expected
+    ]
+    if mismatched:
+        raise ValueError(
+            "staged artifact is not passing validate-role evidence: "
+            + "; ".join(mismatched)
+        )
+
+    architecture = report.get("architecture")
+    expected_architecture = {
+        "kind": staged.STAGED_POLICY_KIND,
+        "schema": int(staged.STAGED_POLICY_SCHEMA),
+        "staged_policy_version": staged.STAGED_POLICY_VERSION,
+    }
+    if not isinstance(architecture, Mapping):
+        raise ValueError("staged artifact carries no architecture record")
+    for key, expected in expected_architecture.items():
+        if architecture.get(key) != expected:
+            raise ValueError(
+                f"staged architecture {key}={architecture.get(key)!r}, "
+                f"expected {expected!r}"
+            )
+
+    gates = report.get("gates")
+    expected_gate_names = set(staged.GATE_FLOORS) | {
+        "known_false_unknown_rate"
+    }
+    if not isinstance(gates, Mapping) or set(gates) != expected_gate_names:
+        raise ValueError(
+            "staged gate set differs from the frozen development gates: "
+            f"{sorted(gates) if isinstance(gates, Mapping) else gates!r}"
+        )
+    for name, floor in staged.GATE_FLOORS.items():
+        gate = gates[name]
+        if (
+            not isinstance(gate, Mapping)
+            or gate.get("passes") is not True
+            or float(gate.get("floor", float("nan"))) != float(floor)
+        ):
+            raise ValueError(
+                f"staged gate {name!r} did not pass its frozen floor {floor}"
+            )
+    known_gate = gates["known_false_unknown_rate"]
+    if (
+        not isinstance(known_gate, Mapping)
+        or known_gate.get("passes") is not True
+        or float(known_gate.get("ceiling", float("nan")))
+        != float(staged.KNOWN_FUR_CEILING)
+        or float(known_gate.get("worst", float("inf")))
+        > float(staged.KNOWN_FUR_CEILING)
+    ):
+        raise ValueError(
+            "known false-unknown rate did not pass the strict development "
+            f"ceiling {staged.KNOWN_FUR_CEILING}"
+        )
+
+    stage_one = report.get("stage_one")
+    if not isinstance(stage_one, Mapping):
+        raise ValueError("staged artifact carries no stage-one provenance")
+    fitted_lengths = tuple(
+        sorted(int(length) for length in stage_one.get("capture_lengths", ()))
+    )
+    if fitted_lengths != FIXTURE_LENGTHS:
+        raise ValueError(
+            f"staged fitted lengths {list(fitted_lengths)} != "
+            f"{list(FIXTURE_LENGTHS)}"
+        )
+
+    protocol = report.get("protocol")
+    if not isinstance(protocol, Mapping):
+        raise ValueError("staged artifact carries no protocol record")
+    prefix_lengths = tuple(
+        int(length) for length in protocol.get("prefix_lengths", ())
+    )
+    if prefix_lengths != REQUIRED_VALIDATION_PREFIX_LENGTHS:
+        raise ValueError(
+            f"staged validation prefixes {list(prefix_lengths)} != "
+            f"{list(REQUIRED_VALIDATION_PREFIX_LENGTHS)}"
+        )
+    feature_lengths = protocol.get(
+        "stage_one_feature_length_by_prefix_length"
+    )
+    expected_feature_lengths = {
+        str(length): (
+            max(FIXTURE_LENGTHS)
+            if length == CAUSAL_PREFIX_FIXTURE_LENGTH
+            else length
+        )
+        for length in REQUIRED_VALIDATION_PREFIX_LENGTHS
+    }
+    if feature_lengths != expected_feature_lengths:
+        raise ValueError(
+            "staged validation does not declare the exact N32768 -> N16384 "
+            f"causal-prefix mapping: {feature_lengths!r}"
+        )
+    if protocol.get("stage_one_causal_prefix_rule_lengths") != [
+        CAUSAL_PREFIX_FIXTURE_LENGTH
+    ]:
+        raise ValueError(
+            "staged validation does not identify N32768 as the sole "
+            "causal-prefix length"
+        )
+
+
+def verify_staged_artifact_hashes(
+    report: Mapping[str, Any],
+    staged_dir: Path,
+) -> dict[str, str]:
+    """Verify every staged policy byte against its validation report."""
+    artifacts = report.get("artifacts")
+    expected = {
+        "v3_branch_lof_components.npz",
+        "v3_open_policy_stage_two.npz",
+        staged.COMPOSITE_POLICY_FILENAME,
+    }
+    if not isinstance(artifacts, Mapping) or set(artifacts) != expected:
+        raise ValueError(
+            "staged report artifact set is incomplete: "
+            f"{sorted(artifacts) if isinstance(artifacts, Mapping) else artifacts!r}"
+        )
+    verified: dict[str, str] = {}
+    for name in sorted(expected):
+        path = Path(staged_dir) / name
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        actual = _sha256(path)
+        if actual != artifacts[name]:
+            raise RuntimeError(
+                f"staged artifact {name} SHA {actual} != report "
+                f"{artifacts[name]}"
+            )
+        verified[name] = actual
+    return verified
+
+
 # ---------------------------------------------------------------------------
 # loading and cross-checking the fitted state
 # ---------------------------------------------------------------------------
@@ -224,6 +380,24 @@ def load_bundle(bundle_dir: Path) -> dict[str, Any]:
         raise ValueError(f"{bundle} is not a v3 runtime bundle")
     if manifest.get("development_only") is not True:
         raise RuntimeError(f"{bundle} must be development_only")
+    rejection = manifest.get("rejection")
+    if (
+        not isinstance(rejection, Mapping)
+        or rejection.get("state") != "unset"
+        or rejection.get("external_staged_policy_required_for_abstention")
+        is not True
+    ):
+        raise RuntimeError(
+            f"{bundle} does not declare that staged rejection is a separate, "
+            "required artifact"
+        )
+    blockers = manifest.get("release_blockers")
+    if not isinstance(blockers, list) or not blockers:
+        raise RuntimeError(f"{bundle} carries no release requirements")
+    serialized_blockers = " ".join(str(item) for item in blockers).lower()
+    stale = ("not refit", "unmeasured", "unported", "no untouched release seed")
+    if any(token in serialized_blockers for token in stale):
+        raise RuntimeError(f"{bundle} carries stale release blockers")
     arrays: dict[str, np.ndarray] = {}
     for name, meta in manifest["assets"].items():
         path = bundle / name
@@ -521,20 +695,54 @@ def stage_one_row(
     target_frac: float,
 ) -> dict[str, Any]:
     length = int(len(capture))
-    model = prefilters[length]
+    fitted_lengths = tuple(sorted(int(item) for item in prefilters))
+    if not fitted_lengths:
+        raise ValueError("stage-one parity needs at least one prefilter")
+    if length in prefilters:
+        evaluated_length = length
+        causal_prefix_applied = False
+    elif length > max(fitted_lengths):
+        evaluated_length = max(fitted_lengths)
+        causal_prefix_applied = True
+    else:
+        raise KeyError(
+            f"no fitted noise prefilter for capture length {length}; "
+            f"available {list(fitted_lengths)} and causal-prefix substitution "
+            "applies only above the longest fitted length"
+        )
+    model = prefilters[evaluated_length]
+    feature_capture = np.asarray(capture[:evaluated_length])
+    if len(feature_capture) != evaluated_length:
+        raise ValueError(
+            f"capture has {len(capture)} samples but stage one needs an "
+            f"N{evaluated_length} causal prefix"
+        )
     minimum = geometry.minimum_bandwidth_for_active_span(
-        length, patch_length, target_frac
+        evaluated_length, patch_length, target_frac
     )
-    features = pdg.pose_degeneracy_features(capture, min_bandwidth=minimum)
+    features = pdg.pose_degeneracy_features(
+        feature_capture, min_bandwidth=minimum
+    )
     selected = noise_prefilter.select_features(
         features[None, :], model.feature_names
     )[0]
-    score = float(model.score(selected[None, :], capture_length=length)[0])
-    gated = bool(model.decide(selected[None, :], capture_length=length)[0])
+    score = float(
+        model.score(
+            selected[None, :], capture_length=evaluated_length
+        )[0]
+    )
+    gated = bool(
+        model.decide(
+            selected[None, :], capture_length=evaluated_length
+        )[0]
+    )
     rank = float(staged._bounded_rank(np.asarray([score]))[0])
     if gated != (score >= float(model.threshold_score)):
         raise AssertionError("stage-1 gate rule disagreement")
     return {
+        "capture_length": length,
+        "evaluated_length": evaluated_length,
+        "causal_prefix_applied": causal_prefix_applied,
         "features": selected,
         "score": score,
         "rank": rank,
@@ -800,7 +1008,7 @@ def select_known_captures(
 def draw_novelty_captures(seed: int) -> dict[str, list[np.ndarray]]:
     """Noise and chirp parity rows at the fixture's longest length."""
     validate_parity_seed(seed)
-    longest = max(FIXTURE_LENGTHS)
+    longest = CAUSAL_PREFIX_FIXTURE_LENGTH
     rng = np.random.default_rng(int(seed))
     captures: dict[str, list[np.ndarray]] = {}
     for family in ("noise", "chirp"):
@@ -819,16 +1027,11 @@ def draw_novelty_captures(seed: int) -> dict[str, list[np.ndarray]]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--bundle-dir", type=Path, default=DEFAULT_BUNDLE)
-    parser.add_argument("--fusion-dir", type=Path, default=DEFAULT_FUSION)
-    parser.add_argument("--staged-dir", type=Path, default=DEFAULT_STAGED)
-    parser.add_argument("--prefilter-dir", type=Path, default=DEFAULT_PREFILTERS)
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="replace an existing staging output directory's files",
-    )
+    parser.add_argument("--bundle-dir", type=Path, required=True)
+    parser.add_argument("--fusion-dir", type=Path, required=True)
+    parser.add_argument("--staged-dir", type=Path, required=True)
+    parser.add_argument("--prefilter-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument(
         "--parity-seed", type=int, default=PARITY_NOVELTY_SEED
     )
@@ -837,11 +1040,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     output = assemble.reject_sealed_path(Path(args.output_dir), "output")
-    if output.exists() and any(output.iterdir()) and not args.overwrite:
+    if output.exists() and any(output.iterdir()):
         raise FileExistsError(
-            f"{output} is not empty; pass --overwrite to replace its files"
+            f"{output} is not empty; refusing to replace staged runtime assets"
         )
-    output.mkdir(parents=True, exist_ok=True)
 
     bundle = load_bundle(Path(args.bundle_dir))
     manifest = bundle["manifest"]
@@ -860,19 +1062,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if length not in prefilters:
             raise RuntimeError(f"no prefilter bundle for capture length {length}")
 
+    staged_dir = assemble.reject_sealed_path(
+        Path(args.staged_dir), "staged validation artifact"
+    )
+    staged_metrics_path = staged_dir / "openset_metrics.json"
+    with staged_metrics_path.open(encoding="utf-8") as handle:
+        staged_metrics = json.load(handle)
+    validate_staged_evidence_report(staged_metrics)
+    verified_staged_hashes = verify_staged_artifact_hashes(
+        staged_metrics, staged_dir
+    )
+
     components, policy, staged_hashes = load_stage_two_state(
-        Path(args.staged_dir)
+        staged_dir
     )
     composite, composite_sha = load_composite_state(
-        Path(args.staged_dir), policy
+        staged_dir, policy
     )
     staged_hashes = dict(staged_hashes)
     staged_hashes[staged.COMPOSITE_POLICY_FILENAME] = composite_sha
-    staged_metrics_path = Path(args.staged_dir) / "openset_metrics.json"
-    with staged_metrics_path.open(encoding="utf-8") as handle:
-        staged_metrics = json.load(handle)
+    if staged_hashes != verified_staged_hashes:
+        raise AssertionError(
+            "loaded staged assets differ from the report-verified assets"
+        )
     recorded_prefilter_dir = staged_metrics.get("stage_one", {}).get("directory")
-    if recorded_prefilter_dir is not None and (
+    if recorded_prefilter_dir is None or (
         Path(recorded_prefilter_dir).resolve() != prefilter_dir.resolve()
     ):
         raise RuntimeError(
@@ -880,24 +1094,35 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             f"{prefilter_dir}"
         )
     recorded_set_sha = staged_metrics.get("stage_one", {}).get("set_sha256")
-    if recorded_set_sha is not None and recorded_set_sha != prefilter_sha:
+    if recorded_set_sha != prefilter_sha:
         raise RuntimeError(
             "prefilter set SHA differs from the staged artifact's record"
         )
 
     artifact = base.load_fusion_artifact(Path(args.fusion_dir))
     recorded_fusion = staged_metrics.get("fusion", {})
-    recorded_fusion_dir = (
-        recorded_fusion.get("directory")
-        if isinstance(recorded_fusion, Mapping)
-        else recorded_fusion
-    )
-    if recorded_fusion_dir is not None and (
+    if not isinstance(recorded_fusion, Mapping):
+        raise RuntimeError("staged artifact carries no fusion provenance")
+    recorded_fusion_dir = recorded_fusion.get("directory")
+    if recorded_fusion_dir is None or (
         Path(str(recorded_fusion_dir)).resolve() != artifact.directory.resolve()
     ):
         raise RuntimeError(
             f"staged artifact was fit against {recorded_fusion_dir}, not "
             f"{artifact.directory}"
+        )
+    if recorded_fusion.get("directory_sha256") != artifact.directory_sha256:
+        raise RuntimeError(
+            "staged artifact fusion hash differs from the loaded fusion"
+        )
+
+    bundle_bound_metrics = bundle["manifest"].get("provenance", {}).get(
+        "source_dev_metrics_sha256"
+    )
+    actual_metrics_sha = _sha256(artifact.directory / "dev_metrics.json")
+    if bundle_bound_metrics != actual_metrics_sha:
+        raise RuntimeError(
+            "runtime bundle is not bound to the loaded fusion dev_metrics"
         )
 
     # The runtime bundle and the fusion artifact must carry the same fit.
@@ -956,8 +1181,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "runtime_bundle_manifest_sha256": bundle["manifest_sha256"],
         "fusion_artifact": artifact.directory.name,
         "fusion_directory_sha256": artifact.directory_sha256,
-        "staged_artifact": Path(args.staged_dir).name,
+        "staged_artifact": staged_dir.name,
         "staged_artifact_sha256": staged_hashes,
+        "staged_validation_report_sha256": _sha256(staged_metrics_path),
+        "staged_validation_status": staged_metrics["status"],
+        "staged_validation_role": staged_metrics["role"],
+        "staged_validation_all_pass": staged_metrics["all_pass"],
         "prefilter_bundles": prefilter_dir.parent.name + "/" + prefilter_dir.name,
         "prefilter_set_sha256": prefilter_sha,
         "exporter": Path(__file__).name,
@@ -1029,6 +1258,52 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
                 )
 
+    # Two compact, Python-generated N32768 rows bind the browser runtime to
+    # the exact causal-prefix semantics used by validation and release: one
+    # row must short-circuit at stage 1 and one must survive into the full
+    # N32768 classifier/stage-2 path.  Candidate selection here is fixture
+    # coverage only, on the explicitly non-evidence parity seed.
+    long_rows: dict[str, dict[str, Any]] = {}
+    for family in ("noise", "chirp"):
+        for index, capture in enumerate(novelty[family]):
+            row = process(
+                family,
+                f"{family}-{index}-N{CAUSAL_PREFIX_FIXTURE_LENGTH}",
+                capture,
+            )
+            stage_one_row_record = row["stage_one"]
+            if (
+                stage_one_row_record["capture_length"]
+                != CAUSAL_PREFIX_FIXTURE_LENGTH
+                or stage_one_row_record["evaluated_length"]
+                != max(FIXTURE_LENGTHS)
+                or stage_one_row_record["causal_prefix_applied"] is not True
+            ):
+                raise AssertionError(
+                    "N32768 parity row did not apply the N16384 causal prefix"
+                )
+            decision_path = (
+                "gated" if row["rejected_stage"] == 1 else "survivor"
+            )
+            long_rows.setdefault(decision_path, row)
+            if set(long_rows) == {"gated", "survivor"}:
+                break
+        if set(long_rows) == {"gated", "survivor"}:
+            break
+    if set(long_rows) != {"gated", "survivor"}:
+        raise RuntimeError(
+            "parity draw did not produce both a gated and a surviving N32768 "
+            "causal-prefix row"
+        )
+    for key, fixed_name in (
+        ("gated", CAUSAL_PREFIX_GATED_ROW_NAME),
+        ("survivor", CAUSAL_PREFIX_SURVIVOR_ROW_NAME),
+    ):
+        row = long_rows[key]
+        row["parity_source_name"] = row["name"]
+        row["name"] = fixed_name
+        rows.append(row)
+
     # Probe cases from THE parity anchor, re-scored through the staged path.
     probe_rows: list[dict[str, Any]] = []
     probe_cases: list[dict[str, Any]] = []
@@ -1091,7 +1366,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "contract": weights["contract"],
         "classes": classes,
         "frontend": frontend_payload,
-        "fixture_lengths": list(FIXTURE_LENGTHS),
+        "fixture_lengths": list(REQUIRED_VALIDATION_PREFIX_LENGTHS),
+        "causal_prefix_parity": {
+            "capture_length": CAUSAL_PREFIX_FIXTURE_LENGTH,
+            "evaluated_length": max(FIXTURE_LENGTHS),
+            "row_names": [
+                CAUSAL_PREFIX_GATED_ROW_NAME,
+                CAUSAL_PREFIX_SURVIVOR_ROW_NAME,
+            ],
+            "covers_gated_and_survivor_paths": True,
+        },
         "parity_novelty_seed": int(args.parity_seed),
         "parity_seed_is_evaluation_evidence": False,
         "known_rows_population": "development selection split (scored, never fit)",
@@ -1114,6 +1398,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "provenance": provenance,
     }
 
+    # All candidate and parity self-checks have passed.  Only now may the
+    # exporter materialize its fresh output directory.
+    output.mkdir(parents=True, exist_ok=True)
     write_json(output / WEIGHTS_NAME, weights)
     write_json(output / CLASSIFIER_WEIGHTS_NAME, classifier_weights)
     write_json(output / PARITY_NAME, parity)

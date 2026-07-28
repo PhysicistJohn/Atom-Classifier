@@ -7,6 +7,8 @@ row against ``fit_v3_openset.score_rows`` before writing anything.
 """
 from __future__ import annotations
 
+from pathlib import Path
+import tempfile
 import unittest
 
 import numpy as np
@@ -39,11 +41,14 @@ def synthetic_composite(
     )
 
 
-def synthetic_prefilter(threshold: float = 1.0) -> noise_prefilter.NoisePrefilter:
+def synthetic_prefilter(
+    threshold: float = 1.0,
+    capture_length: int = 4096,
+) -> noise_prefilter.NoisePrefilter:
     width = len(noise_prefilter.PREFILTER_FEATURES)
     return noise_prefilter.NoisePrefilter(
         feature_names=noise_prefilter.PREFILTER_FEATURES,
-        capture_length=4096,
+        capture_length=capture_length,
         mean=np.linspace(-1.0, 1.0, width),
         scale=np.linspace(0.5, 2.0, width),
         coefficients=np.linspace(-0.3, 0.4, width),
@@ -52,6 +57,57 @@ def synthetic_prefilter(threshold: float = 1.0) -> noise_prefilter.NoisePrefilte
         fit_provenance={"synthetic": True},
         threshold_provenance={"synthetic": True},
     )
+
+
+def valid_staged_report() -> dict:
+    gates = {
+        name: {
+            "floor": float(floor),
+            "worst": float(floor) + 0.01,
+            "passes": True,
+        }
+        for name, floor in staged.GATE_FLOORS.items()
+    }
+    gates["known_false_unknown_rate"] = {
+        "ceiling": float(staged.KNOWN_FUR_CEILING),
+        "worst": float(staged.KNOWN_FUR_CEILING) - 0.01,
+        "passes": True,
+    }
+    return {
+        "status": "development_openset_pass",
+        "role": "validate",
+        "gates_are_evidence": True,
+        "development_only": True,
+        "release_evidence": False,
+        "sealed_release_data_used": 0,
+        "consumed_test_rows_used": 0,
+        "all_pass": True,
+        "closed_label_can_be_gated": True,
+        "additive_only": False,
+        "changes_closed_label": True,
+        "gates_before_classification": True,
+        "architecture": {
+            "kind": staged.STAGED_POLICY_KIND,
+            "schema": staged.STAGED_POLICY_SCHEMA,
+            "staged_policy_version": staged.STAGED_POLICY_VERSION,
+        },
+        "gates": gates,
+        "stage_one": {
+            "capture_lengths": list(exporter.FIXTURE_LENGTHS),
+        },
+        "protocol": {
+            "prefix_lengths": list(
+                exporter.REQUIRED_VALIDATION_PREFIX_LENGTHS
+            ),
+            "stage_one_feature_length_by_prefix_length": {
+                "4096": 4096,
+                "8192": 8192,
+                "16384": 16384,
+                "32768": 16384,
+            },
+            "stage_one_causal_prefix_rule_lengths": [32768],
+        },
+    }
 
 
 class ParitySeedHygiene(unittest.TestCase):
@@ -76,6 +132,98 @@ class ParitySeedHygiene(unittest.TestCase):
                 exporter.validate_parity_seed(seed)
 
 
+class StagedEvidenceAdmission(unittest.TestCase):
+    def test_passing_validate_role_strict_evidence_is_accepted(self) -> None:
+        exporter.validate_staged_evidence_report(valid_staged_report())
+
+    def test_design_artifact_is_refused_even_if_its_metrics_pass(self) -> None:
+        report = valid_staged_report()
+        report["role"] = "design"
+        report["status"] = "design_selection_pass"
+        report["gates_are_evidence"] = False
+        with self.assertRaisesRegex(ValueError, "validate-role evidence"):
+            exporter.validate_staged_evidence_report(report)
+
+    def test_any_failed_gate_is_refused(self) -> None:
+        report = valid_staged_report()
+        report["gates"]["noise_auroc"]["passes"] = False
+        with self.assertRaisesRegex(ValueError, "noise_auroc"):
+            exporter.validate_staged_evidence_report(report)
+
+    def test_relaxed_known_fur_ceiling_is_refused(self) -> None:
+        report = valid_staged_report()
+        report["gates"]["known_false_unknown_rate"] = {
+            "ceiling": 0.12,
+            "worst": 0.11,
+            "passes": True,
+        }
+        with self.assertRaisesRegex(ValueError, "strict development ceiling"):
+            exporter.validate_staged_evidence_report(report)
+
+    def test_missing_n32768_causal_prefix_validation_is_refused(self) -> None:
+        report = valid_staged_report()
+        report["protocol"]["prefix_lengths"] = [4096, 8192, 16384]
+        with self.assertRaisesRegex(ValueError, "validation prefixes"):
+            exporter.validate_staged_evidence_report(report)
+
+    def test_wrong_n32768_feature_length_is_refused(self) -> None:
+        report = valid_staged_report()
+        report["protocol"]["stage_one_feature_length_by_prefix_length"][
+            "32768"
+        ] = 32768
+        with self.assertRaisesRegex(ValueError, "N32768 -> N16384"):
+            exporter.validate_staged_evidence_report(report)
+
+
+class StagedArtifactHashAdmission(unittest.TestCase):
+    def test_exact_report_hashes_are_required(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            names = (
+                "v3_branch_lof_components.npz",
+                "v3_open_policy_stage_two.npz",
+                staged.COMPOSITE_POLICY_FILENAME,
+            )
+            for index, name in enumerate(names):
+                (directory / name).write_bytes(f"asset-{index}".encode())
+            report = {
+                "artifacts": {
+                    name: exporter._sha256(directory / name)
+                    for name in names
+                }
+            }
+            self.assertEqual(
+                exporter.verify_staged_artifact_hashes(report, directory),
+                report["artifacts"],
+            )
+            (directory / names[0]).write_bytes(b"changed")
+            with self.assertRaisesRegex(RuntimeError, "SHA"):
+                exporter.verify_staged_artifact_hashes(report, directory)
+
+
+class RuntimeBundleAdmission(unittest.TestCase):
+    def test_legacy_not_refit_bundle_is_refused_before_assets_are_read(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = Path(temporary)
+            exporter.write_json(
+                bundle / "bundle_manifest.json",
+                {
+                    "kind": "v3-time-domain-centered-invariant-fusion",
+                    "development_only": True,
+                    "rejection": {
+                        "state": "unset",
+                        "external_staged_policy_required_for_abstention": False,
+                    },
+                    "release_blockers": [
+                        "open-set rejector is not refit against this fusion"
+                    ],
+                    "assets": {},
+                },
+            )
+            with self.assertRaisesRegex(RuntimeError, "staged rejection"):
+                exporter.load_bundle(bundle)
+
+
 class PrefilterConversion(unittest.TestCase):
     def test_payload_carries_every_parameter(self) -> None:
         model = synthetic_prefilter()
@@ -94,6 +242,58 @@ class PrefilterConversion(unittest.TestCase):
         model = synthetic_prefilter(threshold=float("nan"))
         with self.assertRaises(ValueError):
             exporter.prefilter_model_payload(model)
+
+
+class CausalPrefixParity(unittest.TestCase):
+    @staticmethod
+    def capture(length: int) -> np.ndarray:
+        sample = np.arange(length, dtype=np.float64)
+        envelope = 0.8 + 0.2 * np.cos(2.0 * np.pi * sample / 613.0)
+        return envelope * np.exp(1j * 2.0 * np.pi * 0.017 * sample)
+
+    def test_long_row_is_bit_identical_to_its_fitted_prefix(self) -> None:
+        prefilters = {4096: synthetic_prefilter(capture_length=4096)}
+        capture = self.capture(8192)
+        long = exporter.stage_one_row(
+            prefilters,
+            capture,
+            patch_length=64,
+            target_frac=0.5,
+        )
+        prefix = exporter.stage_one_row(
+            prefilters,
+            capture[:4096],
+            patch_length=64,
+            target_frac=0.5,
+        )
+        self.assertEqual(long["capture_length"], 8192)
+        self.assertEqual(long["evaluated_length"], 4096)
+        self.assertIs(long["causal_prefix_applied"], True)
+        self.assertIs(prefix["causal_prefix_applied"], False)
+        np.testing.assert_array_equal(long["features"], prefix["features"])
+        self.assertEqual(long["score"], prefix["score"])
+        self.assertEqual(long["rank"], prefix["rank"])
+        self.assertEqual(long["gated"], prefix["gated"])
+
+    def test_uncovered_shorter_length_is_refused(self) -> None:
+        prefilters = {4096: synthetic_prefilter(capture_length=4096)}
+        with self.assertRaisesRegex(KeyError, "applies only above"):
+            exporter.stage_one_row(
+                prefilters,
+                self.capture(2048),
+                patch_length=64,
+                target_frac=0.5,
+            )
+
+    def test_release_long_row_names_are_stable(self) -> None:
+        self.assertEqual(
+            exporter.CAUSAL_PREFIX_GATED_ROW_NAME,
+            "causal-prefix-gated-N32768",
+        )
+        self.assertEqual(
+            exporter.CAUSAL_PREFIX_SURVIVOR_ROW_NAME,
+            "causal-prefix-survivor-N32768",
+        )
 
 
 class JsonDeterminism(unittest.TestCase):

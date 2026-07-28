@@ -557,7 +557,11 @@ class RejectionSlotTests(_Fixture):
         self.assertIs(rejection["fitted"], False)
         self.assertIsNone(rejection["policy"])
         self.assertIsNone(rejection["asset_directory"])
-        self.assertIn("HANDOFF 10.5", rejection["reason"])
+        self.assertIn("staged rejector", rejection["reason"])
+        self.assertIn("separately", rejection["reason"])
+        self.assertIs(
+            rejection["external_staged_policy_required_for_abstention"], True
+        )
         self.assertIs(rejection["cannot_change_closed_label"], True)
         contract = rejection["required_contract"]
         self.assertEqual(contract["v2_weight"], openset.FROZEN_V2_WEIGHT)
@@ -571,6 +575,20 @@ class RejectionSlotTests(_Fixture):
         self.assertEqual(
             contract["rank_and_threshold_population"], "enrollment only"
         )
+        self.assertIn("stage-one survivors", contract["scope"])
+
+    def test_release_blockers_are_current_requirements(self) -> None:
+        manifest = _export(self.source, self.output)
+        serialized = " ".join(manifest["release_blockers"]).lower()
+        for stale in (
+            "not refit",
+            "unmeasured",
+            "unported",
+            "no untouched release seed",
+        ):
+            self.assertNotIn(stale, serialized)
+        self.assertIn("passing validate-role artifact", serialized)
+        self.assertIn("passing sealed suite", serialized)
 
     def _write_policy(self, directory: Path, dev_metrics_sha256: str) -> None:
         rng = np.random.default_rng(19)
