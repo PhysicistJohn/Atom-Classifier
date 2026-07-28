@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from typing import Any
 
 
@@ -64,23 +65,9 @@ def file_record(path: Path) -> dict[str, Any]:
 
 
 def historical_metadata() -> dict[str, Any]:
-    return {
-        "release_seed": promoter.HISTORICAL_RELAXED_SEED,
-        "active_for_current_protocol": False,
-        "current_protocol_gate_source": "imported_v2_gate_floors_unchanged",
-        "gates_redeclared": {
-            "five_shot_worst_length_balanced": {
-                "v2_level": 0.85,
-                "v3_level": 0.84,
-                "owner_decision": "inactive historical synthetic record",
-            },
-            "open_known_false_unknown_worst_length": {
-                "v2_level": 0.10,
-                "v3_level": 0.12,
-                "owner_decision": "inactive historical synthetic record",
-            },
-        },
-    }
+    return copy.deepcopy(
+        promoter._expected_protocol()["historical_gate_redeclaration"]
+    )
 
 
 def release_gates(candidate_sha256: str) -> dict[str, dict[str, Any]]:
@@ -116,8 +103,14 @@ class SyntheticPromotion:
         self.legacy_staging = self.root / "assets-v3-staging"
         self.prefilter = self.root / "prefilter"
         self.prefilter.mkdir()
-        self.prefilter_sha = digest("prefilter set")
-        self.prefilter_bundles = {"4096": digest("prefilter N4096")}
+        self.prefilter_bundles = self._build_prefilter()
+        prefilter_digest = hashlib.sha256()
+        for name in sorted(path.name for path in self.prefilter.iterdir()):
+            prefilter_digest.update(f"{name}:".encode("utf-8"))
+            prefilter_digest.update(
+                self.prefilter_bundles[name[1:]].encode("utf-8")
+            )
+        self.prefilter_sha = prefilter_digest.hexdigest()
 
         self.rejector_bundle = self._build_bundle(
             "rejector-bundle", promoter.REJECTOR_ROLE
@@ -125,12 +118,15 @@ class SyntheticPromotion:
         self.classifier_bundle = self._build_bundle(
             "classifier-bundle", promoter.CLASSIFIER_ROLE
         )
-        self.rejector_fusion, self.rejector_fusion_files = self._build_fusion(
-            "rejector-fusion"
-        )
+        (
+            self.rejector_fusion,
+            self.rejector_fusion_files,
+            self.rejector_fusion_sha,
+        ) = self._build_fusion("rejector-fusion")
         (
             self.classifier_fusion,
             self.classifier_fusion_files,
+            self.classifier_fusion_sha,
         ) = self._build_fusion("classifier-fusion")
 
         self.inputs = package_tests.SyntheticInputs(
@@ -184,9 +180,12 @@ class SyntheticPromotion:
         self._write_candidate()
         self.candidate_sha = digest_bytes(self.candidate.read_bytes())
         self.protocol = self._protocol()
-        self.release_root = self.root / "sealed-release"
+        self.release_root = (
+            self.root
+            / promoter.EXPECTED_RELEASE_ROOT.relative_to(promoter.REPO)
+        )
         self._write_release_suite()
-        self.report = self.root / "RELEASE_EVALUATION.json"
+        self.report = self.release_root / "RELEASE_EVALUATION.json"
         self._write_report()
         self.policy = promoter.PromotionPolicy(
             repo_root=self.root,
@@ -196,6 +195,28 @@ class SyntheticPromotion:
             legacy_v3_staging=self.legacy_staging,
             require_git_tracking=False,
         )
+
+    def _build_prefilter(self) -> dict[str, str]:
+        hashes: dict[str, str] = {}
+        for length in (4096, 8192, 16384):
+            directory = self.prefilter / f"N{length}"
+            directory.mkdir()
+            for name in promoter.PREFILTER_BUNDLE_FILES:
+                path = directory / name
+                if name == "meta.json":
+                    write_json(
+                        path,
+                        {
+                            "schema": "noise-prefilter-bundle-v1",
+                            "capture_length": length,
+                        },
+                    )
+                else:
+                    path.write_bytes(f"N{length}:{name}".encode("utf-8"))
+            hashes[str(length)] = promoter._prefilter_bundle_sha256(
+                directory, length
+            )
+        return hashes
 
     def _build_bundle(self, name: str, runtime_role: str) -> dict[str, Any]:
         directory = self.root / name
@@ -225,15 +246,15 @@ class SyntheticPromotion:
 
     def _build_fusion(
         self, name: str
-    ) -> tuple[Path, dict[str, str]]:
+    ) -> tuple[Path, dict[str, str], str]:
         directory = self.root / name
         directory.mkdir()
         hashes: dict[str, str] = {}
-        for file_name in ("dev_metrics.json", "selected_fusion_state.pt"):
+        for file_name in sorted(promoter.EXPECTED_FUSION_FILES):
             path = directory / file_name
             path.write_bytes(f"{name}:{file_name}".encode("utf-8"))
             hashes[file_name] = digest_bytes(path.read_bytes())
-        return directory, hashes
+        return directory, hashes, promoter._fusion_directory_sha256(hashes)
 
     def _bind_role_export(
         self,
@@ -274,11 +295,20 @@ class SyntheticPromotion:
                 "staged_validation_status": "development_openset_pass",
             }
         )
-        write_json(policy_path, policy)
         binding_path = (
             self.inputs.openset / package_tests.packager.DUAL_BINDING
         )
         binding = read_json(binding_path)
+        role_fusions = {
+            "rejector": self.rejector_fusion_sha,
+            "classifier": self.classifier_fusion_sha,
+        }
+        for label, fusion_sha in role_fusions.items():
+            policy["provenance"]["runtime_roles"][label][
+                "fusion_directory_sha256"
+            ] = fusion_sha
+            binding["roles"][label]["fusion_directory_sha256"] = fusion_sha
+        write_json(policy_path, policy)
         binding["openset_policy"]["asset_sha256"] = digest_bytes(
             policy_path.read_bytes()
         )
@@ -436,21 +466,10 @@ class SyntheticPromotion:
         write_json(self.candidate, candidate)
 
     def _protocol(self) -> dict[str, Any]:
-        return {
-            "version": promoter.EVALUATION_VERSION,
-            "gates": copy.deepcopy(promoter.STRICT_V2_GATE_FLOORS),
-            "novelty": {"seed": promoter.RELEASE_SEED},
-            "open_set": {
-                "intentional_dual_fusion": True,
-                "candidate_architecture": (
-                    "dual_fusion_classifier8k_rejector4k"
-                ),
-            },
-            "historical_gate_redeclaration": historical_metadata(),
-        }
+        return copy.deepcopy(promoter._expected_protocol())
 
     def _write_release_suite(self) -> None:
-        self.release_root.mkdir()
+        self.release_root.mkdir(parents=True)
         intent = {
             "status": "in_progress",
             "release_seed": promoter.RELEASE_SEED,
@@ -534,10 +553,138 @@ class SyntheticPromotion:
             ),
             "dual_binding": copy.deepcopy(candidate["dual_binding"]),
             "dual_binding_sha256": candidate["dual_binding"]["sha256"],
-            "source_sha256": {"enforced": {}, "recorded_only": {}},
+            "source_sha256": {
+                "enforced": {
+                    "fit_v3_openset_staged.py": (
+                        promoter.EXPECTED_LEDGER_TRANSITION[
+                            "current_sha256"
+                        ]
+                    ),
+                },
+                "recorded_only": {},
+                "post_validation_ledger_transitions": {
+                    "fit_v3_openset_staged.py": copy.deepcopy(
+                        promoter.EXPECTED_LEDGER_TRANSITION
+                    ),
+                },
+                "evaluator_chain": {},
+            },
+        }
+
+    def _metric_bodies(self) -> dict[str, Any]:
+        lengths = tuple(str(value) for value in promoter.REQUIRED_CAPTURE_LENGTHS)
+        closed = {
+            length: {
+                "accuracy": 0.72,
+                "balanced_accuracy": 0.75,
+                "mean_pairwise_cosine": 0.78,
+                "family": {"accuracy": 0.82},
+                "high_snr": {"accuracy": 0.78},
+                "low_snr": {"accuracy": 0.72},
+                "clean_accuracy": 0.85,
+                "clean_subset": {"accuracy": 0.85},
+                "impaired_subset": {"accuracy": 0.72},
+            }
+            for length in lengths
+        }
+        five = {
+            length: {"balanced_accuracy": 0.85} for length in lengths
+        }
+        opened = {
+            length: {
+                "known_rows": 10,
+                "auroc_overall": 0.72,
+                "auroc_noise": 0.80,
+                "auroc_chirp": 0.80,
+                "known_false_unknown_rate": 0.10,
+                "flagged_unknown_noise": 0.10,
+                "flagged_unknown_chirp": 0.10,
+                "known_gated_fraction": 0.0,
+                "known_false_unknown_by_stage": {
+                    "rows": 10,
+                    "staged_false_unknown_rate": 0.10,
+                    "stage_one_gate_rate": 0.0,
+                    "stage_two_false_unknown_rate_marginal": 0.10,
+                    "rejected_by_stage_two_only": 1,
+                },
+            }
+            for length in lengths
+        }
+        decisions = {
+            length: {
+                "rows": 10,
+                "unknown": 1,
+                "gated_at_stage_one": 0,
+                "accepted_rows": 9,
+            }
+            for length in lengths
+        }
+        length_rows = [
+            {
+                "capture_length": length,
+                "balanced_accuracy": 0.75,
+                "mean_pairwise_cosine": 0.78,
+                "paired_to_matched": {
+                    "prediction_agreement": 0.80,
+                    "embedding_cosine_mean": 0.85,
+                },
+            }
+            for length in promoter.REQUIRED_CAPTURE_LENGTHS
+        ]
+        scale_rows = [
+            {
+                "factor": factor,
+                "balanced_accuracy": 0.75,
+                "mean_pairwise_cosine": 0.78,
+                "paired_to_factor1": {
+                    "prediction_agreement": 0.75,
+                    "embedding_cosine_mean": 0.80,
+                },
+            }
+            for factor in promoter.PHYSICAL_SCALE_FACTORS
+        ]
+        return {
+            "closed_per_length": closed,
+            "family_per_length": {
+                length: row["family"] for length, row in closed.items()
+            },
+            "high_snr_per_length": {
+                length: row["high_snr"] for length, row in closed.items()
+            },
+            "low_snr_per_length": {
+                length: row["low_snr"] for length, row in closed.items()
+            },
+            "clean_subset_per_length": {
+                length: row["clean_subset"]
+                for length, row in closed.items()
+            },
+            "impaired_subset_per_length": {
+                length: row["impaired_subset"]
+                for length, row in closed.items()
+            },
+            "five_shot_predeclared_per_length": five,
+            "open_staged_per_length": opened,
+            "staged_known_decisions_per_length": decisions,
+            "matched_length_sweep": {
+                "matched_capture_length": 16384,
+                "rows": length_rows,
+                "worst_balanced_accuracy": 0.75,
+                "worst_mean_pairwise_cosine": 0.78,
+                "worst_prediction_agreement_to_matched": 0.80,
+                "worst_embedding_cosine_to_matched": 0.85,
+            },
+            "physical_scale_sweep": {
+                "factors": list(promoter.PHYSICAL_SCALE_FACTORS),
+                "rows": scale_rows,
+                "worst_balanced_accuracy": 0.75,
+                "worst_mean_pairwise_cosine": 0.78,
+                "worst_prediction_agreement_to_factor1": 0.75,
+                "worst_embedding_cosine_to_factor1": 0.80,
+            },
         }
 
     def _write_report(self) -> None:
+        metrics = self._metric_bodies()
         report = {
             "schema": promoter.EVALUATOR_SCHEMA,
             "status": "complete",
@@ -574,17 +721,7 @@ class SyntheticPromotion:
                 "components": self._components(),
                 "frozen_assets_used": ["synthetic dual frozen candidate"],
             },
-            "closed_per_length": {},
-            "family_per_length": {},
-            "high_snr_per_length": {},
-            "low_snr_per_length": {},
-            "clean_subset_per_length": {},
-            "impaired_subset_per_length": {},
-            "five_shot_predeclared_per_length": {},
-            "open_staged_per_length": {},
-            "staged_known_decisions_per_length": {},
-            "matched_length_sweep": {},
-            "physical_scale_sweep": {},
+            **metrics,
             "gates": release_gates(self.candidate_sha),
             "historical_gate_redeclaration": historical_metadata(),
             "all_release_gates_pass": True,
@@ -603,6 +740,17 @@ class SyntheticPromotion:
                 "release_seed": promoter.RELEASE_SEED,
                 "evaluation_protocol": copy.deepcopy(self.protocol),
                 "candidate_sha256": self.candidate_sha,
+                "prefix_nesting": {"passes": True},
+                "dependency_provenance": {"passes": True},
+                "unscored_start_probe": {
+                    "scored": False,
+                    "passes": True,
+                },
+                "evaluator_path": str(promoter.EXPECTED_EVALUATOR),
+                "evaluator_sha256": promoter.EXPECTED_EVALUATOR_SHA256,
+                "v2_evaluator_sha256": (
+                    promoter.EXPECTED_V2_EVALUATOR_SHA256
+                ),
             },
         }
         self.report_payload = report
@@ -706,6 +854,18 @@ class PromotionTests(unittest.TestCase):
                 promotion["evaluation"]["gate_contract"],
                 "strict_imported_v2_23_of_23",
             )
+            self.assertEqual(
+                promotion["candidate_artifacts"][
+                    "post_validation_ledger_transition"
+                ],
+                promoter.EXPECTED_LEDGER_TRANSITION,
+            )
+            self.assertEqual(fixture.release.stat().st_mode & 0o777, 0o755)
+            for name in promoter.STAGING_FILE_NAMES:
+                self.assertEqual(
+                    (fixture.release / name).stat().st_mode & 0o777,
+                    0o644,
+                )
 
     def test_promotion_is_byte_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -756,7 +916,7 @@ class PromotionTests(unittest.TestCase):
                 lambda report: report["gates"][
                     "closed_fine_worst_length"
                 ].__setitem__("value", 0.71),
-                "claims a false pass",
+                "contract differs",
             ),
         )
         with tempfile.TemporaryDirectory() as temporary:
@@ -772,6 +932,226 @@ class PromotionTests(unittest.TestCase):
                     ):
                         fixture.promote()
                     self.assertFalse(fixture.release.exists())
+
+    def test_gate_value_must_be_derived_from_metric_body(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            fixture.report_payload["closed_per_length"]["4096"][
+                "accuracy"
+            ] = 0.0
+            fixture.rewrite_report()
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "contract differs"
+            ):
+                fixture.promote()
+            self.assertFalse(fixture.release.exists())
+
+    def test_protocol_must_equal_the_canonical_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            fixture.report_payload["provenance"]["evaluation_protocol"][
+                "minimum_target_per_class"
+            ] = 79
+            fixture.rewrite_report()
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "exact seed-20260735 fixture"
+            ):
+                fixture.promote()
+
+    def test_evaluator_identity_is_pinned(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            fixture.report_payload["provenance"]["evaluator_sha256"] = (
+                "0" * 64
+            )
+            fixture.rewrite_report()
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "evaluator identity"
+            ):
+                fixture.promote()
+
+    def test_post_validation_source_transition_is_exact(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            transition = fixture.report_payload["candidate"]["components"][
+                "source_sha256"
+            ]["post_validation_ledger_transitions"][
+                "fit_v3_openset_staged.py"
+            ]
+            transition["next_clean_novelty_seed"] = 20260953
+            fixture.rewrite_report()
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "ledger transition record differs"
+            ):
+                fixture.promote()
+
+    def test_report_must_be_the_release_root_evaluation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            displaced = fixture.root / "copied-evaluation.json"
+            displaced.write_bytes(fixture.report.read_bytes())
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "release_root"
+            ):
+                promoter.promote(
+                    fixture.staging,
+                    displaced,
+                    fixture.release,
+                    policy=fixture.policy,
+                )
+
+    def test_symlinked_validation_evidence_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            target = fixture.root / "identical-validation.json"
+            target.write_bytes(fixture.validation_evidence.read_bytes())
+            fixture.validation_evidence.unlink()
+            fixture.validation_evidence.symlink_to(target)
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "symlink"
+            ):
+                fixture.promote()
+            self.assertFalse(fixture.release.exists())
+
+    def test_symlinked_destination_is_never_written_through(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            fixture = SyntheticPromotion(base / "fixture")
+            outside = base / "outside"
+            outside.mkdir()
+            sentinel = outside / "keep.txt"
+            sentinel.write_text("keep", encoding="utf-8")
+            fixture.release.symlink_to(outside, target_is_directory=True)
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "symlink"
+            ):
+                fixture.promote()
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
+            self.assertEqual({path.name for path in outside.iterdir()}, {"keep.txt"})
+
+    def test_symlinked_destination_parent_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            fixture = SyntheticPromotion(base / "fixture")
+            outside = base / "outside"
+            outside.mkdir()
+            alias = fixture.root / "redirect-parent"
+            alias.symlink_to(outside, target_is_directory=True)
+            destination = alias / "release"
+            policy = promoter.PromotionPolicy(
+                repo_root=fixture.root,
+                staging_package=fixture.staging,
+                release_package=destination,
+                live_v2_assets=fixture.live_v2,
+                legacy_v3_staging=fixture.legacy_staging,
+                require_git_tracking=False,
+            )
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "symlink"
+            ):
+                fixture.promote(destination=destination, policy=policy)
+            self.assertEqual(list(outside.iterdir()), [])
+
+    def test_absolute_external_evidence_path_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            package = read_json(fixture.staging_manifest)
+            package["external_evidence"]["parity"]["path"] = (
+                "/tmp/outside-parity.json"
+            )
+            write_json(fixture.staging_manifest, package)
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "package-relative"
+            ):
+                fixture.promote()
+
+    def test_prefilter_bytes_are_recomputed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            path = fixture.prefilter / "N4096" / "coefficients.npy"
+            path.write_bytes(path.read_bytes() + b"tampered")
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "prefilter bundle N4096 SHA"
+            ):
+                fixture.promote()
+            self.assertFalse(fixture.release.exists())
+
+    def test_fusion_directory_hash_is_recomputed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            path = fixture.classifier_fusion / "feature_mean.npy"
+            path.write_bytes(path.read_bytes() + b"tampered")
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "classifier fusion.*differs"
+            ):
+                fixture.promote()
+            self.assertFalse(fixture.release.exists())
+
+    def test_verified_staging_bytes_cannot_be_swapped_on_second_read(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            path = fixture.staging / promoter.CLASSIFIER_WEIGHTS
+            verified = path.read_bytes()
+            substituted_payload = json.loads(verified.decode("utf-8"))
+            substituted_payload["unverified_adversarial_field"] = True
+            substituted = json_bytes(substituted_payload)
+            original_read = promoter._read_file
+            reads = 0
+
+            def interleaved_read(candidate: Path, label: str) -> bytes:
+                nonlocal reads
+                if candidate == path:
+                    reads += 1
+                    if reads == 2:
+                        return substituted
+                return original_read(candidate, label)
+
+            with mock.patch.object(
+                promoter, "_read_file", side_effect=interleaved_read
+            ):
+                manifest = fixture.promote()
+            self.assertEqual(reads, 1)
+            self.assertEqual(manifest["status"], promoter.RELEASE_STATUS)
+            released = read_json(
+                fixture.release / promoter.CLASSIFIER_WEIGHTS
+            )
+            self.assertNotIn("unverified_adversarial_field", released)
+
+    def test_parent_inode_swap_is_refused_and_rolled_back(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            original_open = promoter._open_directory_fd
+            moved_root = fixture.root.with_name(f"{fixture.root.name}-moved")
+            calls = 0
+
+            def swapping_open(path: Path, label: str) -> int:
+                nonlocal calls
+                if path == fixture.release.parent:
+                    calls += 1
+                    if calls == 2:
+                        fixture.root.rename(moved_root)
+                        fixture.root.mkdir()
+                return original_open(path, label)
+
+            try:
+                with mock.patch.object(
+                    promoter,
+                    "_open_directory_fd",
+                    side_effect=swapping_open,
+                ):
+                    with self.assertRaisesRegex(
+                        promoter.PromotionError, "parent identity changed"
+                    ):
+                        fixture.promote()
+                self.assertFalse(fixture.release.exists())
+                self.assertFalse(
+                    (moved_root / fixture.release.name).exists()
+                )
+            finally:
+                if fixture.root.exists():
+                    fixture.root.rmdir()
+                if moved_root.exists():
+                    moved_root.rename(fixture.root)
 
     def test_candidate_sha_mismatch_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

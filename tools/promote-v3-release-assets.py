@@ -17,9 +17,9 @@ import json
 import math
 import os
 import re
-import shutil
+import secrets
+import stat
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -71,6 +71,86 @@ RELEASE_SEED = 20260735
 HISTORICAL_RELAXED_SEED = 20260734
 EVALUATOR_SCHEMA = 3
 EVALUATION_VERSION = "time-domain-v3-release-evaluation-v3-dual-fusion"
+EXPECTED_RELEASE_ROOT = (
+    REPO
+    / "training/artifacts/releases"
+    / "invariant_fusion_v3_sealed_seed20260735"
+)
+EXPECTED_PROTOCOL_FIXTURE = (
+    REPO / "tools/time-domain-v3-expected-evaluation-protocol-seed20260735.json"
+)
+EXPECTED_PROTOCOL_FIXTURE_SHA256 = (
+    "40ef572beeabd18c38e55fdc5001dbfb0365dcd81dac5ff6ea1b95ceca163f7e"
+)
+EXPECTED_EVALUATOR = (
+    REPO
+    / "training/zplane_ab/v2_full_variation/v3_scale"
+    / "evaluate_v3_release_suite.py"
+)
+EXPECTED_EVALUATOR_SHA256 = (
+    "09b3ccd1fa9030f6dc1720b8faf3b1a60e5a8359bb300445bfa34a745c99351a"
+)
+EXPECTED_V2_EVALUATOR = (
+    REPO
+    / "training/zplane_ab/v2_full_variation"
+    / "evaluate_invariant_release_suite.py"
+)
+EXPECTED_V2_EVALUATOR_SHA256 = (
+    "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541"
+)
+EXPECTED_STAGED_SOURCE = (
+    REPO
+    / "training/zplane_ab/v2_full_variation/v3_scale"
+    / "fit_v3_openset_staged.py"
+)
+EXPECTED_LEDGER_TRANSITION = {
+    "admission": "exact_post_validation_seed_ledger_transition",
+    "validated_sha256": (
+        "6d6d252802029cd57cab1429640d0b285b117caa97a89b994037469e267aa176"
+    ),
+    "current_sha256": (
+        "1ebfecede89eb3d393c8922d0862827efda6356671995656594b536ed19f7514"
+    ),
+    "normalized_ast_sha256": (
+        "86dbb18d8b83845e4f9c067f672b8f69c9fbbe2b9ccf4216755f7eeb8096e967"
+    ),
+    "excluded_top_level_assignments": [
+        "SPENT_NOVELTY_SEEDS",
+        "FIRST_CLEAN_NOVELTY_SEED",
+        "SEED_LEDGER_NOTE",
+    ],
+    "validated_parent_commit": (
+        "6f6e1e05d94d457e16940ad1d2c14c6d95bbc422"
+    ),
+    "ledger_commit": "5ebbd07f763470ff1fc27be04e2e340c6171cc63",
+    "full_index_diff_sha256": (
+        "c071726b44a04d535084b3c10e76eda2c3b61767a542a29173873b95f8466d03"
+    ),
+    "consumed_validation_seeds": [20260950, 20260951],
+    "next_clean_novelty_seed": 20260952,
+    "candidate_inference_behavior_changed": False,
+}
+REQUIRED_CAPTURE_LENGTHS = (4096, 8192, 16384, 32768)
+PHYSICAL_SCALE_FACTORS = (0.5, 0.75, 1.0, 1.5, 2.0)
+PREFILTER_BUNDLE_FILES = (
+    "coefficients.npy",
+    "intercept.npy",
+    "mean.npy",
+    "meta.json",
+    "scale.npy",
+    "threshold_score.npy",
+)
+EXPECTED_FUSION_FILES = frozenset(
+    {
+        "complex_center.npy",
+        "dev_metrics.json",
+        "feature_mean.npy",
+        "feature_std.npy",
+        "fusion_prototypes.npy",
+        "fusion_state_dict.pt",
+        "real_center.npy",
+    }
+)
 
 EXPECTED_BUNDLE_ASSETS = frozenset(
     {
@@ -228,14 +308,6 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def _sha(value: Any, label: str) -> str:
     if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
         raise PromotionError(f"{label} must be a lowercase SHA-256")
@@ -286,12 +358,46 @@ def _parse_json(raw: bytes, label: str) -> dict[str, Any]:
 
 
 def _read_file(path: Path, label: str) -> bytes:
-    if path.is_symlink() or not path.is_file():
-        raise PromotionError(f"{label} must be a regular non-symlink file")
+    """Read one regular file without following any symlink component."""
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    parts = absolute.parts
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    directory_flags = (
+        flags | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+    )
+    file_flags = flags | getattr(os, "O_NOFOLLOW", 0)
+    directory_fd: int | None = None
+    file_fd: int | None = None
     try:
-        return path.read_bytes()
+        directory_fd = os.open(absolute.anchor, directory_flags)
+        for component in parts[1:-1]:
+            next_fd = os.open(
+                component,
+                directory_flags,
+                dir_fd=directory_fd,
+            )
+            os.close(directory_fd)
+            directory_fd = next_fd
+        file_fd = os.open(parts[-1], file_flags, dir_fd=directory_fd)
+        if not stat.S_ISREG(os.fstat(file_fd).st_mode):
+            raise PromotionError(
+                f"{label} must be a regular non-symlink file"
+            )
+        chunks: list[bytes] = []
+        while True:
+            block = os.read(file_fd, 1 << 20)
+            if not block:
+                return b"".join(chunks)
+            chunks.append(block)
+    except PromotionError:
+        raise
     except OSError as exc:
         raise PromotionError(f"cannot read {label}") from exc
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        if directory_fd is not None:
+            os.close(directory_fd)
 
 
 def _compact_json_bytes(payload: Any) -> bytes:
@@ -331,24 +437,70 @@ def _file_record(value: Any, label: str) -> dict[str, Any]:
     return {"bytes": size, "sha256": _sha(record.get("sha256"), label)}
 
 
-def _resolve_path(value: Any, repo: Path, label: str) -> Path:
+def _lexical_path(value: Any, base: Path, label: str) -> Path:
     if not isinstance(value, str) or not value:
         raise PromotionError(f"{label} must be a non-empty path")
     path = Path(value).expanduser()
     if not path.is_absolute():
-        path = repo / path
-    return path.resolve()
+        path = base / path
+    return Path(os.path.abspath(os.fspath(path)))
+
+
+def _require_within(path: Path, root: Path, label: str) -> None:
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise PromotionError(f"{label} escapes the repository") from exc
+
+
+def _reject_symlink_chain(
+    path: Path,
+    root: Path,
+    label: str,
+    *,
+    allow_missing_leaf: bool = False,
+) -> None:
+    _require_within(path, root, label)
+    relative = path.relative_to(root)
+    current = root
+    if root.is_symlink():
+        raise PromotionError(f"{label} crosses a symlink")
+    for index, component in enumerate(relative.parts):
+        current /= component
+        try:
+            mode = current.lstat().st_mode
+        except FileNotFoundError as exc:
+            if allow_missing_leaf and index == len(relative.parts) - 1:
+                return
+            raise PromotionError(f"{label} does not exist") from exc
+        if stat.S_ISLNK(mode):
+            raise PromotionError(f"{label} crosses a symlink")
+
+
+def _resolve_path(value: Any, repo: Path, label: str) -> Path:
+    path = _lexical_path(value, repo, label)
+    _reject_symlink_chain(path, repo, label)
+    return path
 
 
 def _resolve_package_path(
-    value: Any, package_manifest: Path, label: str
+    value: Any,
+    package_manifest: Path,
+    repo: Path,
+    label: str,
 ) -> Path:
     if not isinstance(value, str) or not value:
         raise PromotionError(f"{label} must be a non-empty path")
     path = Path(value).expanduser()
-    if not path.is_absolute():
-        path = package_manifest.parent / path
-    return path.resolve()
+    if path.is_absolute():
+        raise PromotionError(f"{label} must be package-relative")
+    path = _lexical_path(
+        os.fspath(package_manifest.parent / path),
+        repo,
+        label,
+    )
+    _reject_symlink_chain(path, repo, label)
+    return path
 
 
 def _verify_file_record(
@@ -356,12 +508,12 @@ def _verify_file_record(
     *,
     path: Path,
     label: str,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], bytes]:
     base = _file_record(record, label)
     raw = _read_file(path, label)
     if len(raw) != base["bytes"] or _sha256_bytes(raw) != base["sha256"]:
         raise PromotionError(f"{label} differs from its byte record")
-    return base
+    return base, raw
 
 
 def _verify_json_record(
@@ -380,9 +532,15 @@ def _verify_json_record(
     payload = _parse_json(raw, label)
     expected_schema = schema if schema is not None else record.get("schema")
     expected_status = status if status is not None else record.get("status")
-    if expected_schema is not None and payload.get("schema") != expected_schema:
+    if expected_schema is not None and (
+        payload.get("schema") != expected_schema
+        or record.get("schema") != expected_schema
+    ):
         raise PromotionError(f"{label} schema differs")
-    if expected_status is not None and payload.get("status") != expected_status:
+    if expected_status is not None and (
+        payload.get("status") != expected_status
+        or record.get("status") != expected_status
+    ):
         raise PromotionError(f"{label} status differs")
     return path, digest, payload
 
@@ -422,13 +580,53 @@ def _verify_git_tracking(repo: Path, paths: tuple[Path, ...]) -> None:
 
 
 def _normalized_policy(policy: PromotionPolicy) -> PromotionPolicy:
-    repo = Path(policy.repo_root).resolve(strict=True)
+    repo = Path(os.path.abspath(os.fspath(Path(policy.repo_root).expanduser())))
+    try:
+        resolved_repo = repo.resolve(strict=True)
+    except OSError as exc:
+        raise PromotionError("promotion policy root does not exist") from exc
+    if resolved_repo != repo or repo.is_symlink() or not repo.is_dir():
+        raise PromotionError(
+            "promotion policy root must be a canonical non-symlink directory"
+        )
+
+    def policy_path(
+        value: Path,
+        label: str,
+        *,
+        allow_missing_leaf: bool,
+    ) -> Path:
+        path = _lexical_path(os.fspath(value), repo, label)
+        _reject_symlink_chain(
+            path,
+            repo,
+            label,
+            allow_missing_leaf=allow_missing_leaf,
+        )
+        return path
+
     return PromotionPolicy(
         repo_root=repo,
-        staging_package=Path(policy.staging_package).resolve(),
-        release_package=Path(policy.release_package).resolve(),
-        live_v2_assets=Path(policy.live_v2_assets).resolve(),
-        legacy_v3_staging=Path(policy.legacy_v3_staging).resolve(),
+        staging_package=policy_path(
+            Path(policy.staging_package),
+            "policy staging package",
+            allow_missing_leaf=False,
+        ),
+        release_package=policy_path(
+            Path(policy.release_package),
+            "policy release package",
+            allow_missing_leaf=True,
+        ),
+        live_v2_assets=policy_path(
+            Path(policy.live_v2_assets),
+            "policy live v2 assets",
+            allow_missing_leaf=True,
+        ),
+        legacy_v3_staging=policy_path(
+            Path(policy.legacy_v3_staging),
+            "policy legacy v3 staging",
+            allow_missing_leaf=True,
+        ),
         require_git_tracking=policy.require_git_tracking,
     )
 
@@ -441,10 +639,27 @@ def _validate_paths(
     staging: Path, destination: Path, policy: PromotionPolicy
 ) -> tuple[Path, Path, PromotionPolicy]:
     normalized = _normalized_policy(policy)
-    if staging.is_symlink():
-        raise PromotionError("staging package may not be a symlink")
-    source = staging.resolve()
-    release = destination.resolve()
+    source = _lexical_path(
+        os.fspath(staging),
+        normalized.repo_root,
+        "staging package",
+    )
+    _reject_symlink_chain(
+        source,
+        normalized.repo_root,
+        "staging package",
+    )
+    release = _lexical_path(
+        os.fspath(destination),
+        normalized.repo_root,
+        "release destination",
+    )
+    _reject_symlink_chain(
+        release,
+        normalized.repo_root,
+        "release destination",
+        allow_missing_leaf=True,
+    )
     if source != normalized.staging_package:
         raise PromotionError("source is not the exact dual staging package")
     if release != normalized.release_package:
@@ -458,8 +673,6 @@ def _validate_paths(
             raise PromotionError(f"refusing {label} directory or descendant")
     if source == release or _is_within(source, release):
         raise PromotionError("release destination may not contain staging")
-    if release.is_symlink():
-        raise PromotionError("release destination may not be a symlink")
     if release.exists():
         if not release.is_dir() or next(release.iterdir(), None) is not None:
             raise PromotionError("release destination must be absent or empty")
@@ -635,8 +848,11 @@ def _verify_staging_package(
         if record.get("path") != name:
             raise PromotionError(f"staging asset {name} path is not package-local")
         path = staging / name
-        base = _verify_file_record(record, path=path, label=f"staging {name}")
-        raw = _read_file(path, f"staging {name}")
+        base, raw = _verify_file_record(
+            record,
+            path=path,
+            label=f"staging {name}",
+        )
         if len(raw) >= MAX_DEPLOYABLE_BYTES:
             raise PromotionError(f"staging asset {name} is not below 25 MiB")
         payload = _parse_json(raw, f"staging {name}")
@@ -774,9 +990,16 @@ def _verify_staging_package(
     for name, value in external.items():
         record = _mapping(value, f"external evidence {name}")
         path = _resolve_package_path(
-            record.get("path"), manifest_path, f"external evidence {name}.path"
+            record.get("path"),
+            manifest_path,
+            policy.repo_root,
+            f"external evidence {name}.path",
         )
-        _verify_file_record(record, path=path, label=f"external evidence {name}")
+        _base, external_raw = _verify_file_record(
+            record,
+            path=path,
+            label=f"external evidence {name}",
+        )
         if name in {"rejector_probe", "classifier_probe"}:
             _exact_keys(
                 record,
@@ -785,7 +1008,7 @@ def _verify_staging_package(
             )
             continue
         payload = _parse_json(
-            _read_file(path, f"external evidence {name}"),
+            external_raw,
             f"external evidence {name}",
         )
         if (
@@ -803,7 +1026,7 @@ def _verify_staging_package(
     }:
         raise PromotionError("package size contract differs")
 
-    tracked = tuple(sorted((path.resolve() for path in entries), key=str))
+    tracked = tuple(sorted(entries, key=str))
     if policy.require_git_tracking:
         _verify_git_tracking(policy.repo_root, tracked)
     return VerifiedStaging(
@@ -848,7 +1071,358 @@ def _verify_historical_metadata(
             raise PromotionError(f"historical gate {name} differs")
 
 
-def _verify_release_gates(value: Any, candidate_sha: str) -> None:
+def _finite_metric(
+    value: Any,
+    label: str,
+    *,
+    minimum: float = 0.0,
+    maximum: float = 1.0,
+) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+    ):
+        raise PromotionError(f"{label} must be a finite number")
+    result = float(value)
+    if result < minimum or result > maximum:
+        raise PromotionError(
+            f"{label} must be in [{minimum}, {maximum}]"
+        )
+    return result
+
+
+def _length_metric_map(report: Mapping[str, Any], name: str) -> Mapping[str, Any]:
+    value = _mapping(report.get(name), name)
+    expected = {str(length) for length in REQUIRED_CAPTURE_LENGTHS}
+    _exact_keys(value, expected, name)
+    return value
+
+
+def _sweep_metrics(
+    value: Any,
+    *,
+    label: str,
+    coordinate_name: str,
+    coordinates: tuple[int | float, ...],
+    paired_name: str,
+    prediction_summary: str,
+    embedding_summary: str,
+) -> tuple[float, float, float, float]:
+    sweep = _mapping(value, label)
+    rows = sweep.get("rows")
+    if not isinstance(rows, list) or len(rows) != len(coordinates):
+        raise PromotionError(f"{label}.rows has the wrong shape")
+    balanced: list[float] = []
+    pairwise: list[float] = []
+    prediction: list[float] = []
+    embedding: list[float] = []
+    for index, (row_value, expected_coordinate) in enumerate(
+        zip(rows, coordinates)
+    ):
+        row = _mapping(row_value, f"{label}.rows[{index}]")
+        coordinate = row.get(coordinate_name)
+        if coordinate != expected_coordinate or isinstance(coordinate, bool):
+            raise PromotionError(
+                f"{label}.rows[{index}].{coordinate_name} differs"
+            )
+        balanced.append(
+            _finite_metric(
+                row.get("balanced_accuracy"),
+                f"{label}.rows[{index}].balanced_accuracy",
+            )
+        )
+        pairwise.append(
+            _finite_metric(
+                row.get("mean_pairwise_cosine"),
+                f"{label}.rows[{index}].mean_pairwise_cosine",
+                minimum=-1.0,
+            )
+        )
+        paired = _mapping(
+            row.get(paired_name),
+            f"{label}.rows[{index}].{paired_name}",
+        )
+        prediction.append(
+            _finite_metric(
+                paired.get("prediction_agreement"),
+                f"{label}.rows[{index}].prediction_agreement",
+            )
+        )
+        embedding.append(
+            _finite_metric(
+                paired.get("embedding_cosine_mean"),
+                f"{label}.rows[{index}].embedding_cosine_mean",
+                minimum=-1.0,
+            )
+        )
+    derived = (
+        min(balanced),
+        max(pairwise),
+        min(prediction),
+        min(embedding),
+    )
+    summary_fields = (
+        "worst_balanced_accuracy",
+        "worst_mean_pairwise_cosine",
+        prediction_summary,
+        embedding_summary,
+    )
+    for field, expected in zip(summary_fields, derived):
+        actual = _finite_metric(
+            sweep.get(field),
+            f"{label}.{field}",
+            minimum=-1.0 if "cosine" in field else 0.0,
+        )
+        if actual != expected:
+            raise PromotionError(f"{label}.{field} is not row-derived")
+    return derived
+
+
+def _recompute_release_gate_values(
+    report: Mapping[str, Any],
+) -> dict[str, float]:
+    closed = _length_metric_map(report, "closed_per_length")
+    five = _length_metric_map(report, "five_shot_predeclared_per_length")
+    opened = _length_metric_map(report, "open_staged_per_length")
+    decisions = _length_metric_map(
+        report, "staged_known_decisions_per_length"
+    )
+    duplicate_sections = {
+        "family_per_length": "family",
+        "high_snr_per_length": "high_snr",
+        "low_snr_per_length": "low_snr",
+        "clean_subset_per_length": "clean_subset",
+        "impaired_subset_per_length": "impaired_subset",
+    }
+    for section, nested_name in duplicate_sections.items():
+        duplicated = _length_metric_map(report, section)
+        expected = {
+            length: _mapping(
+                _mapping(closed[length], f"closed_per_length[{length}]").get(
+                    nested_name
+                ),
+                f"closed_per_length[{length}].{nested_name}",
+            )
+            for length in duplicated
+        }
+        if dict(duplicated) != expected:
+            raise PromotionError(
+                f"{section} differs from closed_per_length.{nested_name}"
+            )
+
+    closed_fine: list[float] = []
+    closed_family: list[float] = []
+    closed_high: list[float] = []
+    closed_clean: list[float] = []
+    five_balanced: list[float] = []
+    open_overall: list[float] = []
+    open_noise: list[float] = []
+    open_chirp: list[float] = []
+    open_fur: list[float] = []
+    open_noise_recall: list[float] = []
+    open_chirp_recall: list[float] = []
+    for length in map(str, REQUIRED_CAPTURE_LENGTHS):
+        closed_row = _mapping(
+            closed[length], f"closed_per_length[{length}]"
+        )
+        closed_fine.append(
+            _finite_metric(
+                closed_row.get("accuracy"),
+                f"closed_per_length[{length}].accuracy",
+            )
+        )
+        closed_family.append(
+            _finite_metric(
+                _mapping(
+                    closed_row.get("family"),
+                    f"closed_per_length[{length}].family",
+                ).get("accuracy"),
+                f"closed_per_length[{length}].family.accuracy",
+            )
+        )
+        closed_high.append(
+            _finite_metric(
+                _mapping(
+                    closed_row.get("high_snr"),
+                    f"closed_per_length[{length}].high_snr",
+                ).get("accuracy"),
+                f"closed_per_length[{length}].high_snr.accuracy",
+            )
+        )
+        closed_clean.append(
+            _finite_metric(
+                closed_row.get("clean_accuracy"),
+                f"closed_per_length[{length}].clean_accuracy",
+            )
+        )
+        five_balanced.append(
+            _finite_metric(
+                _mapping(
+                    five[length],
+                    f"five_shot_predeclared_per_length[{length}]",
+                ).get("balanced_accuracy"),
+                f"five_shot_predeclared_per_length[{length}]"
+                ".balanced_accuracy",
+            )
+        )
+        open_row = _mapping(
+            opened[length], f"open_staged_per_length[{length}]"
+        )
+        open_overall.append(
+            _finite_metric(
+                open_row.get("auroc_overall"),
+                f"open_staged_per_length[{length}].auroc_overall",
+            )
+        )
+        open_noise.append(
+            _finite_metric(
+                open_row.get("auroc_noise"),
+                f"open_staged_per_length[{length}].auroc_noise",
+            )
+        )
+        open_chirp.append(
+            _finite_metric(
+                open_row.get("auroc_chirp"),
+                f"open_staged_per_length[{length}].auroc_chirp",
+            )
+        )
+        fur = _finite_metric(
+            open_row.get("known_false_unknown_rate"),
+            f"open_staged_per_length[{length}].known_false_unknown_rate",
+        )
+        open_fur.append(fur)
+        open_noise_recall.append(
+            _finite_metric(
+                open_row.get("flagged_unknown_noise"),
+                f"open_staged_per_length[{length}].flagged_unknown_noise",
+            )
+        )
+        open_chirp_recall.append(
+            _finite_metric(
+                open_row.get("flagged_unknown_chirp"),
+                f"open_staged_per_length[{length}].flagged_unknown_chirp",
+            )
+        )
+
+        decision = _mapping(
+            decisions[length],
+            f"staged_known_decisions_per_length[{length}]",
+        )
+        rows = decision.get("rows")
+        unknown = decision.get("unknown")
+        gated = decision.get("gated_at_stage_one")
+        accepted = decision.get("accepted_rows")
+        known_rows = open_row.get("known_rows")
+        if (
+            type(rows) is not int
+            or rows <= 0
+            or type(unknown) is not int
+            or not 0 <= unknown <= rows
+            or type(gated) is not int
+            or not 0 <= gated <= unknown
+            or type(accepted) is not int
+            or accepted != rows - unknown
+            or known_rows != rows
+            or isinstance(known_rows, bool)
+            or fur != unknown / rows
+        ):
+            raise PromotionError(
+                f"staged known-decision counts differ at length {length}"
+            )
+        by_stage = _mapping(
+            open_row.get("known_false_unknown_by_stage"),
+            f"open_staged_per_length[{length}]"
+            ".known_false_unknown_by_stage",
+        )
+        if (
+            by_stage.get("rows") != rows
+            or _finite_metric(
+                by_stage.get("staged_false_unknown_rate"),
+                f"open_staged_per_length[{length}].staged rate",
+            )
+            != fur
+            or _finite_metric(
+                by_stage.get("stage_one_gate_rate"),
+                f"open_staged_per_length[{length}].stage-one rate",
+            )
+            != gated / rows
+            or _finite_metric(
+                by_stage.get("stage_two_false_unknown_rate_marginal"),
+                f"open_staged_per_length[{length}].stage-two rate",
+            )
+            != (unknown - gated) / rows
+            or by_stage.get("rejected_by_stage_two_only")
+            != unknown - gated
+            or _finite_metric(
+                open_row.get("known_gated_fraction"),
+                f"open_staged_per_length[{length}].known_gated_fraction",
+            )
+            != gated / rows
+        ):
+            raise PromotionError(
+                f"staged known-decision attribution differs at length {length}"
+            )
+
+    length_metrics = _sweep_metrics(
+        report.get("matched_length_sweep"),
+        label="matched_length_sweep",
+        coordinate_name="capture_length",
+        coordinates=REQUIRED_CAPTURE_LENGTHS,
+        paired_name="paired_to_matched",
+        prediction_summary="worst_prediction_agreement_to_matched",
+        embedding_summary="worst_embedding_cosine_to_matched",
+    )
+    length_sweep = _mapping(
+        report.get("matched_length_sweep"), "matched_length_sweep"
+    )
+    if length_sweep.get("matched_capture_length") != 16384:
+        raise PromotionError("matched_length_sweep matched length differs")
+    scale_metrics = _sweep_metrics(
+        report.get("physical_scale_sweep"),
+        label="physical_scale_sweep",
+        coordinate_name="factor",
+        coordinates=PHYSICAL_SCALE_FACTORS,
+        paired_name="paired_to_factor1",
+        prediction_summary="worst_prediction_agreement_to_factor1",
+        embedding_summary="worst_embedding_cosine_to_factor1",
+    )
+    scale_sweep = _mapping(
+        report.get("physical_scale_sweep"), "physical_scale_sweep"
+    )
+    if scale_sweep.get("factors") != list(PHYSICAL_SCALE_FACTORS):
+        raise PromotionError("physical_scale_sweep factors differ")
+
+    return {
+        "closed_fine_worst_length": min(closed_fine),
+        "closed_family_worst_length": min(closed_family),
+        "closed_high_snr_worst_length": min(closed_high),
+        "closed_clean_worst_length": min(closed_clean),
+        "five_shot_worst_length_balanced": min(five_balanced),
+        "open_auroc_overall_worst_length": min(open_overall),
+        "open_auroc_noise_worst_length": min(open_noise),
+        "open_auroc_chirp_worst_length": min(open_chirp),
+        "open_known_false_unknown_worst_length": max(open_fur),
+        "open_unknown_recall_noise_worst_length": min(open_noise_recall),
+        "open_unknown_recall_chirp_worst_length": min(open_chirp_recall),
+        "length_worst_balanced_accuracy": length_metrics[0],
+        "length_max_mean_pairwise_cosine": length_metrics[1],
+        "length_worst_prediction_agreement_to_matched": length_metrics[2],
+        "length_worst_embedding_cosine_to_matched": length_metrics[3],
+        "physical_scale_worst_balanced_accuracy": scale_metrics[0],
+        "physical_scale_max_mean_pairwise_cosine": scale_metrics[1],
+        "physical_scale_worst_prediction_agreement_to_factor1": (
+            scale_metrics[2]
+        ),
+        "physical_scale_worst_embedding_cosine_to_factor1": scale_metrics[3],
+    }
+
+
+def _verify_release_gates(
+    value: Any,
+    candidate_sha: str,
+    recomputed: Mapping[str, float],
+) -> None:
     gates = _mapping(value, "release gates")
     _exact_keys(gates, EXPECTED_GATE_NAMES, "release gates")
     for name in BOOLEAN_GATE_NAMES:
@@ -870,6 +1444,8 @@ def _verify_release_gates(value: Any, candidate_sha: str) -> None:
         actual = gate.get("value")
         if (
             not _is_finite_number(actual)
+            or name not in recomputed
+            or float(actual) != float(recomputed[name])
             or gate.get("threshold") != threshold
             or gate.get("comparison") != comparison
             or gate.get("passes") is not True
@@ -908,12 +1484,156 @@ def _verify_bound_file_map(
     return verified
 
 
+def _fusion_directory_sha256(file_sha256: Mapping[str, str]) -> str:
+    return _sha256_bytes(
+        "\n".join(
+            f"{name}:{file_sha256[name]}" for name in sorted(file_sha256)
+        ).encode("utf-8")
+    )
+
+
+def _prefilter_bundle_sha256(directory: Path, length: int) -> str:
+    if not directory.is_dir():
+        raise PromotionError(f"prefilter N{length} is not a directory")
+    entries = tuple(directory.iterdir())
+    if (
+        {entry.name for entry in entries} != set(PREFILTER_BUNDLE_FILES)
+        or any(entry.is_symlink() or not entry.is_file() for entry in entries)
+    ):
+        raise PromotionError(f"prefilter N{length} files differ")
+    digest = hashlib.sha256()
+    for name in PREFILTER_BUNDLE_FILES:
+        raw = _read_file(directory / name, f"prefilter N{length}/{name}")
+        digest.update(f"{name}:{len(raw)}:".encode("utf-8"))
+        digest.update(raw)
+        if name == "meta.json":
+            meta = _parse_json(raw, f"prefilter N{length}/meta.json")
+            if meta.get("capture_length") != length:
+                raise PromotionError(
+                    f"prefilter N{length} capture_length differs"
+                )
+    return digest.hexdigest()
+
+
+def _verify_prefilter_set(
+    directory: Path,
+    bundle_hashes: Mapping[str, Any],
+    set_sha256: str,
+) -> dict[str, str]:
+    expected_lengths = (4096, 8192, 16384)
+    _exact_keys(
+        bundle_hashes,
+        {str(length) for length in expected_lengths},
+        "prefilter bundle hashes",
+    )
+    if not directory.is_dir():
+        raise PromotionError("prefilter directory does not exist")
+    entries = tuple(directory.iterdir())
+    expected_names = {f"N{length}" for length in expected_lengths}
+    if (
+        {entry.name for entry in entries} != expected_names
+        or any(entry.is_symlink() or not entry.is_dir() for entry in entries)
+    ):
+        raise PromotionError("prefilter set directories differ")
+    actual: dict[str, str] = {}
+    set_digest = hashlib.sha256()
+    for name in sorted(expected_names):
+        length = int(name[1:])
+        digest = _prefilter_bundle_sha256(directory / name, length)
+        expected = _sha(
+            bundle_hashes[str(length)],
+            f"prefilter bundle N{length}",
+        )
+        if digest != expected:
+            raise PromotionError(f"prefilter bundle N{length} SHA differs")
+        actual[str(length)] = digest
+        set_digest.update(f"{name}:".encode("utf-8"))
+        set_digest.update(digest.encode("utf-8"))
+    if set_digest.hexdigest() != set_sha256:
+        raise PromotionError("prefilter set SHA differs from current bytes")
+    return actual
+
+
 def _record_core(record: Mapping[str, Any]) -> dict[str, Any]:
     return {
         key: record[key]
         for key in ("path", "sha256", "schema", "status")
         if key in record
     }
+
+
+def _expected_protocol() -> dict[str, Any]:
+    raw = _read_file(
+        EXPECTED_PROTOCOL_FIXTURE,
+        "seed-20260735 protocol fixture",
+    )
+    if _sha256_bytes(raw) != EXPECTED_PROTOCOL_FIXTURE_SHA256:
+        raise PromotionError("seed-20260735 protocol fixture bytes drifted")
+    wrapper = _parse_json(raw, "seed-20260735 protocol fixture")
+    if wrapper.get("release_seed") != RELEASE_SEED:
+        raise PromotionError("seed-20260735 protocol fixture seed differs")
+    return dict(
+        _mapping(
+            wrapper.get("evaluation_protocol"),
+            "seed-20260735 evaluation_protocol",
+        )
+    )
+
+
+def _verify_evaluator_identity(provenance: Mapping[str, Any]) -> None:
+    evaluator_raw = _read_file(EXPECTED_EVALUATOR, "final v3 evaluator")
+    v2_raw = _read_file(EXPECTED_V2_EVALUATOR, "frozen v2 evaluator")
+    if (
+        _sha256_bytes(evaluator_raw) != EXPECTED_EVALUATOR_SHA256
+        or provenance.get("evaluator_sha256")
+        != EXPECTED_EVALUATOR_SHA256
+        or provenance.get("evaluator_path") != str(EXPECTED_EVALUATOR)
+    ):
+        raise PromotionError("release report final evaluator identity differs")
+    if (
+        _sha256_bytes(v2_raw) != EXPECTED_V2_EVALUATOR_SHA256
+        or provenance.get("v2_evaluator_sha256")
+        != EXPECTED_V2_EVALUATOR_SHA256
+    ):
+        raise PromotionError("release report v2 evaluator identity differs")
+
+
+def _verify_source_transition(value: Any) -> dict[str, Any]:
+    source_report = _mapping(value, "candidate source_sha256")
+    _exact_keys(
+        source_report,
+        {
+            "enforced",
+            "recorded_only",
+            "post_validation_ledger_transitions",
+            "evaluator_chain",
+        },
+        "candidate source_sha256",
+    )
+    current_source = _sha256_bytes(
+        _read_file(EXPECTED_STAGED_SOURCE, "current staged source")
+    )
+    if current_source != EXPECTED_LEDGER_TRANSITION["current_sha256"]:
+        raise PromotionError("current staged source differs from ledger pin")
+    enforced = _mapping(
+        source_report.get("enforced"), "candidate enforced source hashes"
+    )
+    if (
+        enforced.get("fit_v3_openset_staged.py")
+        != EXPECTED_LEDGER_TRANSITION["current_sha256"]
+    ):
+        raise PromotionError("candidate staged source enforcement differs")
+    transitions = _mapping(
+        source_report.get("post_validation_ledger_transitions"),
+        "post-validation ledger transitions",
+    )
+    if dict(transitions) != {
+        "fit_v3_openset_staged.py": EXPECTED_LEDGER_TRANSITION
+    }:
+        raise PromotionError(
+            "post-validation ledger transition record differs"
+        )
+    return copy.deepcopy(EXPECTED_LEDGER_TRANSITION)
 
 
 def _verify_evaluation_report(
@@ -943,16 +1663,14 @@ def _verify_evaluation_report(
     provenance = _mapping(report.get("provenance"), "release provenance")
     if provenance.get("release_seed") != RELEASE_SEED:
         raise PromotionError(f"release report must use seed {RELEASE_SEED}")
+    _verify_evaluator_identity(provenance)
     protocol = _mapping(
         provenance.get("evaluation_protocol"), "release evaluation protocol"
     )
-    if (
-        protocol.get("version") != EVALUATION_VERSION
-        or protocol.get("gates") != STRICT_V2_GATE_FLOORS
-        or _mapping(protocol.get("novelty"), "protocol novelty").get("seed")
-        != RELEASE_SEED
-    ):
-        raise PromotionError("embedded protocol is not strict seed-20260735 v3")
+    if dict(protocol) != _expected_protocol():
+        raise PromotionError(
+            "embedded protocol is not the exact seed-20260735 fixture"
+        )
     open_protocol = _mapping(protocol.get("open_set"), "protocol open_set")
     if (
         open_protocol.get("intentional_dual_fusion") is not True
@@ -1032,6 +1750,9 @@ def _verify_evaluation_report(
 
     components = _mapping(candidate.get("components"), "candidate components")
     _exact_keys(components, CANDIDATE_COMPONENT_KEYS, "candidate components")
+    source_transition = _verify_source_transition(
+        components.get("source_sha256")
+    )
     contract = _mapping(
         components.get("candidate_contract"), "candidate_contract"
     )
@@ -1196,11 +1917,23 @@ def _verify_evaluation_report(
         fusion_dir = _resolve_path(
             fusion.get("directory"), policy.repo_root, f"{label} fusion directory"
         )
+        fusion_file_map = _mapping(
+            fusion.get("file_sha256"), f"{label} fusion files"
+        )
+        _exact_keys(
+            fusion_file_map,
+            EXPECTED_FUSION_FILES,
+            f"{label} fusion files",
+        )
         files = _verify_bound_file_map(
             fusion_dir,
-            _mapping(fusion.get("file_sha256"), f"{label} fusion files"),
+            fusion_file_map,
             f"{label} fusion",
         )
+        if _fusion_directory_sha256(files) != fusion["directory_sha256"]:
+            raise PromotionError(
+                f"{label} fusion directory SHA differs from current bytes"
+            )
         candidate_fusion = _mapping(
             candidate_role.get("fusion"), f"candidate {label} fusion"
         )
@@ -1242,7 +1975,10 @@ def _verify_evaluation_report(
     )
     if (
         staged_report_path.parent != staged_dir
-        or _sha256_file(staged_report_path) != staged["report_sha256"]
+        or _sha256_bytes(
+            _read_file(staged_report_path, "staged validation report")
+        )
+        != staged["report_sha256"]
     ):
         raise PromotionError("staged validation report bytes differ")
     staged_hashes = _mapping(
@@ -1305,6 +2041,11 @@ def _verify_evaluation_report(
         policy.repo_root,
         "prefilter directory",
     )
+    verified_prefilter_hashes = _verify_prefilter_set(
+        prefilter_dir,
+        bundle_hashes,
+        prefilter_sha,
+    )
     if (
         _resolve_path(
             candidate_prefilter.get("directory"),
@@ -1332,15 +2073,28 @@ def _verify_evaluation_report(
     )
     for label, (name, schema, runtime_role) in browser_contract.items():
         record = _mapping(browser[label], f"browser asset {label}")
-        path, digest, payload = _verify_json_record(
+        _exact_keys(
             record,
-            repo=policy.repo_root,
-            label=f"browser asset {label}",
-            schema=schema,
-            status=STAGING_STATUS,
+            {"path", "sha256", "schema", "status"},
+            f"browser asset {label}",
         )
-        if path != policy.staging_package / name:
-            raise PromotionError(f"browser asset {label} is outside staging package")
+        path = _resolve_path(
+            record.get("path"),
+            policy.repo_root,
+            f"browser asset {label}.path",
+        )
+        digest = _sha(
+            record.get("sha256"), f"browser asset {label}.sha256"
+        )
+        payload = staging.asset_payloads[name]
+        if (
+            path != policy.staging_package / name
+            or record.get("schema") != schema
+            or record.get("status") != STAGING_STATUS
+        ):
+            raise PromotionError(
+                f"browser asset {label} is outside staging package"
+            )
         if digest != staging.asset_records[name]["sha256"]:
             raise PromotionError(f"browser asset {label} SHA differs from package")
         if runtime_role is not None and payload.get("runtime_role") != runtime_role:
@@ -1357,17 +2111,24 @@ def _verify_evaluation_report(
         components.get("staging_package_manifest"),
         "staging_package_manifest",
     )
-    package_path, package_sha, package_payload = _verify_json_record(
+    _exact_keys(
         package_record,
-        repo=policy.repo_root,
-        label="staging package manifest",
-        schema=PACKAGE_SCHEMA,
-        status=STAGING_STATUS,
+        {"path", "sha256", "schema", "status"},
+        "staging_package_manifest",
+    )
+    package_path = _resolve_path(
+        package_record.get("path"),
+        policy.repo_root,
+        "staging package manifest.path",
+    )
+    package_sha = _sha(
+        package_record.get("sha256"), "staging package manifest.sha256"
     )
     if (
         package_path != policy.staging_package / PACKAGE_MANIFEST
         or package_sha != staging.manifest_sha256
-        or package_payload != staging.manifest
+        or package_record.get("schema") != PACKAGE_SCHEMA
+        or package_record.get("status") != STAGING_STATUS
         or _record_core(package_record)
         != _record_core(
             _mapping(
@@ -1379,17 +2140,23 @@ def _verify_evaluation_report(
         raise PromotionError("report/candidate staging package differs")
 
     binding_record = _mapping(components.get("dual_binding"), "dual_binding")
-    binding_path, binding_sha, binding_payload = _verify_json_record(
+    _exact_keys(
         binding_record,
-        repo=policy.repo_root,
-        label="dual binding",
-        schema=BINDING_SCHEMA,
-        status=STAGING_STATUS,
+        {"path", "sha256", "schema"},
+        "dual_binding",
+    )
+    binding_path = _resolve_path(
+        binding_record.get("path"),
+        policy.repo_root,
+        "dual binding.path",
+    )
+    binding_sha = _sha(
+        binding_record.get("sha256"), "dual binding.sha256"
     )
     if (
         binding_path != policy.staging_package / DUAL_BINDING
         or binding_sha != staging.asset_records[DUAL_BINDING]["sha256"]
-        or binding_payload != binding
+        or binding_record.get("schema") != BINDING_SCHEMA
         or components.get("dual_binding_sha256") != binding_sha
         or _record_core(binding_record)
         != _record_core(
@@ -1401,11 +2168,42 @@ def _verify_evaluation_report(
     ):
         raise PromotionError("report/candidate dual binding differs")
 
-    _verify_release_gates(report.get("gates"), candidate_sha)
+    recomputed_gates = _recompute_release_gate_values(report)
+    _verify_release_gates(
+        report.get("gates"),
+        candidate_sha,
+        recomputed_gates,
+    )
+    prefix_nesting = _mapping(
+        provenance.get("prefix_nesting"), "prefix_nesting"
+    )
+    dependencies = _mapping(
+        provenance.get("dependency_provenance"),
+        "dependency_provenance",
+    )
+    start_probe = _mapping(
+        provenance.get("unscored_start_probe"),
+        "unscored_start_probe",
+    )
+    if (
+        prefix_nesting.get("passes") is not True
+        or dependencies.get("passes") is not True
+        or start_probe.get("scored") is not False
+        or start_probe.get("passes") is not True
+    ):
+        raise PromotionError("boolean gate evidence bodies did not pass")
     release_root = _resolve_path(
         provenance.get("release_root"), policy.repo_root, "release_root"
     )
-    if release_root.is_symlink() or not release_root.is_dir():
+    expected_release_root = (
+        policy.repo_root
+        / EXPECTED_RELEASE_ROOT.relative_to(REPO)
+    )
+    if (
+        release_root != expected_release_root
+        or not release_root.is_dir()
+        or report_path != release_root / "RELEASE_EVALUATION.json"
+    ):
         raise PromotionError("release_root must be a regular directory")
     intent_path = release_root / "RELEASE_INTENT.json"
     release_manifest_path = release_root / "RELEASE_MANIFEST.json"
@@ -1452,10 +2250,11 @@ def _verify_evaluation_report(
         "staged_validation_report_sha256": staged["report_sha256"],
         "staged_artifacts_sha256": dict(staged_hashes),
         "prefilter_set_sha256": prefilter_sha,
-        "prefilter_bundle_sha256": dict(bundle_hashes),
+        "prefilter_bundle_sha256": verified_prefilter_hashes,
         "browser_assets_sha256": browser_hashes,
         "staging_package_manifest_sha256": package_sha,
         "staging_dual_binding_sha256": binding_sha,
+        "post_validation_ledger_transition": source_transition,
     }
     return VerifiedEvaluation(
         report_sha256=_sha256_bytes(raw),
@@ -1634,40 +2433,206 @@ def _release_files(
     return output
 
 
-def _write_new_file(path: Path, raw: bytes) -> None:
+def _open_directory_fd(path: Path, label: str) -> int:
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    flags = (
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    directory_fd: int | None = None
     try:
-        with path.open("xb") as handle:
-            handle.write(raw)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(path, 0o644)
+        directory_fd = os.open(absolute.anchor, flags)
+        for component in absolute.parts[1:]:
+            next_fd = os.open(component, flags, dir_fd=directory_fd)
+            os.close(directory_fd)
+            directory_fd = next_fd
+        return directory_fd
     except OSError as exc:
-        raise PromotionError(f"cannot materialize {path.name}") from exc
+        if directory_fd is not None:
+            os.close(directory_fd)
+        raise PromotionError(f"cannot open {label} without symlinks") from exc
+
+
+def _write_new_file_at(directory_fd: int, name: str, raw: bytes) -> None:
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    file_fd: int | None = None
+    try:
+        file_fd = os.open(name, flags, 0o600, dir_fd=directory_fd)
+        view = memoryview(raw)
+        while view:
+            written = os.write(file_fd, view)
+            view = view[written:]
+        os.fchmod(file_fd, 0o644)
+        os.fsync(file_fd)
+    except OSError as exc:
+        raise PromotionError(f"cannot materialize {name}") from exc
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+
+
+def _read_file_at(directory_fd: int, name: str, label: str) -> bytes:
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    file_fd: int | None = None
+    try:
+        file_fd = os.open(name, flags, dir_fd=directory_fd)
+        info = os.fstat(file_fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise PromotionError(f"{label} is not a regular file")
+        chunks: list[bytes] = []
+        while True:
+            block = os.read(file_fd, 1 << 20)
+            if not block:
+                return b"".join(chunks)
+            chunks.append(block)
+    except PromotionError:
+        raise
+    except OSError as exc:
+        raise PromotionError(f"cannot read {label}") from exc
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+
+
+def _verify_directory_fd(
+    directory_fd: int, files: Mapping[str, bytes], label: str
+) -> None:
+    expected = set(STAGING_FILE_NAMES)
+    try:
+        names = set(os.listdir(directory_fd))
+    except OSError as exc:
+        raise PromotionError(f"cannot inspect {label}") from exc
+    if names != expected:
+        raise PromotionError(f"{label} has unexpected files")
+    for name in expected:
+        raw = _read_file_at(directory_fd, name, f"{label} {name}")
+        if raw != files[name] or len(raw) >= MAX_DEPLOYABLE_BYTES:
+            raise PromotionError(f"{label} {name} differs")
 
 
 def _materialize(destination: Path, files: Mapping[str, bytes]) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = Path(
-        tempfile.mkdtemp(
-            prefix=f".{destination.name}.tmp-", dir=destination.parent
-        )
+    parent_fd = _open_directory_fd(
+        destination.parent, "release destination parent"
     )
+    parent_identity = os.fstat(parent_fd)
+    temporary_name = (
+        f".{destination.name}.tmp-{os.getpid()}-{secrets.token_hex(8)}"
+    )
+    temporary_fd: int | None = None
     moved = False
+    renamed = False
     removed_empty = False
-    try:
-        for name in ASSET_NAMES:
-            _write_new_file(temporary / name, files[name])
-        _write_new_file(
-            temporary / PACKAGE_MANIFEST, files[PACKAGE_MANIFEST]
+
+    def require_canonical_parent() -> None:
+        check_fd = _open_directory_fd(
+            destination.parent, "canonical release destination parent"
         )
-        if destination.exists():
-            if destination.is_symlink() or not destination.is_dir():
+        try:
+            current = os.fstat(check_fd)
+            if (
+                current.st_dev != parent_identity.st_dev
+                or current.st_ino != parent_identity.st_ino
+            ):
+                raise PromotionError(
+                    "release destination parent identity changed"
+                )
+        finally:
+            os.close(check_fd)
+
+    try:
+        os.mkdir(temporary_name, 0o700, dir_fd=parent_fd)
+        directory_flags = (
+            os.O_RDONLY
+            | os.O_DIRECTORY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        temporary_fd = os.open(
+            temporary_name,
+            directory_flags,
+            dir_fd=parent_fd,
+        )
+        for name in ASSET_NAMES:
+            _write_new_file_at(temporary_fd, name, files[name])
+        _write_new_file_at(
+            temporary_fd,
+            PACKAGE_MANIFEST,
+            files[PACKAGE_MANIFEST],
+        )
+        _verify_directory_fd(temporary_fd, files, "temporary release")
+        os.fchmod(temporary_fd, 0o755)
+        os.fsync(temporary_fd)
+        os.fsync(parent_fd)
+        require_canonical_parent()
+
+        try:
+            destination_info = os.stat(
+                destination.name,
+                dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            destination_info = None
+        if destination_info is not None:
+            if not stat.S_ISDIR(destination_info.st_mode):
                 raise PromotionError("release destination changed")
-            if next(destination.iterdir(), None) is not None:
-                raise PromotionError("release destination became nonempty")
-            destination.rmdir()
+            destination_fd = os.open(
+                destination.name,
+                directory_flags,
+                dir_fd=parent_fd,
+            )
+            try:
+                if os.listdir(destination_fd):
+                    raise PromotionError(
+                        "release destination became nonempty"
+                    )
+            finally:
+                os.close(destination_fd)
+            try:
+                os.rmdir(destination.name, dir_fd=parent_fd)
+            except OSError as exc:
+                raise PromotionError("release destination changed") from exc
             removed_empty = True
-        temporary.rename(destination)
+        os.rename(
+            temporary_name,
+            destination.name,
+            src_dir_fd=parent_fd,
+            dst_dir_fd=parent_fd,
+        )
+        renamed = True
+        installed_fd = os.open(
+            destination.name,
+            directory_flags,
+            dir_fd=parent_fd,
+        )
+        try:
+            installed = os.fstat(installed_fd)
+            temporary_identity = os.fstat(temporary_fd)
+            if (
+                installed.st_dev != temporary_identity.st_dev
+                or installed.st_ino != temporary_identity.st_ino
+            ):
+                raise PromotionError(
+                    "installed release directory identity differs"
+                )
+            _verify_directory_fd(installed_fd, files, "installed release")
+            os.fsync(installed_fd)
+        finally:
+            os.close(installed_fd)
+        require_canonical_parent()
+        os.fsync(parent_fd)
         moved = True
     except PromotionError:
         raise
@@ -1675,25 +2640,56 @@ def _materialize(destination: Path, files: Mapping[str, bytes]) -> None:
         raise PromotionError("cannot atomically install release package") from exc
     finally:
         if not moved:
-            shutil.rmtree(temporary, ignore_errors=True)
-            if removed_empty and not destination.exists():
-                destination.mkdir()
-
-
-def _verify_materialized(
-    destination: Path, files: Mapping[str, bytes]
-) -> None:
-    entries = tuple(destination.iterdir())
-    if {entry.name for entry in entries} != set(STAGING_FILE_NAMES):
-        raise PromotionError("materialized release has unexpected files")
-    for entry in entries:
-        if (
-            entry.is_symlink()
-            or not entry.is_file()
-            or _read_file(entry, f"release {entry.name}") != files[entry.name]
-            or entry.stat().st_size >= MAX_DEPLOYABLE_BYTES
-        ):
-            raise PromotionError(f"materialized release {entry.name} differs")
+            cleanup_fd = temporary_fd
+            cleanup_name = destination.name if renamed else temporary_name
+            if cleanup_fd is None:
+                try:
+                    cleanup_fd = os.open(
+                        cleanup_name,
+                        (
+                            os.O_RDONLY
+                            | os.O_DIRECTORY
+                            | getattr(os, "O_CLOEXEC", 0)
+                            | getattr(os, "O_NOFOLLOW", 0)
+                        ),
+                        dir_fd=parent_fd,
+                    )
+                except OSError:
+                    cleanup_fd = None
+            if cleanup_fd is not None:
+                cleanup_identity = os.fstat(cleanup_fd)
+                try:
+                    for name in os.listdir(cleanup_fd):
+                        os.unlink(name, dir_fd=cleanup_fd)
+                finally:
+                    os.close(cleanup_fd)
+                    if cleanup_fd == temporary_fd:
+                        temporary_fd = None
+                try:
+                    named_identity = os.stat(
+                        cleanup_name,
+                        dir_fd=parent_fd,
+                        follow_symlinks=False,
+                    )
+                    if (
+                        named_identity.st_dev == cleanup_identity.st_dev
+                        and named_identity.st_ino == cleanup_identity.st_ino
+                    ):
+                        os.rmdir(cleanup_name, dir_fd=parent_fd)
+                except (FileNotFoundError, OSError):
+                    pass
+            if removed_empty:
+                try:
+                    os.mkdir(destination.name, 0o755, dir_fd=parent_fd)
+                except FileExistsError:
+                    pass
+            try:
+                os.fsync(parent_fd)
+            except OSError:
+                pass
+        if temporary_fd is not None:
+            os.close(temporary_fd)
+        os.close(parent_fd)
 
 
 def promote(
@@ -1706,10 +2702,16 @@ def promote(
     staging, release, normalized = _validate_paths(
         Path(staging_package), Path(destination), policy
     )
-    report = Path(evaluation_report).expanduser()
-    if report.is_symlink():
-        raise PromotionError("sealed evaluation report may not be a symlink")
-    report = report.resolve()
+    report = _lexical_path(
+        os.fspath(Path(evaluation_report).expanduser()),
+        normalized.repo_root,
+        "sealed evaluation report",
+    )
+    _reject_symlink_chain(
+        report,
+        normalized.repo_root,
+        "sealed evaluation report",
+    )
     if _is_within(report, release):
         raise PromotionError("evaluation report may not be inside destination")
     verified_staging = _verify_staging_package(staging, normalized)
@@ -1718,7 +2720,6 @@ def promote(
     )
     files = _release_files(verified_staging, verified_evaluation)
     _materialize(release, files)
-    _verify_materialized(release, files)
     return _parse_json(
         files[PACKAGE_MANIFEST], "release package manifest"
     )

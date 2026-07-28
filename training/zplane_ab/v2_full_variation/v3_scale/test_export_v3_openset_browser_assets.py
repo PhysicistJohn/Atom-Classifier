@@ -73,6 +73,32 @@ def valid_staged_report() -> dict:
         "worst": float(staged.KNOWN_FUR_CEILING) - 0.01,
         "passes": True,
     }
+    novelty = {
+        str(seed): {
+            str(length): {
+                "overall": {
+                    "auroc": gates["overall_auroc"]["worst"],
+                },
+                "noise": {
+                    "auroc": gates["noise_auroc"]["worst"],
+                    "threshold_recall": gates[
+                        "noise_threshold_recall"
+                    ]["worst"],
+                },
+                "chirp": {
+                    "auroc": gates["chirp_auroc"]["worst"],
+                    "threshold_recall": gates[
+                        "chirp_threshold_recall"
+                    ]["worst"],
+                },
+                "known_false_unknown_rate": gates[
+                    "known_false_unknown_rate"
+                ]["worst"],
+            }
+            for length in exporter.REQUIRED_VALIDATION_PREFIX_LENGTHS
+        }
+        for seed in (20260950, 20260951)
+    }
     return {
         "status": "development_openset_pass",
         "role": "validate",
@@ -114,6 +140,10 @@ def valid_staged_report() -> dict:
             "novelty_seeds": [20260950, 20260951],
             "release_seed_not_spent": 20260735,
         },
+        "known": {
+            "false_unknown_rate": gates["known_false_unknown_rate"]["worst"],
+        },
+        "novelty": novelty,
     }
 
 
@@ -156,6 +186,54 @@ class StagedEvidenceAdmission(unittest.TestCase):
         report["gates"]["noise_auroc"]["passes"] = False
         with self.assertRaisesRegex(ValueError, "noise_auroc"):
             exporter.validate_staged_evidence_report(report)
+
+    def test_gate_claiming_pass_below_its_floor_is_refused(self) -> None:
+        for name, floor in staged.GATE_FLOORS.items():
+            with self.subTest(gate=name):
+                report = valid_staged_report()
+                report["gates"][name]["worst"] = float(floor) - 0.01
+                report["gates"][name]["passes"] = True
+                with self.assertRaisesRegex(ValueError, name):
+                    exporter.validate_staged_evidence_report(report)
+
+    def test_gate_worst_must_be_derived_from_novelty_rows(self) -> None:
+        report = valid_staged_report()
+        report["novelty"]["20260950"]["4096"]["noise"]["auroc"] = 0.0
+        with self.assertRaisesRegex(ValueError, "noise_auroc.*not derived"):
+            exporter.validate_staged_evidence_report(report)
+
+    def test_known_fur_must_be_derived_from_evidence_rows(self) -> None:
+        report = valid_staged_report()
+        report["novelty"]["20260950"]["4096"][
+            "known_false_unknown_rate"
+        ] = 1.0
+        with self.assertRaisesRegex(ValueError, "not derived"):
+            exporter.validate_staged_evidence_report(report)
+
+    def test_nonfinite_gate_worst_is_refused(self) -> None:
+        for name, value in (
+            ("noise_auroc", float("nan")),
+            ("chirp_threshold_recall", float("inf")),
+            ("known_false_unknown_rate", float("nan")),
+        ):
+            with self.subTest(gate=name):
+                report = valid_staged_report()
+                report["gates"][name]["worst"] = value
+                with self.assertRaises(ValueError):
+                    exporter.validate_staged_evidence_report(report)
+
+    def test_string_floor_or_ceiling_is_refused(self) -> None:
+        for name, bound in (
+            ("noise_auroc", "floor"),
+            ("known_false_unknown_rate", "ceiling"),
+        ):
+            with self.subTest(gate=name):
+                report = valid_staged_report()
+                report["gates"][name][bound] = str(
+                    report["gates"][name][bound]
+                )
+                with self.assertRaises(ValueError):
+                    exporter.validate_staged_evidence_report(report)
 
     def test_relaxed_known_fur_ceiling_is_refused(self) -> None:
         report = valid_staged_report()

@@ -71,6 +71,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -244,6 +245,106 @@ def validate_parity_seed(seed: int) -> int:
     return value
 
 
+def _staged_probability(value: Any, label: str) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or not 0.0 <= float(value) <= 1.0
+    ):
+        raise ValueError(f"{label} must be a finite probability")
+    return float(value)
+
+
+def _validate_staged_gate_bodies(
+    report: Mapping[str, Any], gates: Mapping[str, Any]
+) -> None:
+    novelty = report.get("novelty")
+    expected_seeds = {"20260950", "20260951"}
+    expected_lengths = {
+        str(length) for length in REQUIRED_VALIDATION_PREFIX_LENGTHS
+    }
+    if not isinstance(novelty, Mapping) or set(novelty) != expected_seeds:
+        raise ValueError("staged novelty evidence seed set differs")
+    observed: dict[str, list[float]] = {
+        name: [] for name in staged.GATE_FLOORS
+    }
+    known_rates: list[float] = []
+    for seed in sorted(expected_seeds):
+        by_length = novelty[seed]
+        if (
+            not isinstance(by_length, Mapping)
+            or set(by_length) != expected_lengths
+        ):
+            raise ValueError(
+                f"staged novelty evidence lengths differ for seed {seed}"
+            )
+        for length in sorted(expected_lengths, key=int):
+            row = by_length[length]
+            if not isinstance(row, Mapping):
+                raise ValueError(
+                    f"staged novelty row {seed}/{length} is not an object"
+                )
+            overall = row.get("overall")
+            noise = row.get("noise")
+            chirp = row.get("chirp")
+            if not all(
+                isinstance(value, Mapping)
+                for value in (overall, noise, chirp)
+            ):
+                raise ValueError(
+                    f"staged novelty row {seed}/{length} is incomplete"
+                )
+            observed["overall_auroc"].append(
+                _staged_probability(
+                    overall.get("auroc"),
+                    f"novelty {seed}/{length} overall.auroc",
+                )
+            )
+            for family, family_row in (
+                ("noise", noise),
+                ("chirp", chirp),
+            ):
+                observed[f"{family}_auroc"].append(
+                    _staged_probability(
+                        family_row.get("auroc"),
+                        f"novelty {seed}/{length} {family}.auroc",
+                    )
+                )
+                observed[f"{family}_threshold_recall"].append(
+                    _staged_probability(
+                        family_row.get("threshold_recall"),
+                        f"novelty {seed}/{length} "
+                        f"{family}.threshold_recall",
+                    )
+                )
+            known_rates.append(
+                _staged_probability(
+                    row.get("known_false_unknown_rate"),
+                    f"novelty {seed}/{length} known_false_unknown_rate",
+                )
+            )
+    for name, values in observed.items():
+        if float(gates[name]["worst"]) != min(values):
+            raise ValueError(
+                f"staged gate {name!r} worst is not derived from novelty rows"
+            )
+    known = report.get("known")
+    if not isinstance(known, Mapping):
+        raise ValueError("staged report carries no known evidence body")
+    known_rate = _staged_probability(
+        known.get("false_unknown_rate"),
+        "known.false_unknown_rate",
+    )
+    if (
+        any(value != known_rate for value in known_rates)
+        or float(gates["known_false_unknown_rate"]["worst"]) != known_rate
+    ):
+        raise ValueError(
+            "known false-unknown gate is not derived from evidence rows"
+        )
+
+
 def validate_staged_evidence_report(report: Mapping[str, Any]) -> None:
     """Admit only a passing, strict-gate validation artifact for export.
 
@@ -305,22 +406,47 @@ def validate_staged_evidence_report(report: Mapping[str, Any]) -> None:
         )
     for name, floor in staged.GATE_FLOORS.items():
         gate = gates[name]
+        recorded_floor = (
+            gate.get("floor") if isinstance(gate, Mapping) else None
+        )
+        worst = gate.get("worst") if isinstance(gate, Mapping) else None
         if (
             not isinstance(gate, Mapping)
             or gate.get("passes") is not True
-            or float(gate.get("floor", float("nan"))) != float(floor)
+            or isinstance(recorded_floor, bool)
+            or not isinstance(recorded_floor, (int, float))
+            or not math.isfinite(float(recorded_floor))
+            or float(recorded_floor) != float(floor)
+            or isinstance(worst, bool)
+            or not isinstance(worst, (int, float))
+            or not math.isfinite(float(worst))
+            or float(worst) < float(floor)
         ):
             raise ValueError(
                 f"staged gate {name!r} did not pass its frozen floor {floor}"
             )
     known_gate = gates["known_false_unknown_rate"]
+    known_worst = (
+        known_gate.get("worst")
+        if isinstance(known_gate, Mapping)
+        else None
+    )
+    known_ceiling = (
+        known_gate.get("ceiling")
+        if isinstance(known_gate, Mapping)
+        else None
+    )
     if (
         not isinstance(known_gate, Mapping)
         or known_gate.get("passes") is not True
-        or float(known_gate.get("ceiling", float("nan")))
-        != float(staged.KNOWN_FUR_CEILING)
-        or float(known_gate.get("worst", float("inf")))
-        > float(staged.KNOWN_FUR_CEILING)
+        or isinstance(known_ceiling, bool)
+        or not isinstance(known_ceiling, (int, float))
+        or not math.isfinite(float(known_ceiling))
+        or float(known_ceiling) != float(staged.KNOWN_FUR_CEILING)
+        or isinstance(known_worst, bool)
+        or not isinstance(known_worst, (int, float))
+        or not math.isfinite(float(known_worst))
+        or float(known_worst) > float(staged.KNOWN_FUR_CEILING)
     ):
         raise ValueError(
             "known false-unknown rate did not pass the strict development "
@@ -387,6 +513,7 @@ def validate_staged_evidence_report(report: Mapping[str, Any]) -> None:
         )
     if seeds.get("release_seed_not_spent") != 20260735:
         raise ValueError("staged validation does not preserve release seed 20260735")
+    _validate_staged_gate_bodies(report, gates)
 
 
 def _require_sha256(value: Any, label: str) -> str:
