@@ -20,6 +20,7 @@ import hashlib
 import json
 import math
 import os
+import platform
 from pathlib import Path
 import sys
 import time
@@ -125,6 +126,57 @@ def _write_json(path: Path, payload: Any) -> None:
         )
         handle.write("\n")
     os.replace(temporary, path)
+
+
+def _run_configuration(
+    args: argparse.Namespace,
+    *,
+    resolved_device: torch.device,
+) -> dict[str, Any]:
+    """Return the complete reproducibility contract for one training run.
+
+    Historical artifacts recorded the model architecture and episode count but
+    omitted optimizer settings such as weight decay.  Keep the parser argument
+    map verbatim (apart from the destination path, which is not model-affecting)
+    and additionally spell out the optimizer/scheduler contract so a reviewer
+    does not have to infer defaults from a particular source revision.
+    """
+    arguments = {
+        str(key): _jsonable(value)
+        for key, value in sorted(vars(args).items())
+        if key != "output_dir"
+    }
+    return {
+        "schema": "time-domain-v3-training-configuration-v1",
+        "arguments": arguments,
+        "optimizer": {
+            "name": "AdamW",
+            "learning_rate": float(args.lr),
+            "network_weight_decay": float(args.weight_decay),
+            "logit_scale_weight_decay": 0.0,
+        },
+        "scheduler": {
+            "name": "LinearLR-then-CosineAnnealingLR",
+            "warmup_fraction": float(args.warmup_frac),
+            "cosine_t_max": "episodes - max(1, int(episodes * warmup_fraction))",
+        },
+        "randomness": {
+            "model_seed": int(args.seed),
+            "phase_augmentation": bool(args.phase_augmentation),
+            "multilength_episode_sampler": (
+                "numpy.default_rng(model_seed)"
+                if bool(args.multilength_train)
+                else None
+            ),
+        },
+        "software": {
+            "python": platform.python_version(),
+            "numpy": np.__version__,
+            "torch": torch.__version__,
+            "requested_device": str(args.device),
+            "resolved_device": str(resolved_device),
+        },
+    }
 
 
 def _load_manifest() -> dict[str, Any]:
@@ -1350,6 +1402,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "release_evidence": False,
         "sealed_release_data_used": 0,
         "consumed_test_rows_used": 0,
+        "run_configuration": _run_configuration(
+            args,
+            resolved_device=device,
+        ),
         "frontend": td_preprocess.preprocess_metadata(),
         "encoder": args.encoder,
         "architecture": net.config(),

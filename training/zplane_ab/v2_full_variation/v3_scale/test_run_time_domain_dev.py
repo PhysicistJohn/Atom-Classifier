@@ -30,6 +30,50 @@ def _item(cls: str, center: float, bandwidth: float) -> dict[str, object]:
 
 
 class TimeDomainDevelopmentAuditTests(unittest.TestCase):
+    def test_run_configuration_records_all_model_affecting_arguments(self) -> None:
+        args = subject.build_parser().parse_args(
+            [
+                "--output-dir",
+                "/tmp/ignored-destination",
+                "--device",
+                "mps",
+                "--seed",
+                "20260730",
+                "--encoder",
+                "complex",
+                "--episodes",
+                "8000",
+                "--eval-every",
+                "1000",
+                "--dropout",
+                "0.35",
+                "--weight-decay",
+                "0.0005",
+                "--multilength-train",
+            ]
+        )
+        result = subject._run_configuration(
+            args,
+            resolved_device=torch.device("mps"),
+        )
+        self.assertEqual(
+            result["schema"],
+            "time-domain-v3-training-configuration-v1",
+        )
+        self.assertNotIn("output_dir", result["arguments"])
+        self.assertEqual(result["arguments"]["episodes"], 8000)
+        self.assertEqual(result["arguments"]["eval_every"], 1000)
+        self.assertEqual(result["arguments"]["dropout"], 0.35)
+        self.assertEqual(result["arguments"]["weight_decay"], 0.0005)
+        self.assertTrue(result["arguments"]["multilength_train"])
+        self.assertEqual(
+            result["optimizer"]["network_weight_decay"],
+            0.0005,
+        )
+        self.assertEqual(result["randomness"]["model_seed"], 20260730)
+        self.assertEqual(result["software"]["requested_device"], "mps")
+        self.assertEqual(result["software"]["resolved_device"], "mps")
+
     def test_nonzero_prefix_mask_is_exact_and_fails_short_rows(self) -> None:
         captures = [
             np.zeros(8, dtype=np.complex64),
