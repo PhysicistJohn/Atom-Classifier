@@ -1568,3 +1568,30 @@ Then: re-validate staged on FRESH clean seeds (20260944/20260945 -- 942/943 vali
 current policy and must not validate the modified one), preflight, and a new release seed.
 NOTE the namespace hazard: 20260732 is already a dev MODEL seed; use 20260733 for the next
 release to avoid the collision the handoff already warns about.
+
+## 26. Candidate v3.1 (budget 0.01): dev-validation FAIL, frozen. v3.2 composite in flight.
+
+The minimal fix from section 25 was tried first: prefilter threshold refit at a 0.01
+enrollment budget (coefficients bit-identical, threshold only;
+`noise_prefilter_fit20261001_budget001`). Validated once on fresh clean seeds
+20260944/20260945 (`staged_validate_budget001_seed20260730`): known FUR fell to 0.0566 as
+projected, but **noise AUROC worst cell 0.7957 vs floor 0.80** -- two cells on one seed
+(N8192/N16384); N32768 passes at 0.82. `development_openset_fail`, frozen.
+
+Mechanism: tightening the gate pushes more noise into stage-2, whose standalone noise axis is
+~0.60. The budget knob therefore trades sealed FUR against dev noise AUROC, and at 1309-row
+sample sizes both sit within ~1 s.e. of their bounds anywhere in the 0.01-0.02 range. A
+knife-edge candidate does not deserve a one-shot seed.
+
+**v3.2 (in flight): composite survivor score.** Gate stays at 0.01; for stage-1 survivors the
+open-set score becomes max(stage2_enrollment_rank, stage1_score_enrollment_rank), threshold
+re-fit at q95 of the composite on enrollment survivors. Uses the stage-1 continuous score
+(0.978 standalone noise AUROC in-sample) that the hard gate currently discards below
+threshold. Design on fresh seed 20260946, single validation on untouched 20260947/20260948,
+policy version bumped, evaluator/TS/launcher/preflight updated in lockstep. Projected sealed
+worst-length FUR ~0.082 (ceiling 0.10, ~2.3 s.e. margin) with noise AUROC recovered by the
+composite rather than paid for by the gate.
+
+Seed ledger: release 20260729/20260731 consumed; next release seed 20260733 (20260732 is a
+dev model seed). Novelty: 938-41 spent (design), 942/3 (validated v3.0), 944/5 (validated
+v3.1 FAIL), 946 (v3.2 design), 947/8 (v3.2 validation, single use), fit band 20261000-1999.
