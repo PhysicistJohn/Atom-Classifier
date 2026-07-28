@@ -98,16 +98,14 @@ interface ParityFixture {
   rows: FixtureRow[];
 }
 
-const staging = new URL(
-  '../../training/zplane_ab/v2_full_variation/artifacts/staging/'
-    + 'time_domain_v3_openset/',
-  import.meta.url,
-);
+// Tests consume the tracked runtime package, never mutable gitignored training
+// output. The compact fixture preserves both fitted lengths and all decisions.
+const staging = new URL('./assets-v3-staging/', import.meta.url);
 const rawAsset = JSON.parse(
   readFileSync(new URL('time-domain-openset-weights-v1.json', staging), 'utf8'),
 ) as unknown;
 const fixture = JSON.parse(
-  readFileSync(new URL('time-domain-openset-parity-v1.json', staging), 'utf8'),
+  readFileSync(new URL('time-domain-openset-smoke-v1.json', staging), 'utf8'),
 ) as ParityFixture;
 
 const asset: TimeDomainOpenSetAssetV3 = loadTimeDomainOpenSetAssetV3(rawAsset);

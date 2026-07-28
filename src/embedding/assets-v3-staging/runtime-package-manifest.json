@@ -1,0 +1,32 @@
+{
+ "assets": {
+  "time-domain-classifier-weights-v1.json": {
+   "bytes": 15561,
+   "sha256": "4b6379d586e363ef2164a36d13ee02e22cfdd8ef0dbaa49b854213fe394da49a"
+  },
+  "time-domain-fusion-weights-v3.json": {
+   "bytes": 3379373,
+   "sha256": "9793179e0684c93a56c11cb4df85d500dd33f16f5f7d0e874a294b706cf7a196"
+  },
+  "time-domain-openset-smoke-v1.json": {
+   "bytes": 3019554,
+   "sha256": "9ca4acfe9c65af1e079c7c60cb7f8556842a6e0bc2fb2eacdc56ead5d621a433"
+  },
+  "time-domain-openset-weights-v1.json": {
+   "bytes": 27088600,
+   "sha256": "15cf243cc2e8cff41190341bdecd8b4495a88c0861afb3b628a20b447fa66313"
+  },
+  "time-domain-probe-fixture-v3.json": {
+   "bytes": 1165350,
+   "sha256": "8398a604b2ce92ae58347fa387bf50e91f27e49e2d6e223e9725580100d69691"
+  }
+ },
+ "schema": "atomos.v3.time-domain-classifier.runtime-package",
+ "schema_version": 1,
+ "sources": {
+  "export-manifest.json": "58eb15eadfda6f470ed04a6bd7236649de7fa51b365cd9df22456b79f51c1d1f",
+  "openset-export-manifest.json": "a660a5c0bc788351d40a3dd5574b4925a4f3dde34e664b56b7e1fc3fd8bf43ea",
+  "time-domain-openset-parity-v1.json": "52e3ee70425427a43ce0c2eb7b057a9023efa6108bbab31ac5aab0aa52989090"
+ },
+ "status": "staging_not_release"
+}

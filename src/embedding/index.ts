@@ -13,3 +13,7 @@ export * from './embedding-classifier.js';
 export * from './magnitude-preprocess.js';
 export * from './magnitude-classifier.js';
 export * from './recover.js';
+// Candidate-independent v3 deployment surface. Model JSON remains in the
+// explicitly named staging package until a sealed release is promoted.
+export * from './time-domain-asset-status-v3.js';
+export * from './time-domain-classifier-v3.js';

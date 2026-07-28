@@ -62,19 +62,23 @@ interface ParityFixture {
   probe_cases: ProbeCase[];
 }
 
-const staging = new URL(
-  '../../training/zplane_ab/v2_full_variation/artifacts/staging/'
-    + 'time_domain_v3_openset/',
-  import.meta.url,
-);
+// Tests consume the tracked runtime package, never mutable gitignored training
+// output. The compact fixture preserves both fitted lengths and all decisions.
+const staging = new URL('./assets-v3-staging/', import.meta.url);
 const classifierAssetRaw = JSON.parse(
   readFileSync(new URL('time-domain-classifier-weights-v1.json', staging), 'utf8'),
 ) as unknown;
 const opensetAssetRaw = JSON.parse(
   readFileSync(new URL('time-domain-openset-weights-v1.json', staging), 'utf8'),
 ) as unknown;
+const encoderAssetRaw = JSON.parse(
+  readFileSync(
+    new URL('time-domain-fusion-weights-v3.json', staging),
+    'utf8',
+  ),
+) as unknown;
 const fixture = JSON.parse(
-  readFileSync(new URL('time-domain-openset-parity-v1.json', staging), 'utf8'),
+  readFileSync(new URL('time-domain-openset-smoke-v1.json', staging), 'utf8'),
 ) as ParityFixture;
 
 const classifierAsset = loadTimeDomainClassifierAssetV3(classifierAssetRaw);
@@ -126,6 +130,68 @@ describe('classifier asset', () => {
         loadTimeDomainClassifierAssetV3({ ...(classifierAssetRaw as object), schema }))
         .toThrow(/incompatible|unsupported/);
     }
+  });
+
+  it('admits a coherent release-status asset set in production mode', async () => {
+    const classifierRelease = {
+      ...(classifierAssetRaw as Record<string, unknown>),
+      status: 'release',
+    };
+    const opensetRelease = {
+      ...(opensetAssetRaw as Record<string, unknown>),
+      status: 'release',
+    };
+    const encoderRelease = {
+      ...(encoderAssetRaw as Record<string, unknown>),
+      status: 'release',
+    };
+    const classifier = await createTimeDomainClassifierV3({
+      classifierAsset: classifierRelease,
+      opensetAsset: opensetRelease,
+      encoderAsset: encoderRelease,
+      admission: 'production',
+      encoders: {
+        real: () => new Float64Array(32),
+        complex: () => new Float64Array(32),
+      },
+    });
+    expect(classifier.asset.status).toBe('release');
+    expect(classifier.openSet.asset.status).toBe('release');
+  });
+
+  it('production admission fails closed on the tracked staging package', async () => {
+    await expect(createTimeDomainClassifierV3({
+      classifierAsset: classifierAssetRaw,
+      opensetAsset: opensetAssetRaw,
+      encoderAsset: encoderAssetRaw,
+      admission: 'production',
+    })).rejects.toThrow(/must be release for production admission/);
+  });
+
+  it('refuses a mixed candidate before any encoder can run', async () => {
+    const raw = classifierAssetRaw as {
+      fusion: { weight_real: number };
+    };
+    const mismatched = {
+      ...(classifierAssetRaw as Record<string, unknown>),
+      fusion: {
+        ...raw.fusion,
+        weight_real: raw.fusion.weight_real + 0.01,
+      },
+    };
+    await expect(createTimeDomainClassifierV3({
+      classifierAsset: mismatched,
+      opensetAsset: opensetAssetRaw,
+      encoderAsset: encoderAssetRaw,
+      encoders: {
+        real: () => {
+          throw new Error('must not run');
+        },
+        complex: () => {
+          throw new Error('must not run');
+        },
+      },
+    })).rejects.toThrow(/fusion\.weight_real differs/);
   });
 });
 
@@ -263,13 +329,7 @@ describe('sibling encoder module contract', () => {
     // The sibling port has landed, so this is now a genuine integration test:
     // the factory must accept the real staging asset and the returned closures
     // must produce unit-norm 32-d embeddings on real fixture input.
-    const weightsAsset = JSON.parse(
-      readFileSync(
-        new URL('assets-v3-staging/time-domain-fusion-weights-v3.json', import.meta.url),
-        'utf8',
-      ),
-    ) as Record<string, unknown>;
-    const encoders = await loadTimeDomainEncodersV3(weightsAsset);
+    const encoders = await loadTimeDomainEncodersV3(encoderAssetRaw);
     expect(typeof encoders.real).toBe('function');
     expect(typeof encoders.complex).toBe('function');
     const fixture = JSON.parse(
@@ -307,7 +367,7 @@ describe('sibling encoder module contract', () => {
     const classifier = await createTimeDomainClassifierV3({
       classifierAsset: classifierAssetRaw,
       opensetAsset: opensetAssetRaw,
-      encoderAsset: null,
+      encoderAsset: encoderAssetRaw,
       encoders: {
         real: () => new Float64Array(32),
         complex: () => new Float64Array(32),

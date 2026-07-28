@@ -40,6 +40,16 @@ import {
   type StageOneEvaluation,
   type TimeDomainOpenSetAssetV3,
 } from './time-domain-openset-v3.js';
+import {
+  admitTimeDomainAssetStatusV3,
+  type TimeDomainAssetAdmissionV3,
+  type TimeDomainAssetLoadOptionsV3,
+  type TimeDomainAssetStatusV3,
+} from './time-domain-asset-status-v3.js';
+import {
+  loadTimeDomainFusionAssetV3,
+  type TimeDomainFusionAssetV3,
+} from './time-domain-fusion-v3.js';
 
 export const TIME_DOMAIN_CLASSIFIER_SCHEMA =
   'atomos.v3.time-domain-invariant-fusion.browser-decision' as const;
@@ -133,7 +143,7 @@ export async function loadTimeDomainEncodersV3(
 export interface TimeDomainClassifierAssetV3 {
   schema: typeof TIME_DOMAIN_CLASSIFIER_SCHEMA;
   schema_version: typeof TIME_DOMAIN_CLASSIFIER_SCHEMA_VERSION;
-  status: 'staging_not_release';
+  status: TimeDomainAssetStatusV3;
   frontend: {
     version: 'invariant-patch-time-domain-v1';
     patch_length: number;
@@ -193,6 +203,7 @@ function finiteVector(value: unknown, path: string, length?: number): number[] {
 /** Validate an untrusted JSON value into a typed classifier decision asset. */
 export function loadTimeDomainClassifierAssetV3(
   value: unknown,
+  options: TimeDomainAssetLoadOptionsV3 = {},
 ): TimeDomainClassifierAssetV3 {
   const asset = record(value, 'asset');
   if (
@@ -213,9 +224,7 @@ export function loadTimeDomainClassifierAssetV3(
       `unsupported classifier schema version ${String(asset.schema_version)}`,
     );
   }
-  if (asset.status !== 'staging_not_release') {
-    throw new RangeError('classifier asset must be staging_not_release');
-  }
+  admitTimeDomainAssetStatusV3(asset.status, 'asset.status', options);
   const frontend = record(asset.frontend, 'asset.frontend');
   if (frontend.version !== 'invariant-patch-time-domain-v1') {
     throw new RangeError(
@@ -452,6 +461,108 @@ export interface TimeDomainClassifierV3Options {
   encoders: TimeDomainEncoderPairV3;
 }
 
+function assertExactVector(
+  left: readonly number[],
+  right: readonly number[],
+  path: string,
+): void {
+  if (
+    left.length !== right.length
+    || left.some((value, index) => value !== right[index])
+  ) {
+    throw new RangeError(
+      `${path} differs between the classifier and encoder assets`,
+    );
+  }
+}
+
+/**
+ * Prove that the independently exported encoder, classifier, and open-set
+ * files describe one deployable model. Shared arrays are exact. Scalar
+ * constants allow only one float32 round-trip because the encoder export
+ * preserves state-dict float32 while the decision export records the
+ * equivalent source constants (for example 0.20000000298 versus 0.2).
+ */
+export function assertTimeDomainAssetSetV3(
+  classifier: TimeDomainClassifierAssetV3,
+  openset: TimeDomainOpenSetAssetV3,
+  encoder: TimeDomainFusionAssetV3,
+): void {
+  if (
+    classifier.status !== openset.status
+    || classifier.status !== encoder.status
+  ) {
+    throw new RangeError('v3 asset statuses do not match');
+  }
+  const frontend = classifier.frontend;
+  const realConfig = encoder.real.config;
+  const complexConfig = encoder.complex.config;
+  if (
+    frontend.packed_length !== encoder.packed_length
+    || frontend.patch_length !== realConfig.patch_length
+    || frontend.patch_length !== complexConfig.patch_length
+    || frontend.patch_count !== realConfig.patch_count
+    || frontend.patch_count !== complexConfig.patch_count
+    || frontend.patch_length !== openset.frontend.patch_length
+    || frontend.patch_count !== openset.frontend.patch_count
+    || frontend.target_frac !== openset.frontend.target_frac
+    || frontend.packed_length !== openset.frontend.packed_length
+  ) {
+    throw new RangeError('v3 asset frontend geometries do not match');
+  }
+  assertExactVector(
+    classifier.feature_standardization.mean,
+    encoder.feature_standardization.mean,
+    'feature_standardization.mean',
+  );
+  assertExactVector(
+    classifier.feature_standardization.std,
+    encoder.feature_standardization.std,
+    'feature_standardization.std',
+  );
+  assertExactVector(
+    classifier.fusion.real_center,
+    encoder.fusion.real_center,
+    'fusion.real_center',
+  );
+  assertExactVector(
+    classifier.fusion.complex_center,
+    encoder.fusion.complex_center,
+    'fusion.complex_center',
+  );
+  for (const field of [
+    'alpha_real',
+    'alpha_complex',
+    'weight_real',
+    'eps',
+  ] as const) {
+    const left = classifier.fusion[field];
+    const right = encoder.fusion[field];
+    const tolerance = Math.max(1e-15, 1e-7 * Math.max(Math.abs(left), Math.abs(right)));
+    if (Math.abs(left - right) > tolerance) {
+      throw new RangeError(
+        `fusion.${field} differs between the classifier and encoder assets`,
+      );
+    }
+  }
+  if (
+    classifier.classification.classes.length
+      !== encoder.classification.classes.length
+    || classifier.classification.classes.some(
+      (value, index) => value !== encoder.classification.classes[index],
+    )
+  ) {
+    throw new RangeError('classification classes differ across v3 assets');
+  }
+  classifier.classification.prototypes.forEach((prototype, index) => {
+    assertExactVector(
+      prototype,
+      encoder.classification.prototypes[index] ?? [],
+      `classification.prototypes[${index}]`,
+    );
+  });
+}
+
 export class TimeDomainClassifierV3 {
   readonly asset: TimeDomainClassifierAssetV3;
   readonly openSet: TimeDomainOpenSetV3;
@@ -461,6 +572,9 @@ export class TimeDomainClassifierV3 {
     this.asset = options.classifierAsset;
     this.openSet = new TimeDomainOpenSetV3(options.opensetAsset);
     this.encoders = options.encoders;
+    if (this.asset.status !== options.opensetAsset.status) {
+      throw new RangeError('classifier and open-set asset statuses do not match');
+    }
     const classifierFrontend = this.asset.frontend;
     const opensetFrontend = options.opensetAsset.frontend;
     if (
@@ -569,13 +683,30 @@ export async function createTimeDomainClassifierV3(inputs: {
   classifierAsset: unknown;
   opensetAsset: unknown;
   encoderAsset: unknown;
+  /**
+   * Production admission refuses every `staging_not_release` asset. The
+   * default remains staging for development tools and existing callers.
+   */
+  admission?: TimeDomainAssetAdmissionV3;
   /** Test seam: inject decision-layer encoders instead of the sibling port. */
   encoders?: TimeDomainEncoderPairV3;
 }): Promise<TimeDomainClassifierV3> {
-  const classifierAsset = loadTimeDomainClassifierAssetV3(inputs.classifierAsset);
-  const opensetAsset = loadTimeDomainOpenSetAssetV3(inputs.opensetAsset);
+  const loadOptions = { admission: inputs.admission ?? 'staging' } as const;
+  const classifierAsset = loadTimeDomainClassifierAssetV3(
+    inputs.classifierAsset,
+    loadOptions,
+  );
+  const opensetAsset = loadTimeDomainOpenSetAssetV3(
+    inputs.opensetAsset,
+    loadOptions,
+  );
+  const encoderAsset = loadTimeDomainFusionAssetV3(
+    inputs.encoderAsset,
+    loadOptions,
+  );
+  assertTimeDomainAssetSetV3(classifierAsset, opensetAsset, encoderAsset);
   const encoders = (
-    inputs.encoders ?? (await loadTimeDomainEncodersV3(inputs.encoderAsset))
+    inputs.encoders ?? (await loadTimeDomainEncodersV3(encoderAsset))
   );
   return new TimeDomainClassifierV3({ classifierAsset, opensetAsset, encoders });
 }

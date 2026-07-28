@@ -29,6 +29,11 @@ import {
   type TimeDomainComplexBranchV3,
   type TimeDomainRealBranchV3,
 } from './time-domain-encoder-v3.js';
+import {
+  admitTimeDomainAssetStatusV3,
+  type TimeDomainAssetLoadOptionsV3,
+  type TimeDomainAssetStatusV3,
+} from './time-domain-asset-status-v3.js';
 
 export const TIME_DOMAIN_FUSION_V3_SCHEMA =
   'atomos.v3.time-domain-invariant-fusion.browser-weights' as const;
@@ -69,7 +74,7 @@ export interface TimeDomainClassificationV3 {
 export interface TimeDomainFusionAssetV3 {
   schema: typeof TIME_DOMAIN_FUSION_V3_SCHEMA;
   schema_version: typeof TIME_DOMAIN_FUSION_V3_SCHEMA_VERSION;
-  status: 'staging_not_release';
+  status: TimeDomainAssetStatusV3;
   packed_length: number;
   real: TimeDomainRealBranchV3;
   complex: TimeDomainComplexBranchV3;
@@ -125,6 +130,7 @@ function finiteVector(value: unknown, path: string, length: number): number[] {
  */
 export function loadTimeDomainFusionAssetV3(
   value: unknown,
+  options: TimeDomainAssetLoadOptionsV3 = {},
 ): TimeDomainFusionAssetV3 {
   const asset = record(value, 'asset');
   if (TIME_DOMAIN_FUSION_V3_FORBIDDEN_SCHEMAS.includes(String(asset.schema))) {
@@ -141,9 +147,7 @@ export function loadTimeDomainFusionAssetV3(
       `unsupported schema version ${String(asset.schema_version)}`,
     );
   }
-  if (asset.status !== 'staging_not_release') {
-    throw new RangeError('asset.status must be staging_not_release');
-  }
+  const status = admitTimeDomainAssetStatusV3(asset.status, 'asset.status', options);
   const real = validateTimeDomainRealBranchV3(asset.real);
   const complex = validateTimeDomainComplexBranchV3(asset.complex);
   for (const field of [
@@ -239,7 +243,7 @@ export function loadTimeDomainFusionAssetV3(
   return {
     schema: TIME_DOMAIN_FUSION_V3_SCHEMA,
     schema_version: TIME_DOMAIN_FUSION_V3_SCHEMA_VERSION,
-    status: 'staging_not_release',
+    status,
     packed_length: packedLength,
     real,
     complex,

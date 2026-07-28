@@ -51,6 +51,11 @@ import {
   TIME_DOMAIN_MAX_UNAMBIGUOUS_LAG_ARC,
   TIME_DOMAIN_MIN_LAG_SIGNAL_TO_SAMPLING_NOISE,
 } from './time-domain-geometry-v3.js';
+import {
+  admitTimeDomainAssetStatusV3,
+  type TimeDomainAssetLoadOptionsV3,
+  type TimeDomainAssetStatusV3,
+} from './time-domain-asset-status-v3.js';
 
 export const TIME_DOMAIN_OPENSET_SCHEMA =
   'atomos.v3.time-domain-openset.staged' as const;
@@ -1285,7 +1290,7 @@ export class CompositeSurvivorPolicyV3 {
 export interface TimeDomainOpenSetAssetV3 {
   schema: typeof TIME_DOMAIN_OPENSET_SCHEMA;
   schema_version: typeof TIME_DOMAIN_OPENSET_SCHEMA_VERSION;
-  status: 'staging_not_release';
+  status: TimeDomainAssetStatusV3;
   contract: StagedArchitectureContract;
   frontend: {
     patch_length: number;
@@ -1303,6 +1308,7 @@ export interface TimeDomainOpenSetAssetV3 {
 /** Validate an untrusted JSON value into a typed staged open-set asset. */
 export function loadTimeDomainOpenSetAssetV3(
   value: unknown,
+  options: TimeDomainAssetLoadOptionsV3 = {},
 ): TimeDomainOpenSetAssetV3 {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new TypeError('open-set asset must be an object');
@@ -1316,9 +1322,7 @@ export function loadTimeDomainOpenSetAssetV3(
       `unsupported open-set schema version ${String(asset.schema_version)}`,
     );
   }
-  if (asset.status !== 'staging_not_release') {
-    throw new RangeError('open-set asset must be staging_not_release');
-  }
+  admitTimeDomainAssetStatusV3(asset.status, 'asset.status', options);
   const contract = asset.contract;
   if (
     contract === null
