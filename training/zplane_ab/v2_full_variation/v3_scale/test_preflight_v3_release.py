@@ -891,9 +891,9 @@ class HarnessTest(TempDirTestCase):
     "full frozen environment not present",
 )
 class EndToEndTest(TempDirTestCase):
-    """The real preflight stays NO-GO until the final manifest is pinned."""
+    """The real frozen environment passes without consuming release data."""
 
-    def test_full_preflight_blocks_an_unpinned_final_manifest(self) -> None:
+    def test_full_preflight_is_go_for_the_frozen_candidate(self) -> None:
         tmp = Path(self.tmpdir())
         output = tmp / "preflight_report.json"
         previous = os.environ.get("PYTHONWARNINGS")
@@ -911,10 +911,10 @@ class EndToEndTest(TempDirTestCase):
             else:
                 os.environ["PYTHONWARNINGS"] = previous
         text = stdout.getvalue()
-        self.assertEqual(status, 1, text)
+        self.assertEqual(status, 0, text)
         final = text.splitlines()[-1]
-        self.assertTrue(final.startswith("NO-GO:"), final)
-        self.assertIn("do not spend release seed 20260735", final)
+        self.assertTrue(final.startswith("GO:"), final)
+        self.assertIn("safe to spend release seed 20260735 once", final)
         # Exactly one GO / NO-GO line, every check itemised above it.
         go_lines = [
             line
@@ -923,12 +923,9 @@ class EndToEndTest(TempDirTestCase):
         ]
         self.assertEqual(len(go_lines), 1)
         report = json.loads(output.read_text())
-        self.assertFalse(report["go"])
+        self.assertTrue(report["go"])
         failed = [item["name"] for item in report["checks"] if not item["passed"]]
-        self.assertEqual(
-            failed,
-            ["candidate", "generation.command_reconstruction"],
-        )
+        self.assertEqual(failed, [])
         self.assertGreaterEqual(len(report["checks"]), 40)
         # The report carries full provenance: the real evaluator's hash both
         # observed and equal to the redeclaration pin.
@@ -957,12 +954,15 @@ class EndToEndTest(TempDirTestCase):
             path.name for path in preflight.DEFAULT_RELEASES_DIR.iterdir()
         )
         self.assertEqual(releases_before, releases_after)
-        # No command is emitted until the exact final-manifest SHA is pinned.
-        generation_error = report["generation_command"]["error"]
-        self.assertTrue(
-            "unpinned" in generation_error
-            or "No such file or directory" in generation_error,
-            generation_error,
+        # The exact one-shot command is reconstructed but never executed.
+        generation = report["generation_command"]
+        self.assertTrue(generation["not_run_by_preflight"])
+        self.assertEqual(
+            generation["candidate_manifest_sha256"],
+            preflight.DEFAULT_PINS["candidate_manifest_sha256"],
+        )
+        self.assertIn(
+            "generate-signallab-iq-release-suite.mjs", generation["command"]
         )
         release_root = (
             preflight.REPO

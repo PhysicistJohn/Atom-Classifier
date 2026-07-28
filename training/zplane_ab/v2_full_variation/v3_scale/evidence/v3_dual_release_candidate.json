@@ -1,0 +1,101 @@
+{
+  "schema": "time-domain-v3-dual-release-candidate-v1",
+  "status": "release_candidate_frozen",
+  "candidate_id": "v3.3-decoupled-8k-classifier-4k-rejector",
+  "validation_evidence": {
+    "path": "training/zplane_ab/v2_full_variation/v3_scale/evidence/v3_decoupled_validation_seeds20260950_20260951.json",
+    "sha256": "85d01b9154bb1d0e60c3f42d8d5cf1854dbcbb1366b0c918250e1a4bc8c8880e"
+  },
+  "classifier": {
+    "role": "known_class_label",
+    "fusion": {
+      "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_ml8000reg_seed20260730",
+      "directory_sha256": "ecd894281b4cbac0917304b22ad7be194d41f994dcf2c008ca6ea0643b58667b",
+      "file_sha256": {
+        "complex_center.npy": "f2d00e61dccad4790d3b2da00b6a677be2dba2daa1aa42894cc5ccf514985f6b",
+        "dev_metrics.json": "a962c94dab4dd3c39f45fce54f3af8235fa681857e7829080929fcc31350bea3",
+        "feature_mean.npy": "29883542bd57f812b74050d2814497ec169cac240ed1fd6d136d7887fdbf8b64",
+        "feature_std.npy": "28f9f430d40603fab7ba3f6f49951a2b18033b91425363ae36e679850d1635fe",
+        "fusion_prototypes.npy": "fade48b8975c94b0fb202d3b83a79353f5dc8876d79e7e7e5953124cbc45df85",
+        "fusion_state_dict.pt": "c85238f97741049f7e19c6e1ef5b81209ece1b9caf5b5702899ce05a96bd111d",
+        "real_center.npy": "5892bc6858c6358a4876804c53c147717034b9f0944f230b55d95d94c0c695cc"
+      }
+    },
+    "runtime_bundle": {
+      "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_runtime_bundle_classifier8kreg_dual_seed20260730",
+      "manifest_path": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_runtime_bundle_classifier8kreg_dual_seed20260730/bundle_manifest.json",
+      "manifest_sha256": "db216324da9b1ab8ec90cbe710c2b147b347ae29842cba20424f44c2869b99c8"
+    }
+  },
+  "rejector": {
+    "role": "known_unknown_decision",
+    "fusion": {
+      "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_multilength_seed20260730",
+      "directory_sha256": "0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5",
+      "file_sha256": {
+        "complex_center.npy": "dd281fe23c628bb454c175eb594e0f3fa87a4b033c61cae364ee99e618b95d84",
+        "dev_metrics.json": "ddf0768bec34dead441a3c5dc26c6627cfa4830c395b5b1521d6337af634e3a2",
+        "feature_mean.npy": "29883542bd57f812b74050d2814497ec169cac240ed1fd6d136d7887fdbf8b64",
+        "feature_std.npy": "28f9f430d40603fab7ba3f6f49951a2b18033b91425363ae36e679850d1635fe",
+        "fusion_prototypes.npy": "aa4fe2a4e0f9999f541d90ffbf99084c7cb670bcd8072422b5d62e11e100dee4",
+        "fusion_state_dict.pt": "b8da74d10d684fcd1c231a226cef520db31a55c6d54d4c1b607641799f95f894",
+        "real_center.npy": "a347253f4f3e13938a72ea8bf4309995575d57ee5b679b589bc24d94dd9bca9c"
+      }
+    },
+    "runtime_bundle": {
+      "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_runtime_bundle_rejector4k_dual_seed20260730",
+      "manifest_path": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_runtime_bundle_rejector4k_dual_seed20260730/bundle_manifest.json",
+      "manifest_sha256": "80ee91f3f8577507a30fdae7adc47de7e7b448d9e563558f2d0becbadb4dee78"
+    }
+  },
+  "staged_validation": {
+    "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_validate_decoupled_rejector4k_classifier8k_budget001_seeds20260950_20260951",
+    "report_path": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_validate_decoupled_rejector4k_classifier8k_budget001_seeds20260950_20260951/openset_metrics.json",
+    "report_sha256": "24241bcb2e47c96e855f2b3e1d213ed5c02ee7c392758af8c62ea41557ea848c",
+    "artifact_sha256": {
+      "v3_branch_lof_components.npz": "0a66ca267356bdacf239de5512b9406e010526c990dc38c137cac84342a062a6",
+      "v3_open_policy_stage_two.npz": "9378f6eea893174b4f716f4db5ea6ea2b637d64b04a0e7672bb39b2e50600dd8",
+      "v3_staged_composite_policy.npz": "7a3d5b8b1bdd67053f5f48a16d97cc2eef1fce909bd68f514c89c8bb4a64c133"
+    }
+  },
+  "stage_one_prefilter": {
+    "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/noise_prefilter_fit20261001_budget001/bundles",
+    "set_sha256": "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2",
+    "bundle_sha256": {
+      "4096": "5ef175f5ddc296ec9ae0ffb8ac6801504fd609d6a852dbd5c4b1bf9a10de0f85",
+      "8192": "e0e972be4d1b7e43929b6c45c69d2dada884b49b39e16555998c375edf744557",
+      "16384": "3d56108fc016d8fb8ff7f4c18f8fc2fa6a1443d5d32d30cd769d52de087384db"
+    }
+  },
+  "browser_assets": {
+    "classifier": {
+      "path": "src/embedding/assets-v3-dual-staging/time-domain-v3-classifier-weights.json",
+      "sha256": "55ab6b0374f1c82491b745c2e6bef7614702c4a3a7e9a68b76e8771f3fba501b",
+      "schema": "atomos.v3.time-domain-invariant-fusion.browser-weights",
+      "status": "staging_not_release"
+    },
+    "rejector": {
+      "path": "src/embedding/assets-v3-dual-staging/time-domain-v3-rejector-weights.json",
+      "sha256": "588bb7de6c802a8c44c1ba6c01d6693fb3e39926de918274f16042c15f1863a1",
+      "schema": "atomos.v3.time-domain-invariant-fusion.browser-weights",
+      "status": "staging_not_release"
+    },
+    "openset_policy": {
+      "path": "src/embedding/assets-v3-dual-staging/time-domain-v3-openset-policy.json",
+      "sha256": "3b0008af99611abf9eb2ebc1c93ec48bda33c815f6af9476e7f47ec45d44f78d",
+      "schema": "atomos.v3.time-domain-openset.staged",
+      "status": "staging_not_release"
+    }
+  },
+  "staging_package_manifest": {
+    "path": "src/embedding/assets-v3-dual-staging/runtime-package-manifest.json",
+    "sha256": "680f094539f19a150c8bbbb5545b26760a39e6ec61bc8478e69358589268924a",
+    "schema": "atomos.v3.time-domain-classifier.dual-runtime-package",
+    "status": "staging_not_release"
+  },
+  "dual_binding": {
+    "path": "src/embedding/assets-v3-dual-staging/time-domain-v3-dual-binding.json",
+    "sha256": "cf93fd379b6bfd9c06abd73a2f0ed1c5608817975bef4dbbc714b38a3f5ca101",
+    "schema": "atomos.v3.time-domain-dual-fusion.binding"
+  }
+}

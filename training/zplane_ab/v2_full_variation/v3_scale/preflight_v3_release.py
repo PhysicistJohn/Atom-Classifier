@@ -131,14 +131,16 @@ DEFAULT_PINS: dict[str, Any] = {
     ),
     # Exact evaluator bytes for the seed-20260735 protocol.  This evaluator
     # restores the strict v2 floors and preserves the prior redeclaration only
-    # as inactive history.
+    # as inactive history.  It also admits the exact post-validation
+    # seed-ledger-only transition under a normalized-AST proof.
     "v3_evaluator_sha256": (
-        "e6875c303c817b553201cc6f2dc317330833cc387b551ead2f99eadde0039149"
+        "09b3ccd1fa9030f6dc1720b8faf3b1a60e5a8359bb300445bfa34a745c99351a"
     ),
     "candidate_manifest_schema": "time-domain-v3-dual-release-candidate-v1",
-    # Filled only after the browser package and dual-binding bytes are final.
-    # None is intentionally a hard NO-GO, never a skipped check.
-    "candidate_manifest_sha256": None,
+    # Frozen only after the browser package and dual-binding bytes were final.
+    "candidate_manifest_sha256": (
+        "efe03e9ec9e5deffccd9513133ad887568f3935d3a42baeb3cafb4e0427a0cb7"
+    ),
     "candidate_id": "v3.3-decoupled-8k-classifier-4k-rejector",
     "staging_package_schema": (
         "atomos.v3.time-domain-classifier.dual-runtime-package"
