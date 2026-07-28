@@ -1,0 +1,7 @@
+# Runtime and evaluation JSON is SHA-256-bound byte evidence. Keep its
+# canonical LF serialization on every checkout, including Windows runners.
+/src/embedding/assets-v3-staging/*.json text eol=lf
+/src/embedding/assets-v3-dual-staging/*.json text eol=lf
+/src/embedding/assets-v3-release/*.json text eol=lf
+/training/zplane_ab/v2_full_variation/artifacts/staging/time_domain_v3_*/*.json text eol=lf
+/tools/time-domain-v3-expected-evaluation-protocol*.json text eol=lf
