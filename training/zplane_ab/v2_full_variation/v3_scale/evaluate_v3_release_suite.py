@@ -116,6 +116,7 @@ existing output file.
 from __future__ import annotations
 
 import argparse
+import ast
 import copy
 from dataclasses import dataclass
 import hashlib
@@ -419,6 +420,44 @@ BUNDLE_ASSEMBLY_SOURCE_HARD_CONTRACT = (
     "train.py",
 )
 
+# The validation process necessarily moved its two novelty seeds from
+# "reserved and clean" to "spent" immediately after their one allowed draw.
+# That bookkeeping-only edit landed in the same commit as the immutable
+# validation artifacts, so the report correctly records the source bytes that
+# actually scored the validation rows while the working tree correctly refuses
+# to draw those rows again.  Admit only this exact old/new byte pair, and only
+# after proving that the complete Python AST is identical when the three
+# top-level seed-ledger assignments are removed.  Any inference, fitting,
+# threshold, feature, or policy edit changes the normalized digest and fails
+# closed.
+POST_VALIDATION_LEDGER_TRANSITION = {
+    "source": "fit_v3_openset_staged.py",
+    "origin": "the staged validation artifact",
+    "validated_sha256": (
+        "6d6d252802029cd57cab1429640d0b285b117caa97a89b994037469e267aa176"
+    ),
+    "current_sha256": (
+        "1ebfecede89eb3d393c8922d0862827efda6356671995656594b536ed19f7514"
+    ),
+    "normalized_ast_sha256": (
+        "86dbb18d8b83845e4f9c067f672b8f69c9fbbe2b9ccf4216755f7eeb8096e967"
+    ),
+    "excluded_top_level_assignments": (
+        "SPENT_NOVELTY_SEEDS",
+        "FIRST_CLEAN_NOVELTY_SEED",
+        "SEED_LEDGER_NOTE",
+    ),
+    "validated_parent_commit": (
+        "6f6e1e05d94d457e16940ad1d2c14c6d95bbc422"
+    ),
+    "ledger_commit": "5ebbd07f763470ff1fc27be04e2e340c6171cc63",
+    "full_index_diff_sha256": (
+        "c071726b44a04d535084b3c10e76eda2c3b61767a542a29173873b95f8466d03"
+    ),
+    "consumed_validation_seeds": (20260950, 20260951),
+    "next_clean_novelty_seed": 20260952,
+}
+
 _SOURCE_LOOKUP = {
     "assemble_v3_fusion.py": HERE / "assemble_v3_fusion.py",
     "fit_v3_openset.py": HERE / "fit_v3_openset.py",
@@ -714,22 +753,118 @@ def _verify_source_contract(
     hard_names: Sequence[str],
     *,
     origin: str,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Compare recorded source hashes against current bytes; fail on drift."""
     checked: dict[str, Any] = {}
+    transitions: dict[str, Any] = {}
     for name in hard_names:
         expected = recorded.get(name)
         if not isinstance(expected, str) or len(expected) != 64:
             raise ValueError(f"{origin} records no usable hash for {name!r}")
-        current = _sha256(_source_path(name))
+        path = _source_path(name)
+        current = _sha256(path)
         if current != expected:
-            raise ValueError(
-                f"source drift: {name} is {current}, but {origin} froze "
-                f"{expected}; the loaded module is not the one the candidate "
-                "was validated with"
+            transition = _admit_post_validation_ledger_transition(
+                name=name,
+                origin=origin,
+                expected=expected,
+                current=current,
+                path=path,
             )
+            if transition is None:
+                raise ValueError(
+                    f"source drift: {name} is {current}, but {origin} froze "
+                    f"{expected}; the loaded module is not the one the candidate "
+                    "was validated with"
+                )
+            transitions[name] = transition
         checked[name] = current
-    return checked
+    return checked, transitions
+
+
+def _ledger_neutral_ast_sha256(
+    path: Path, excluded_assignments: Sequence[str]
+) -> str:
+    """Hash the source AST after removing only named top-level assignments."""
+    excluded = set(excluded_assignments)
+    if not excluded or len(excluded) != len(tuple(excluded_assignments)):
+        raise ValueError("ledger transition exclusion names are invalid")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    kept: list[ast.stmt] = []
+    removed: list[str] = []
+    for node in tree.body:
+        targets: Sequence[ast.expr] = ()
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = (node.target,)
+        names = [
+            target.id for target in targets if isinstance(target, ast.Name)
+        ]
+        if names and set(names).issubset(excluded):
+            removed.extend(names)
+        else:
+            kept.append(node)
+    if sorted(removed) != sorted(excluded):
+        raise ValueError(
+            "ledger transition source does not contain exactly the declared "
+            "top-level assignments"
+        )
+    tree.body = kept
+    payload = ast.dump(
+        tree, annotate_fields=True, include_attributes=False
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _admit_post_validation_ledger_transition(
+    *,
+    name: str,
+    origin: str,
+    expected: str,
+    current: str,
+    path: Path,
+) -> dict[str, Any] | None:
+    """Admit the one exact seed-ledger-only transition after validation."""
+    transition = POST_VALIDATION_LEDGER_TRANSITION
+    if (
+        name != transition["source"]
+        or origin != transition["origin"]
+        or expected != transition["validated_sha256"]
+        or current != transition["current_sha256"]
+    ):
+        return None
+    excluded = transition["excluded_top_level_assignments"]
+    normalized = _ledger_neutral_ast_sha256(path, excluded)
+    if normalized != transition["normalized_ast_sha256"]:
+        raise ValueError(
+            "post-validation ledger transition changed executable source "
+            "outside the three declared top-level seed-ledger assignments"
+        )
+    consumed = tuple(transition["consumed_validation_seeds"])
+    if (
+        tuple(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS) != consumed
+        or any(seed not in staged.SPENT_NOVELTY_SEEDS for seed in consumed)
+        or staged.FIRST_CLEAN_NOVELTY_SEED
+        != transition["next_clean_novelty_seed"]
+    ):
+        raise ValueError(
+            "post-validation ledger transition does not mark the validation "
+            "seeds spent and advance the clean-seed floor"
+        )
+    return {
+        "admission": "exact_post_validation_seed_ledger_transition",
+        "validated_sha256": transition["validated_sha256"],
+        "current_sha256": transition["current_sha256"],
+        "normalized_ast_sha256": normalized,
+        "excluded_top_level_assignments": list(excluded),
+        "validated_parent_commit": transition["validated_parent_commit"],
+        "ledger_commit": transition["ledger_commit"],
+        "full_index_diff_sha256": transition["full_index_diff_sha256"],
+        "consumed_validation_seeds": list(consumed),
+        "next_clean_novelty_seed": transition["next_clean_novelty_seed"],
+        "candidate_inference_behavior_changed": False,
+    }
 
 
 def _load_bundle(bundle_dir: Path) -> dict[str, Any]:
@@ -2044,27 +2179,27 @@ def load_candidate(
 
     # --- source drift --------------------------------------------------------
     staged_recorded = staged_metrics.get("source_sha256", {})
-    checked = _verify_source_contract(
+    checked, source_transitions = _verify_source_contract(
         staged_recorded,
         STAGED_SOURCE_HARD_CONTRACT,
         origin="the staged validation artifact",
     )
-    checked.update(
-        _verify_source_contract(
-            manifest.get("provenance", {}).get("assembly_source_sha256", {}),
-            BUNDLE_ASSEMBLY_SOURCE_HARD_CONTRACT,
-            origin="the runtime bundle assembly record",
-        )
+    rejector_checked, rejector_transitions = _verify_source_contract(
+        manifest.get("provenance", {}).get("assembly_source_sha256", {}),
+        BUNDLE_ASSEMBLY_SOURCE_HARD_CONTRACT,
+        origin="the runtime bundle assembly record",
     )
-    checked.update(
-        _verify_source_contract(
-            classifier_manifest.get("provenance", {}).get(
-                "assembly_source_sha256", {}
-            ),
-            BUNDLE_ASSEMBLY_SOURCE_HARD_CONTRACT,
-            origin="the classifier runtime bundle assembly record",
-        )
+    classifier_checked, classifier_transitions = _verify_source_contract(
+        classifier_manifest.get("provenance", {}).get(
+            "assembly_source_sha256", {}
+        ),
+        BUNDLE_ASSEMBLY_SOURCE_HARD_CONTRACT,
+        origin="the classifier runtime bundle assembly record",
     )
+    checked.update(rejector_checked)
+    checked.update(classifier_checked)
+    source_transitions.update(rejector_transitions)
+    source_transitions.update(classifier_transitions)
     frontend_recorded = manifest.get("frontend", {}).get("source_sha256", {})
     classifier_frontend_recorded = classifier_manifest.get("frontend", {}).get(
         "source_sha256", {}
@@ -2232,6 +2367,7 @@ def load_candidate(
         source_report={
             "enforced": checked,
             "recorded_only": recorded_only,
+            "post_validation_ledger_transitions": source_transitions,
             "evaluator_chain": evaluator_chain,
         },
     )

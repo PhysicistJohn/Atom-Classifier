@@ -2791,6 +2791,55 @@ class CandidateTamperTests(unittest.TestCase):
             self._load(root)
 
 
+class PostValidationLedgerTransitionTests(unittest.TestCase):
+    """Only the exact seed-spending bookkeeping transition is admissible."""
+
+    def test_exact_transition_is_ast_verified_and_reported(self):
+        transition = evaluator.POST_VALIDATION_LEDGER_TRANSITION
+        checked, transitions = evaluator._verify_source_contract(
+            {
+                str(transition["source"]): str(
+                    transition["validated_sha256"]
+                )
+            },
+            (str(transition["source"]),),
+            origin=str(transition["origin"]),
+        )
+        name = str(transition["source"])
+        self.assertEqual(checked[name], transition["current_sha256"])
+        self.assertEqual(
+            transitions[name]["admission"],
+            "exact_post_validation_seed_ledger_transition",
+        )
+        self.assertEqual(
+            transitions[name]["normalized_ast_sha256"],
+            transition["normalized_ast_sha256"],
+        )
+        self.assertFalse(
+            transitions[name]["candidate_inference_behavior_changed"]
+        )
+        self.assertEqual(
+            transitions[name]["consumed_validation_seeds"],
+            [20260950, 20260951],
+        )
+        self.assertEqual(
+            transitions[name]["next_clean_novelty_seed"], 20260952
+        )
+
+    def test_transition_is_not_accepted_for_another_origin(self):
+        transition = evaluator.POST_VALIDATION_LEDGER_TRANSITION
+        with self.assertRaisesRegex(ValueError, "source drift"):
+            evaluator._verify_source_contract(
+                {
+                    str(transition["source"]): str(
+                        transition["validated_sha256"]
+                    )
+                },
+                (str(transition["source"]),),
+                origin="an untrusted source record",
+            )
+
+
 class ProtocolAndHelperIdentityTests(unittest.TestCase):
     """The v3 evaluator may not restate anything the v2 evaluator owns."""
 
