@@ -136,27 +136,54 @@ test('v3 protocol refuses a release seed the fixture did not predeclare', () => 
   assert.equal(existsSync(root), false);
 });
 
-test('v3 protocol refuses consumed and development-band release seeds', () => {
+test('v2 and v3 both refuse consumed seed 20260735 before any output', () => {
+  const expectedReason =
+    'consumed sealed v3.3 decoupled 8k-classifier/4k-rejector release suite '
+    + '(22/23 gates; open_known_false_unknown_worst_length '
+    + '0.11382734912146678 > 0.10 frozen; evidence rules 2 and 4)';
+  for (const protocol of ['v2', 'v3']) {
+    const root = join(
+      tmpdir(),
+      `atomos-release-${protocol}-refused-seed-20260735-`
+        + `${process.pid}-${Date.now()}`,
+    );
+    const result = run({
+      RELEASE_ROOT: root,
+      RELEASE_EVALUATION_PROTOCOL: protocol,
+      RELEASE_SEED: '20260735',
+    });
+    assert.notEqual(result.status, 0);
+    assert.ok(result.stderr.includes(expectedReason), result.stderr);
+    assert.equal(existsSync(root), false);
+  }
+});
+
+test('v2 and v3 preserve all older consumed, model, and band refusals', () => {
   for (const [seed, pattern] of [
     ['20260729', /consumed sealed v2 release suite/],
+    ['20260730', /development model\/fusion seed/],
     ['20260731', /consumed sealed v3\.0 release suite/],
+    ['20260732', /next untouched release seed after the consumed runs: 20260736/],
     ['20260733', /consumed sealed v3\.2 release suite/],
     ['20260734', /historical gate redeclaration/],
     ['20260942', /development novelty seed namespace/],
     ['20261001', /noise-prefilter fit-only seed band/],
   ]) {
-    const root = join(
-      tmpdir(),
-      `atomos-release-v3-refused-seed-${seed}-${process.pid}-${Date.now()}`,
-    );
-    const result = run({
-      RELEASE_ROOT: root,
-      RELEASE_EVALUATION_PROTOCOL: 'v3',
-      RELEASE_SEED: seed,
-    });
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, pattern);
-    assert.equal(existsSync(root), false);
+    for (const protocol of ['v2', 'v3']) {
+      const root = join(
+        tmpdir(),
+        `atomos-release-${protocol}-refused-seed-${seed}-`
+          + `${process.pid}-${Date.now()}`,
+      );
+      const result = run({
+        RELEASE_ROOT: root,
+        RELEASE_EVALUATION_PROTOCOL: protocol,
+        RELEASE_SEED: seed,
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, pattern);
+      assert.equal(existsSync(root), false);
+    }
   }
 });
 
@@ -263,54 +290,10 @@ test('v3 protocol fixture is the evaluator-printed object, self-consistent', () 
   }
 });
 
-test('v3 intent embeds the evaluator-printed protocol object verbatim', {
-  skip: TEST_SIGNALLAB_ROOT
-    ? false
-    : 'set ATOMOS_RELEASE_TEST_SIGNALLAB_ROOT to a verified isolated tree',
-}, () => {
-  const root = join(
-    tmpdir(),
-    `atomos-release-v3-intent-${process.pid}-${Date.now()}`,
-  );
-  const fakeBin = mkdtempSync(join(tmpdir(), 'atomos-release-v3-fake-bin-'));
-  const fakeNpx = join(fakeBin, 'npx');
-  writeFileSync(
-    fakeNpx,
-    '#!/bin/sh\n'
-      + 'if [ "$1" = "--version" ]; then echo "10.9.8"; exit 0; fi\n'
-      + 'exit 17\n',
-  );
-  chmodSync(fakeNpx, 0o755);
-  const result = run({
-    RELEASE_ROOT: root,
-    RELEASE_SEED: '20260735',
-    RELEASE_EVALUATION_PROTOCOL: 'v3',
-    RELEASE_LENGTHS: '4096,8192,16384,32768',
-    RELEASE_TARGET_PER_CLASS: '80',
-    PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
-  });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /occupied-start probe generation.*failed/);
-  const intent = JSON.parse(
-    readFileSync(join(root, 'RELEASE_INTENT.json'), 'utf8'),
-  );
-  const fixture = JSON.parse(
-    readFileSync(
-      join(REPO, 'tools/time-domain-v3-expected-evaluation-protocol-seed20260735.json'),
-      'utf8',
-    ),
-  );
-  // The embedded object must equal the evaluator's --print-expected-protocol
-  // output exactly: the sealed evaluator refuses the suite on ANY difference.
-  assert.deepEqual(intent.evaluation_protocol, fixture.evaluation_protocol);
-  assert.equal(intent.release_seed, 20260735);
-  assert.equal(intent.status, 'in_progress');
-  // The v2 provenance constant remains selectable and untouched.
-  assert.equal(
-    intent.evaluation_protocol.version,
-    'time-domain-v3-release-evaluation-v3-dual-fusion',
-  );
-});
+// There is intentionally no v3 intent-generation integration against the
+// seed-20260735 fixture: that seed is consumed and both protocol modes must
+// refuse it. Restore the integration only with a fixture for an untouched
+// release seed.
 
 test('predeclares evaluation choices in intent before corpus generation', {
   skip: TEST_SIGNALLAB_ROOT

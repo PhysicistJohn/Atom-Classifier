@@ -174,11 +174,11 @@ const V3_EXPECTED_PROTOCOL_FIXTURE = resolve(
 const V3_EVALUATION_VERSION =
   'time-domain-v3-release-evaluation-v3-dual-fusion';
 /**
- * Seed hygiene mirrored from `evaluate_v3_release_suite.validate_release_seed`
- * so a refused seed fails here, before any corpus generation, instead of at
- * evaluation time after the suite bytes exist.
+ * Global seed hygiene mirrored from the sealed evaluators. This guard applies
+ * before protocol selection so neither the historical v2 path nor the staged
+ * v3 path can redraw a consumed or development-only seed.
  */
-const V3_CONSUMED_RELEASE_SEEDS = Object.freeze({
+const REFUSED_RELEASE_SEEDS = Object.freeze({
   20260729: 'consumed sealed v2 release suite (evidence rule 2)',
   20260731:
     'consumed sealed v3.0 release suite (HANDOFF 25: 22/23 gates, known '
@@ -190,32 +190,39 @@ const V3_CONSUMED_RELEASE_SEEDS = Object.freeze({
     'consumed sealed v3.2 release suite under its historical gate '
     + 'redeclaration (22/23 gates, five-shot failure frozen; evidence rules '
     + '2 and 4)',
+  20260735:
+    'consumed sealed v3.3 decoupled 8k-classifier/4k-rejector release suite '
+    + '(22/23 gates; open_known_false_unknown_worst_length '
+    + '0.11382734912146678 > 0.10 frozen; evidence rules 2 and 4)',
   20260730:
     'development model/fusion seed; reusing it as a release seed would '
     + 'collide the model and release namespaces (HANDOFF 25 note)',
   20260732:
     'development model seed; reusing it as a release seed would collide '
     + 'the model and release namespaces (HANDOFF 25 note; next untouched '
-    + 'release seed after the consumed runs: 20260735)',
+    + 'release seed after the consumed runs: 20260736)',
 });
-const V3_REFUSED_RELEASE_SEED_BANDS = Object.freeze([
+const REFUSED_RELEASE_SEED_BANDS = Object.freeze([
   [20260900, 20260999, 'development novelty seed namespace'],
   [20261000, 20261999, 'noise-prefilter fit-only seed band'],
 ]);
 
-function loadV3EvaluationProtocol(releaseSeed) {
-  const consumed = V3_CONSUMED_RELEASE_SEEDS[releaseSeed];
-  if (consumed !== undefined) {
-    throw new Error(`release seed ${releaseSeed} is refused: ${consumed}`);
+function validateReleaseSeed(releaseSeed) {
+  const reason = REFUSED_RELEASE_SEEDS[releaseSeed];
+  if (reason !== undefined) {
+    throw new Error(`release seed ${releaseSeed} is refused: ${reason}`);
   }
-  for (const [low, high, reason] of V3_REFUSED_RELEASE_SEED_BANDS) {
+  for (const [low, high, bandReason] of REFUSED_RELEASE_SEED_BANDS) {
     if (releaseSeed >= low && releaseSeed <= high) {
       throw new Error(
-        `release seed ${releaseSeed} lies in the ${reason} (${low}-${high}) `
+        `release seed ${releaseSeed} lies in the ${bandReason} (${low}-${high}) `
         + 'and is not an untouched release seed',
       );
     }
   }
+}
+
+function loadV3EvaluationProtocol(releaseSeed) {
   const wrapper = JSON.parse(readFileSync(V3_EXPECTED_PROTOCOL_FIXTURE, 'utf8'));
   const protocol = wrapper?.evaluation_protocol;
   if (protocol?.version !== V3_EVALUATION_VERSION) {
@@ -243,6 +250,7 @@ function loadV3EvaluationProtocol(releaseSeed) {
 }
 
 function selectEvaluationProtocol(releaseSeed) {
+  validateReleaseSeed(releaseSeed);
   const choice = (process.env.RELEASE_EVALUATION_PROTOCOL ?? 'v2').trim();
   if (choice === 'v2') return EVALUATION_PROTOCOL;
   if (choice === 'v3') return loadV3EvaluationProtocol(releaseSeed);
