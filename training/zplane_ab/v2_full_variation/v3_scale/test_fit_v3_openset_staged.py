@@ -375,9 +375,11 @@ class SeedLedgerTests(unittest.TestCase):
                 20260947,
                 20260948,
                 20260949,
+                20260950,
+                20260951,
             ],
         )
-        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260950)
+        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260952)
         self.assertEqual(subject.PROPOSED_DESIGN_NOVELTY_SEED, 20260949)
         self.assertEqual(
             subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, (20260950, 20260951)
@@ -420,6 +422,7 @@ class SeedLedgerTests(unittest.TestCase):
         with mock.patch.dict(
             subject.SPENT_NOVELTY_SEEDS,
             {DESIGN_SEED: "froze the selected design"},
+            clear=True,
         ):
             role, design, seeds = subject.validate_seed_plan(
                 "validate",
@@ -462,8 +465,8 @@ class SeedLedgerTests(unittest.TestCase):
 
     def test_a_clean_seed_is_accepted(self) -> None:
         self.assertEqual(
-            subject.validate_novelty_seeds([20260950, 20260951]),
-            (20260950, 20260951),
+            subject.validate_novelty_seeds([20260952, 20260953]),
+            (20260952, 20260953),
         )
 
     def test_duplicate_and_empty_seed_sets_are_refused(self) -> None:
@@ -476,21 +479,19 @@ class SeedLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "SPENT"):
             subject.validate_seed_plan("validate", 20260949, [20260949])
 
-    def test_validate_accepts_the_default_pair(self) -> None:
-        role, design, seeds = subject.validate_seed_plan(
-            "validate", DESIGN_SEED, subject.DEFAULT_VALIDATION_NOVELTY_SEEDS
-        )
-        self.assertEqual(role, "validate")
-        self.assertEqual(design, DESIGN_SEED)
-        self.assertEqual(seeds, subject.DEFAULT_VALIDATION_NOVELTY_SEEDS)
+    def test_validate_refuses_redrawing_the_consumed_default_pair(self) -> None:
+        with self.assertRaisesRegex(ValueError, "SPENT"):
+            subject.validate_seed_plan(
+                "validate", DESIGN_SEED, subject.DEFAULT_VALIDATION_NOVELTY_SEEDS
+            )
 
     def test_a_default_validation_seed_may_not_be_the_design_seed(self) -> None:
-        with self.assertRaisesRegex(ValueError, "design seed is reserved"):
+        with self.assertRaisesRegex(ValueError, "SPENT"):
             subject.validate_seed_plan("design", VALIDATION_SEED, [VALIDATION_SEED])
 
-    def test_design_refuses_the_reserved_validation_seeds(self) -> None:
+    def test_design_refuses_the_consumed_validation_seeds(self) -> None:
         with _temporarily_unspent_design_seed():
-            with self.assertRaisesRegex(ValueError, "stay untouched"):
+            with self.assertRaisesRegex(ValueError, "SPENT"):
                 subject.validate_seed_plan(
                     "design", DESIGN_SEED, [DESIGN_SEED, VALIDATION_SEED]
                 )
@@ -1721,7 +1722,7 @@ class EndToEndRunTests(unittest.TestCase):
             "prefilter_module": subject.PREFILTER_MODULE_DEFAULT,
             "posedegen_module": subject.POSEDEGEN_MODULE_DEFAULT,
             "device": "cpu",
-            "novelty_seeds": [VALIDATION_SEED],
+            "novelty_seeds": [UNIT_NOVELTY_SEED],
             "novelty_n": 2,
             "prefix_lengths": list(TEST_LENGTHS),
             "reproduction_tolerance": 1e-4,
@@ -1900,9 +1901,9 @@ class EndToEndRunTests(unittest.TestCase):
     def test_the_full_gate_set_is_reported_at_every_seed_and_length(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             report = self._run(Path(root))
-        self.assertEqual(set(report["novelty"]), {str(VALIDATION_SEED)})
+        self.assertEqual(set(report["novelty"]), {str(UNIT_NOVELTY_SEED)})
         for length in TEST_LENGTHS:
-            row = report["novelty"][str(VALIDATION_SEED)][str(length)]
+            row = report["novelty"][str(UNIT_NOVELTY_SEED)][str(length)]
             for family in subject.NOVELTY_FAMILIES:
                 self.assertIn("auroc", row[family])
                 self.assertIn("threshold_recall", row[family])
@@ -1950,7 +1951,7 @@ class EndToEndRunTests(unittest.TestCase):
         self.assertEqual(
             protocol["stage_one_causal_prefix_rule_lengths"], [4096]
         )
-        rows = report["novelty"][str(VALIDATION_SEED)]
+        rows = report["novelty"][str(UNIT_NOVELTY_SEED)]
         long_row = rows["4096"]
         max_fitted_row = rows[str(KNOWN_LENGTH)]
         for family in subject.NOVELTY_FAMILIES:
@@ -2059,7 +2060,7 @@ class EndToEndRunTests(unittest.TestCase):
             total["stage_two_rows_scored_unstaged"],
         )
         gated_any = any(
-            report["novelty"][str(VALIDATION_SEED)][str(length)][family][
+            report["novelty"][str(UNIT_NOVELTY_SEED)][str(length)][family][
                 "gated_at_stage_one_fraction"
             ]
             > 0.0
@@ -2122,10 +2123,10 @@ class EndToEndRunTests(unittest.TestCase):
             second = self._run(Path(root))
         self.assertEqual(first["gates"], second["gates"])
         self.assertEqual(
-            first["novelty"][str(VALIDATION_SEED)][str(TEST_LENGTHS[0])][
+            first["novelty"][str(UNIT_NOVELTY_SEED)][str(TEST_LENGTHS[0])][
                 "noise"
             ]["auroc"],
-            second["novelty"][str(VALIDATION_SEED)][str(TEST_LENGTHS[0])][
+            second["novelty"][str(UNIT_NOVELTY_SEED)][str(TEST_LENGTHS[0])][
                 "noise"
             ]["auroc"],
         )

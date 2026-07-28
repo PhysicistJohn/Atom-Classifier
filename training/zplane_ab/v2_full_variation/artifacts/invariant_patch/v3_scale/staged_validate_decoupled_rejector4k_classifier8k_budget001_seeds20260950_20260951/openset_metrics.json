@@ -1,0 +1,2646 @@
+{
+  "additive_only": false,
+  "all_pass": true,
+  "architecture": {
+    "composite": "a stage-1 survivor's staged score is max(stage2_enrollment_rank, stage1_score_enrollment_rank); the staged unknown threshold is the frozen q0.95 of the composite over enrollment stage-1 survivors (enrollment only). Gated rows keep the 1 + softsign(stage-1 log-odds) axis above every survivor",
+    "kind": "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry",
+    "schema": 2,
+    "stage_one": "noise prefilter on pose-degeneracy features; coefficients fit on training rows, operating point a known-false-positive budget on its OWN enrollment score distribution, one bundle per capture length",
+    "stage_one_fitted_here": false,
+    "stage_two": "fit_v3_openset unchanged and imported: branch-LOF rank blended with the across_patch_frequency_dispersion geometry rank at the frozen 0.8/0.2 weights, internally thresholded at the enrollment q0.95",
+    "stage_two_policy_kind": "v3_known_only_lof_frequency_dispersion_rank_blend",
+    "stage_two_refit_on_survivors": false,
+    "stage_two_refit_on_survivors_note": "stage 2 is fit on the FULL enrollment population, exactly as the unstaged path fits it. Refitting it on stage-1 survivors would confound the effect of the gate with the effect of a refit; leaving it identical makes the staged/unstaged comparison in this report an experiment rather than an anecdote",
+    "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+    "staged_policy_version_history": {
+      "1": "v3_staged_noise_prefilter_then_known_only_lof_geometry: survivor score = stage-2 enrollment rank; threshold = stage-2 enrollment q95. Sealed seed 20260731, known-FUR failure frozen; 0.01-budget variant (v3.1) froze a noise-AUROC dev failure on seeds 20260944/20260945",
+      "2": "composite survivor score max(stage2_enrollment_rank, stage1_score_enrollment_rank); staged threshold = q95 of the composite on enrollment stage-1 survivors; gate, prefilter coefficients, LOF ensemble, blend weights and stage-2 internals untouched"
+    },
+    "staged_score_note": "Stage-2 scores are enrollment empirical ranks in [0, 1).  A stage-1 survivor's staged score is the COMPOSITE max(stage2_enrollment_rank, stage1_score_enrollment_rank), also in [0, 1), where the stage-1 rank is the empirical enrollment rank of the stage-1 log-odds fit on ENROLLMENT stage-1 survivors only (searchsorted-left, the stage-2 convention).  A row gated at stage 1 has no stage-2 score at all -- that is the short circuit -- and is placed at 1.0 + a bounded monotone map (softsign) of its stage-1 log-odds, i.e. in (1, 2), above every survivor.  The staged unknown threshold is the frozen q95 of the composite over enrollment survivors, so the staged score is a single axis on which 'score > staged threshold' is exactly the staged decision 'gated at stage 1, or composite-rejected at stage 2', which is asserted row by row.  AUROC and threshold recall computed from it are properties of the staged system, not of either stage read in isolation.",
+    "survivor_score": "max(stage2_enrollment_rank, stage1_score_enrollment_rank)",
+    "why_composite": "stage-1's continuous log-odds separates noise from known captures at 0.978 AUROC in-sample but was discarded below the gate; the composite uses that score without moving the gate. The frozen v3.1 evidence (seeds 20260944/20260945) showed that tightening the gate alone pushes noise into stage 2, whose own noise axis is weak (~0.60 AUROC standalone), costing the noise AUROC floor (worst cell 0.7957 vs 0.80)",
+    "why_staged": "the frozen blend must carry the branch-LOF term, which on v3 embeddings ranks noise as known (HANDOFF 17: noise AUROC 0.6038), so q95 fit on the fused known distribution puts the operating point in the wrong place. Deciding noise first, against its own score distribution, removes that dependency"
+  },
+  "architecture_contract_change": "The v3 open-set rejector is strictly additive and never alters the closed label. This noise prefilter is a GATE: when it fires, classification does not run and the row has no closed label at all. That is a deliberate change to the architecture contract, not an oversight, and it must be stated in the emitted JSON and in any release claim. It also means a gated row skips the encoder, the fusion, the prototype distance and the branch LOF; that saving is measured by compute_saving() and is never asserted.",
+  "artifacts": {
+    "v3_branch_lof_components.npz": "0a66ca267356bdacf239de5512b9406e010526c990dc38c137cac84342a062a6",
+    "v3_open_policy_stage_two.npz": "9378f6eea893174b4f716f4db5ea6ea2b637d64b04a0e7672bb39b2e50600dd8",
+    "v3_staged_composite_policy.npz": "7a3d5b8b1bdd67053f5f48a16d97cc2eef1fce909bd68f514c89c8bb4a64c133"
+  },
+  "changes_closed_label": true,
+  "closed_label_can_be_gated": true,
+  "closed_label_can_be_gated_note": "This rejector can decide before the classifier runs. When the stage-1 noise prefilter fires, the capture is rejected as noise and no closed-set label is produced for it at all: the encoder forward, the fusion, the branch LOF and the frozen policy are never computed for that row. Every earlier rejector in this repository was strictly additive and could only annotate a label it was forbidden to change. This one can suppress the label. That is a deliberate architecture change, made because the frozen additive blend cannot reach the noise gate (HANDOFF 17 and 19), and it must be stated in any release claim built on this module. Its cost is known false-unknown rate, which is reported per stage below so it is always visible whether the prefilter or the branch LOF rejected a known signal. Stage 2 remains additive on the rows it sees: within stage 2 the closed label is recomputed after scoring and asserted bit-identical.",
+  "closed_label_contract": "STAGE 1 IS A BEHAVIOURAL GATE, NOT AN ADDITIVE SCORE: a capture the noise prefilter fires on is rejected before classification and receives no closed-set label. STAGE 2 is additive as before: for every row it sees, the nearest-prototype label is recomputed after scoring and asserted bit-identical.",
+  "composite": {
+    "enrollment_capture_length": 16384,
+    "enrollment_feature_seconds": 2.0654952500000006,
+    "enrollment_features_sha256": "d5f12100be18ec5b1a6251dd55a904e519c5a8e1e310f06e40885ab8263c8cad",
+    "enrollment_gated_rows": 37,
+    "enrollment_rows": 3740,
+    "enrollment_stage_one_gate_rate": 0.009893048128342246,
+    "enrollment_survivor_rows": 3703,
+    "kind": "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry",
+    "policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+    "rationale": "stage-1's continuous log-odds separates noise from known captures at 0.978 AUROC in-sample but was discarded below the gate; the composite uses that score without moving the gate. The frozen v3.1 evidence (seeds 20260944/20260945) showed that tightening the gate alone pushes noise into stage 2, whose own noise axis is weak (~0.60 AUROC standalone), costing the noise AUROC floor (worst cell 0.7957 vs 0.80)",
+    "schema": 2,
+    "stage_one_rank_convention": "empirical enrollment rank: searchsorted-left over the sorted enrollment-SURVIVOR stage-1 log-odds, divided by (survivors + 1); identical to the stage-2 v3_time_domain_openset.empirical_rank convention",
+    "stage_two_threshold_unchanged": 0.9494921144079123,
+    "survivor_score": "max(stage2_enrollment_rank, stage1_score_enrollment_rank)",
+    "threshold": 0.9740452030878427,
+    "threshold_population": "enrollment stage-1 survivors only (enrollment only, as every rank and threshold in this chain)",
+    "threshold_quantile": 0.95
+  },
+  "compute_saved": {
+    "by_cell": [
+      {
+        "family": "noise",
+        "novelty_seed": 20260950,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 161,
+          "gated_fraction": 0.4633333333333333,
+          "gated_rows": 139,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 4096,
+        "rows": 300,
+        "short_circuited": 139,
+        "short_circuited_fraction": 0.4633333333333333,
+        "stage_one_feature_seconds": 0.0882146330001774,
+        "stage_one_score_seconds": 0.00010554200000001401,
+        "stage_two_rows_scored_staged": 161,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 0.8364161659999922,
+        "staged_total_seconds": 0.9247363410001697,
+        "unstaged_total_seconds": 1.4825041670000019,
+        "wall_clock_delta_seconds": -0.5577678259998322,
+        "wall_clock_speedup": 1.6031641682823514
+      },
+      {
+        "family": "chirp",
+        "novelty_seed": 20260950,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 300,
+          "gated_fraction": 0.0,
+          "gated_rows": 0,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 4096,
+        "rows": 300,
+        "short_circuited": 0,
+        "short_circuited_fraction": 0.0,
+        "stage_one_feature_seconds": 0.09133116299989297,
+        "stage_one_score_seconds": 0.00012070799999719384,
+        "stage_two_rows_scored_staged": 300,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 1.6797090830000059,
+        "staged_total_seconds": 1.771160953999896,
+        "unstaged_total_seconds": 1.7851033749999772,
+        "wall_clock_delta_seconds": -0.01394242100008114,
+        "wall_clock_speedup": 1.0078719107761462
+      },
+      {
+        "family": "noise",
+        "novelty_seed": 20260950,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 167,
+          "gated_fraction": 0.44333333333333336,
+          "gated_rows": 133,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 8192,
+        "rows": 300,
+        "short_circuited": 133,
+        "short_circuited_fraction": 0.44333333333333336,
+        "stage_one_feature_seconds": 0.1242615739998314,
+        "stage_one_score_seconds": 0.00011733400000935035,
+        "stage_two_rows_scored_staged": 167,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 0.7867404590000149,
+        "staged_total_seconds": 0.9111193669998556,
+        "unstaged_total_seconds": 1.6937160839999876,
+        "wall_clock_delta_seconds": -0.782596717000132,
+        "wall_clock_speedup": 1.8589398330726692
+      },
+      {
+        "family": "chirp",
+        "novelty_seed": 20260950,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 300,
+          "gated_fraction": 0.0,
+          "gated_rows": 0,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 8192,
+        "rows": 300,
+        "short_circuited": 0,
+        "short_circuited_fraction": 0.0,
+        "stage_one_feature_seconds": 0.1151208679999911,
+        "stage_one_score_seconds": 0.00010870900001691552,
+        "stage_two_rows_scored_staged": 300,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 1.5811294160000102,
+        "staged_total_seconds": 1.6963589930000182,
+        "unstaged_total_seconds": 1.4642970000000162,
+        "wall_clock_delta_seconds": 0.23206199300000208,
+        "wall_clock_speedup": 0.8631999512145719
+      },
+      {
+        "family": "noise",
+        "novelty_seed": 20260950,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 171,
+          "gated_fraction": 0.43,
+          "gated_rows": 129,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 16384,
+        "rows": 300,
+        "short_circuited": 129,
+        "short_circuited_fraction": 0.43,
+        "stage_one_feature_seconds": 0.1649371619998874,
+        "stage_one_score_seconds": 0.00010854199999243974,
+        "stage_two_rows_scored_staged": 171,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 0.9110097079999946,
+        "staged_total_seconds": 1.0760554119998744,
+        "unstaged_total_seconds": 1.6297297919999778,
+        "wall_clock_delta_seconds": -0.5536743800001034,
+        "wall_clock_speedup": 1.5145407697649014
+      },
+      {
+        "family": "chirp",
+        "novelty_seed": 20260950,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 298,
+          "gated_fraction": 0.006666666666666667,
+          "gated_rows": 2,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 16384,
+        "rows": 300,
+        "short_circuited": 2,
+        "short_circuited_fraction": 0.006666666666666667,
+        "stage_one_feature_seconds": 0.16611041399988835,
+        "stage_one_score_seconds": 0.00010808400000428264,
+        "stage_two_rows_scored_staged": 298,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 1.5889736249999942,
+        "staged_total_seconds": 1.7551921229998868,
+        "unstaged_total_seconds": 1.5990127919999964,
+        "wall_clock_delta_seconds": 0.15617933099989045,
+        "wall_clock_speedup": 0.911018669151183
+      },
+      {
+        "family": "noise",
+        "novelty_seed": 20260950,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 171,
+          "gated_fraction": 0.43,
+          "gated_rows": 129,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 32768,
+        "rows": 300,
+        "short_circuited": 129,
+        "short_circuited_fraction": 0.43,
+        "stage_one_feature_seconds": 0.16513215400007653,
+        "stage_one_score_seconds": 0.00011508299999718474,
+        "stage_two_rows_scored_staged": 171,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 1.0186114169999883,
+        "staged_total_seconds": 1.183858654000062,
+        "unstaged_total_seconds": 1.7057805420000136,
+        "wall_clock_delta_seconds": -0.5219218879999517,
+        "wall_clock_speedup": 1.4408650359031159
+      },
+      {
+        "family": "chirp",
+        "novelty_seed": 20260950,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 298,
+          "gated_fraction": 0.006666666666666667,
+          "gated_rows": 2,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 32768,
+        "rows": 300,
+        "short_circuited": 2,
+        "short_circuited_fraction": 0.006666666666666667,
+        "stage_one_feature_seconds": 0.1665953420002495,
+        "stage_one_score_seconds": 0.00011333300000160307,
+        "stage_two_rows_scored_staged": 298,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 1.7785483749999855,
+        "staged_total_seconds": 1.9452570500002366,
+        "unstaged_total_seconds": 1.82336858299999,
+        "wall_clock_delta_seconds": 0.12188846700024669,
+        "wall_clock_speedup": 0.9373406887278821
+      },
+      {
+        "family": "noise",
+        "novelty_seed": 20260951,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 163,
+          "gated_fraction": 0.45666666666666667,
+          "gated_rows": 137,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 4096,
+        "rows": 300,
+        "short_circuited": 137,
+        "short_circuited_fraction": 0.45666666666666667,
+        "stage_one_feature_seconds": 0.09328204600006984,
+        "stage_one_score_seconds": 0.00011783299999024166,
+        "stage_two_rows_scored_staged": 163,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 0.9842351249999979,
+        "staged_total_seconds": 1.077635004000058,
+        "unstaged_total_seconds": 1.858610958000014,
+        "wall_clock_delta_seconds": -0.7809759539999561,
+        "wall_clock_speedup": 1.7247128676231402
+      },
+      {
+        "family": "chirp",
+        "novelty_seed": 20260951,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 300,
+          "gated_fraction": 0.0,
+          "gated_rows": 0,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 4096,
+        "rows": 300,
+        "short_circuited": 0,
+        "short_circuited_fraction": 0.0,
+        "stage_one_feature_seconds": 0.10025854599999207,
+        "stage_one_score_seconds": 0.00011329100001944425,
+        "stage_two_rows_scored_staged": 300,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 1.63735566699998,
+        "staged_total_seconds": 1.7377275039999915,
+        "unstaged_total_seconds": 1.618019041999986,
+        "wall_clock_delta_seconds": 0.11970846200000551,
+        "wall_clock_speedup": 0.9311120634711402
+      },
+      {
+        "family": "noise",
+        "novelty_seed": 20260951,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 165,
+          "gated_fraction": 0.45,
+          "gated_rows": 135,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 8192,
+        "rows": 300,
+        "short_circuited": 135,
+        "short_circuited_fraction": 0.45,
+        "stage_one_feature_seconds": 0.11828037100002575,
+        "stage_one_score_seconds": 0.00011708299999213523,
+        "stage_two_rows_scored_staged": 165,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 1.0710450840000192,
+        "staged_total_seconds": 1.189442538000037,
+        "unstaged_total_seconds": 1.685300500000011,
+        "wall_clock_delta_seconds": -0.4958579619999739,
+        "wall_clock_speedup": 1.416882653981523
+      },
+      {
+        "family": "chirp",
+        "novelty_seed": 20260951,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 300,
+          "gated_fraction": 0.0,
+          "gated_rows": 0,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 8192,
+        "rows": 300,
+        "short_circuited": 0,
+        "short_circuited_fraction": 0.0,
+        "stage_one_feature_seconds": 0.12651078200008214,
+        "stage_one_score_seconds": 0.00012145799999530027,
+        "stage_two_rows_scored_staged": 300,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 2.139629874999997,
+        "staged_total_seconds": 2.2662621150000746,
+        "unstaged_total_seconds": 1.9393267499999922,
+        "wall_clock_delta_seconds": 0.32693536500008236,
+        "wall_clock_speedup": 0.855738061879011
+      },
+      {
+        "family": "noise",
+        "novelty_seed": 20260951,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 174,
+          "gated_fraction": 0.42,
+          "gated_rows": 126,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 16384,
+        "rows": 300,
+        "short_circuited": 126,
+        "short_circuited_fraction": 0.42,
+        "stage_one_feature_seconds": 0.1729919539997411,
+        "stage_one_score_seconds": 0.00011287500001344597,
+        "stage_two_rows_scored_staged": 174,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 1.0640163749999942,
+        "staged_total_seconds": 1.2371212039997488,
+        "unstaged_total_seconds": 2.003132708999999,
+        "wall_clock_delta_seconds": -0.7660115050002503,
+        "wall_clock_speedup": 1.6191887282536674
+      },
+      {
+        "family": "chirp",
+        "novelty_seed": 20260951,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 298,
+          "gated_fraction": 0.006666666666666667,
+          "gated_rows": 2,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 16384,
+        "rows": 300,
+        "short_circuited": 2,
+        "short_circuited_fraction": 0.006666666666666667,
+        "stage_one_feature_seconds": 0.1829022040002144,
+        "stage_one_score_seconds": 0.00012529200000699348,
+        "stage_two_rows_scored_staged": 298,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 2.0913089999999954,
+        "staged_total_seconds": 2.274336496000217,
+        "unstaged_total_seconds": 2.025994333,
+        "wall_clock_delta_seconds": 0.24834216300021694,
+        "wall_clock_speedup": 0.8908067634508059
+      },
+      {
+        "family": "noise",
+        "novelty_seed": 20260951,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 174,
+          "gated_fraction": 0.42,
+          "gated_rows": 126,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 32768,
+        "rows": 300,
+        "short_circuited": 126,
+        "short_circuited_fraction": 0.42,
+        "stage_one_feature_seconds": 0.1748483859996952,
+        "stage_one_score_seconds": 0.00012474999999767533,
+        "stage_two_rows_scored_staged": 174,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 1.0575013340000226,
+        "staged_total_seconds": 1.2324744699997154,
+        "unstaged_total_seconds": 1.9021362089999911,
+        "wall_clock_delta_seconds": -0.6696617390002757,
+        "wall_clock_speedup": 1.543347351446907
+      },
+      {
+        "family": "chirp",
+        "novelty_seed": 20260951,
+        "prefilter_module_compute_saving": {
+          "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+          "downstream_rows_evaluated": 298,
+          "gated_fraction": 0.006666666666666667,
+          "gated_rows": 2,
+          "measured": true,
+          "rows": 300
+        },
+        "prefix_length": 32768,
+        "rows": 300,
+        "short_circuited": 2,
+        "short_circuited_fraction": 0.006666666666666667,
+        "stage_one_feature_seconds": 0.18233237399991253,
+        "stage_one_score_seconds": 0.00011491600000113067,
+        "stage_two_rows_scored_staged": 298,
+        "stage_two_rows_scored_unstaged": 300,
+        "stage_two_seconds_staged": 1.818478583000001,
+        "staged_total_seconds": 2.0009258729999146,
+        "unstaged_total_seconds": 1.8490327089999994,
+        "wall_clock_delta_seconds": 0.15189316399991526,
+        "wall_clock_speedup": 0.924088560176301
+      }
+    ],
+    "known_selection": {
+      "rows": 1908,
+      "short_circuited": 21,
+      "short_circuited_fraction": 0.0110062893081761,
+      "stage_one_feature_seconds": 1.0760268750000002,
+      "stage_one_score_seconds": 0.00022145900000225538,
+      "stage_two_rows_scored_staged": 1887,
+      "stage_two_rows_scored_unstaged": 1908,
+      "stage_two_seconds_staged": 8.725875208000005,
+      "staged_total_seconds": 9.802123542000007,
+      "unstaged_total_seconds": 9.074678790999997,
+      "wall_clock_delta_seconds": 0.7274447510000108,
+      "wall_clock_speedup": 0.925787024833643
+    },
+    "note": "measured, not asserted. Stage-1 feature extraction is per-capture NumPy while stage 2 is a batched tensor forward, so the staged path can be slower in wall clock even though it skips strictly more model work. Both numbers are reported.",
+    "novelty_total": {
+      "rows": 4800,
+      "short_circuited": 1062,
+      "short_circuited_fraction": 0.22125,
+      "stage_one_feature_seconds": 2.2331099729997277,
+      "stage_one_score_seconds": 0.0018448330000353508,
+      "stage_two_rows_scored_staged": 3738,
+      "stage_two_rows_scored_unstaged": 4800,
+      "stage_two_seconds_staged": 22.044709291999993,
+      "staged_total_seconds": 24.279664097999756,
+      "unstaged_total_seconds": 28.065065544999953,
+      "wall_clock_delta_seconds": -3.785401447000197,
+      "wall_clock_speedup": 1.1559083120640063
+    }
+  },
+  "consumed_sealed_release_seeds_excluded": [
+    20260729,
+    20260731,
+    20260733,
+    20260734
+  ],
+  "consumed_test_rows_used": 0,
+  "data_audit": {
+    "class_counts": {
+      "enroll": {
+        "am": 615,
+        "bluetooth": 498,
+        "cw": 596,
+        "dsss": 382,
+        "fm": 597,
+        "gsm": 611,
+        "ofdm": 441
+      },
+      "selection": {
+        "am": 295,
+        "bluetooth": 273,
+        "cw": 303,
+        "dsss": 197,
+        "fm": 304,
+        "gsm": 308,
+        "ofdm": 228
+      },
+      "train": {
+        "am": 795,
+        "bluetooth": 696,
+        "cw": 796,
+        "dsss": 617,
+        "fm": 794,
+        "gsm": 769,
+        "ofdm": 582
+      }
+    },
+    "consumed_test_rows_exposed": 0,
+    "counts": {
+      "consumed_test_held_out": 1915,
+      "consumed_test_rows_exposed": 0,
+      "edge_safe_validation": 3823,
+      "edge_unsafe_excluded": {
+        "en": 457,
+        "tr": 551,
+        "va": 374
+      },
+      "exposed": {
+        "enroll": 3740,
+        "selection": 1908,
+        "train": 5049
+      },
+      "raw_corpus": 13994,
+      "selection": 1908,
+      "v2_before_edge_filter": {
+        "en": 4197,
+        "tr": 5600,
+        "va": 4197
+      }
+    },
+    "edge_rule": "abs(centreOffsetFrac) + bandwidthHz/sampleRateHz/2 < 0.5",
+    "existing_split_index_witnesses_validated": [
+      "native_tr_idx.npy",
+      "resampled__9333475629177c55_tr_idx.npy",
+      "resampled__db607416e0c908a1_tr_idx.npy",
+      "resampled_tr_idx.npy",
+      "native_en_idx.npy",
+      "resampled__9333475629177c55_en_idx.npy",
+      "resampled__db607416e0c908a1_en_idx.npy",
+      "resampled_en_idx.npy",
+      "native_va_idx.npy",
+      "resampled__9333475629177c55_va_idx.npy",
+      "resampled__db607416e0c908a1_va_idx.npy",
+      "resampled_va_idx.npy"
+    ],
+    "ground_selection_rng_seed": 20260728,
+    "ground_split_seed": 20260727,
+    "impairment_counts": {
+      "enroll": {
+        "clean": 954,
+        "impaired": 2786
+      },
+      "selection": {
+        "clean": 482,
+        "impaired": 1426
+      },
+      "train": {
+        "clean": 1274,
+        "impaired": 3775
+      }
+    },
+    "model_seed": 20260730,
+    "split_policy_version": "v2-30-30-40-edge-safe-ground-half-v1",
+    "v2_split_seed": 20260721
+  },
+  "development_only": true,
+  "evidence_role": "validation on untouched development novelty seeds; the gate block below is the evidence",
+  "fitting_contract": {
+    "composite_rank_and_threshold_population": "enrollment stage-1 survivors only",
+    "consumed_test_rows_loaded": 0,
+    "density_components": [
+      "stage 1: fitted elsewhere on training rows; loaded here",
+      "stage 2: per-class time-domain geometry (KnownOnlyGeometry)",
+      "stage 2: branch LOF reference population and k-distances"
+    ],
+    "density_population": "training only",
+    "density_rows": 14502,
+    "novelty_population_role": "scored for metrics only; never fit, ranked, or thresholded. In this validation run the novelty seeds never inform any policy choice.",
+    "policy_searched_here": false,
+    "rank_and_threshold_population": "enrollment only",
+    "rank_rows": 3740,
+    "reproduction_tolerance": 0.0001,
+    "sealed_release_rows_loaded": 0,
+    "selection_population_role": "scored for metrics only; never fit, calibrated, or selected on",
+    "stage_one_enrollment_features_computed_here": true,
+    "stage_one_enrollment_features_role": "the composite survivor rank calibration and its q95 threshold, and nothing else. Every rank and threshold in this chain is calibrated on enrollment; the stage-1 gate itself stays exactly as loaded",
+    "stage_one_features_computed_here": [
+      "enrollment (composite rank/threshold calibration only)",
+      "selection (scored only)",
+      "novelty (scored only)"
+    ],
+    "stage_one_fitted_in_this_run": false,
+    "stage_one_training_features_computed_here": false
+  },
+  "fixture_provenance": {
+    "20260950": {
+      "chirp": {
+        "generated_once_at": 32768,
+        "longest_capture_sha256": "ba4a2b511d8a1fe42b81bc9ae0606c633dabe59af1e51699f580974f0febcfb8",
+        "n": 300,
+        "prefix_sha256": {
+          "16384": "a3fc6c265b8690942bdec45617738a409daf509ca5033cbd643929a7fd97b36b",
+          "32768": "ba4a2b511d8a1fe42b81bc9ae0606c633dabe59af1e51699f580974f0febcfb8",
+          "4096": "839e55f30d21839af4964b6c50e316138e425cf1ab710275543a205c8478ad23",
+          "8192": "c2085cd9dbf6128a0668199d2205e5f0d5e39065a253a0a9daafab088bbca88f"
+        }
+      },
+      "noise": {
+        "generated_once_at": 32768,
+        "longest_capture_sha256": "cf77758245612e5d45948eb4606f003a069718a7bf1722beb923bd6ef5db7323",
+        "n": 300,
+        "prefix_sha256": {
+          "16384": "06b56ceb3d3cb0446705f3c3075adb720b7d4a4c925f4193772f09cba8929b38",
+          "32768": "cf77758245612e5d45948eb4606f003a069718a7bf1722beb923bd6ef5db7323",
+          "4096": "8e3155c8e34c0904ff6e2e20c42f3cd823b777f54ae92a1cccb718c7feaaf492",
+          "8192": "b9bb9db9621f9b8721da30f2a72ff8ac088ed5001a424b4c43c106e44b4b5c72"
+        }
+      }
+    },
+    "20260951": {
+      "chirp": {
+        "generated_once_at": 32768,
+        "longest_capture_sha256": "dbff4342212ace7a5b11143a578f183cd44f070e6ee51fb914498b6b915ba845",
+        "n": 300,
+        "prefix_sha256": {
+          "16384": "e507f4f6d279bacf7ddef794ad32d72221ea7141bfe099eb62dbcb35d4901623",
+          "32768": "dbff4342212ace7a5b11143a578f183cd44f070e6ee51fb914498b6b915ba845",
+          "4096": "c9c05368ccf7228eb2797014ec0b18c1df3eb1ff14ecd181fdc936d0812ddf08",
+          "8192": "ce855d3a1a2fcea22e680a63c8dff758aa3491805654e4fea6d05e7b015b9d67"
+        }
+      },
+      "noise": {
+        "generated_once_at": 32768,
+        "longest_capture_sha256": "63d232f50f3a34b1644c51d269366be21a594417fbc0a6fe5e26e74aae98ca33",
+        "n": 300,
+        "prefix_sha256": {
+          "16384": "7d208e96dae76c0abff1748515c348a7dd975fcf86cb4b521cc8f4134db6a0c2",
+          "32768": "63d232f50f3a34b1644c51d269366be21a594417fbc0a6fe5e26e74aae98ca33",
+          "4096": "552e8c99d256bc6d67f4262ca1c1314d9d826afae394fcb7c646ef66629b4f45",
+          "8192": "46539d2d30df7e65cca0cb9bb377e0fb87644210b013a91eb86cf8d920aa506f"
+        }
+      }
+    }
+  },
+  "fusion": {
+    "closed_selection_balanced_accuracy": 0.8674917547483391,
+    "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_multilength_seed20260730",
+    "directory_sha256": "0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5",
+    "file_sha256": {
+      "complex_center.npy": "dd281fe23c628bb454c175eb594e0f3fa87a4b033c61cae364ee99e618b95d84",
+      "dev_metrics.json": "ddf0768bec34dead441a3c5dc26c6627cfa4830c395b5b1521d6337af634e3a2",
+      "feature_mean.npy": "29883542bd57f812b74050d2814497ec169cac240ed1fd6d136d7887fdbf8b64",
+      "feature_std.npy": "28f9f430d40603fab7ba3f6f49951a2b18033b91425363ae36e679850d1635fe",
+      "fusion_prototypes.npy": "aa4fe2a4e0f9999f541d90ffbf99084c7cb670bcd8072422b5d62e11e100dee4",
+      "fusion_state_dict.pt": "b8da74d10d684fcd1c231a226cef520db31a55c6d54d4c1b607641799f95f894",
+      "real_center.npy": "a347253f4f3e13938a72ea8bf4309995575d57ee5b679b589bc24d94dd9bca9c"
+    },
+    "recorded_device": "mps",
+    "reproduction": {
+      "bit_identical_to_artifact": false,
+      "complex_center_max_abs_error": 1.4901161193847656e-08,
+      "feature_mean_max_abs_error": 0.0,
+      "feature_std_max_abs_error": 0.0,
+      "prototypes_max_abs_error": 4.470348358154297e-08,
+      "real_center_max_abs_error": 1.4901161193847656e-08,
+      "tolerance": 0.0001
+    },
+    "seed": 20260730,
+    "source_branches": {
+      "complex": {
+        "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/timecorr_complex_multilength_4000_seed20260730",
+        "sha256": {
+          "complex_prototypes.npy": "7e0aad900650f7dcc33c1ae0735d02ab9bf2c87f2cc4d467f40a9bcf3a928247",
+          "complex_state_dict.pt": "edf50fb29afad66f9e5595f8378033992612f1028e73e955a4283ecb620adc9e",
+          "dev_metrics.json": "dbd11c580f164e2431d39a1389fccd6bd79687306cd3dd6efd2ba802af56ca9b"
+        }
+      },
+      "real": {
+        "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/timecorr_real_multilength_4000_seed20260730",
+        "sha256": {
+          "dev_metrics.json": "75d07d046482839d7c4374200f0932d5c6a466688d57e61e5c355eda3622d18b",
+          "real_prototypes.npy": "f45df14f3221fc4cd50ea737a2d19c27eddae63bcf957162b12ec149653c8184",
+          "real_state_dict.pt": "7c184900b60e2c3dcb10f29a890d588d32a3fdc64a01386910eae12d326df45d"
+        }
+      }
+    },
+    "weight_real": 0.5
+  },
+  "gates": {
+    "chirp_auroc": {
+      "floor": 0.8,
+      "passes": true,
+      "worst": 0.9386652690426275
+    },
+    "chirp_threshold_recall": {
+      "floor": 0.1,
+      "passes": true,
+      "worst": 0.61
+    },
+    "known_false_unknown_rate": {
+      "ceiling": 0.1,
+      "passes": true,
+      "worst": 0.06446540880503145
+    },
+    "noise_auroc": {
+      "floor": 0.8,
+      "passes": true,
+      "worst": 0.9656350454227812
+    },
+    "noise_threshold_recall": {
+      "floor": 0.1,
+      "passes": true,
+      "worst": 0.8333333333333334
+    },
+    "overall_auroc": {
+      "floor": 0.72,
+      "passes": true,
+      "worst": 0.9551672781271838
+    }
+  },
+  "gates_are_evidence": true,
+  "gates_before_classification": true,
+  "known": {
+    "by_stage": {
+      "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+      "rejected_by_stage_one_only": 19,
+      "rejected_by_stage_two_only": 102,
+      "rows": 1908,
+      "stage_one_gate_rate": 0.0110062893081761,
+      "stage_two_false_unknown_rate_among_survivors": 0.05405405405405406,
+      "stage_two_false_unknown_rate_marginal": 0.05345911949685535,
+      "staged_false_unknown_rate": 0.06446540880503145,
+      "staged_threshold": 0.9740452030878427,
+      "unstaged_false_unknown_rate": 0.046645702306079666,
+      "unstaged_threshold": 0.9494921144079123
+    },
+    "closed_selection_accuracy_all_rows": 0.8653039832285115,
+    "closed_selection_accuracy_on_stage_one_survivors": 0.8659247482776895,
+    "compute": {
+      "rows": 1908,
+      "short_circuited": 21,
+      "short_circuited_fraction": 0.0110062893081761,
+      "stage_one_feature_seconds": 1.0760268750000002,
+      "stage_one_score_seconds": 0.00022145900000225538,
+      "stage_two_rows_scored_staged": 1887,
+      "stage_two_rows_scored_unstaged": 1908,
+      "stage_two_seconds_staged": 8.725875208000005,
+      "staged_total_seconds": 9.802123542000007,
+      "unstaged_total_seconds": 9.074678790999997,
+      "wall_clock_delta_seconds": 0.7274447510000108,
+      "wall_clock_speedup": 0.925787024833643
+    },
+    "false_unknown_rate": 0.06446540880503145,
+    "n": 1908,
+    "score_median": 0.7053036358534781,
+    "stage_one_raw_median": -3.4624110576782767,
+    "subset_scoring_agreement": {
+      "exact": true,
+      "max_abs_difference": 0.0,
+      "survivor_rows": 1887,
+      "tolerance": 1e-06
+    }
+  },
+  "novelty": {
+    "20260950": {
+      "16384": {
+        "chirp": {
+          "auroc": 0.9851109364081062,
+          "compute": {
+            "family": "chirp",
+            "novelty_seed": 20260950,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 298,
+              "gated_fraction": 0.006666666666666667,
+              "gated_rows": 2,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 16384,
+            "rows": 300,
+            "short_circuited": 2,
+            "short_circuited_fraction": 0.006666666666666667,
+            "stage_one_feature_seconds": 0.16611041399988835,
+            "stage_one_score_seconds": 0.00010808400000428264,
+            "stage_two_rows_scored_staged": 298,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 1.5889736249999942,
+            "staged_total_seconds": 1.7551921229998868,
+            "unstaged_total_seconds": 1.5990127919999964,
+            "wall_clock_delta_seconds": 0.15617933099989045,
+            "wall_clock_speedup": 0.911018669151183
+          },
+          "gated_at_stage_one_fraction": 0.006666666666666667,
+          "rejected_at_stage_two_fraction": 0.9933333333333333,
+          "score_median": 0.9970596097300187,
+          "stage_one_raw_median": -0.8592765838240901,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 298,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 1.0
+        },
+        "known_false_unknown_by_stage": {
+          "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+          "rejected_by_stage_one_only": 19,
+          "rejected_by_stage_two_only": 102,
+          "rows": 1908,
+          "stage_one_gate_rate": 0.0110062893081761,
+          "stage_two_false_unknown_rate_among_survivors": 0.05405405405405406,
+          "stage_two_false_unknown_rate_marginal": 0.05345911949685535,
+          "staged_false_unknown_rate": 0.06446540880503145,
+          "staged_threshold": 0.9740452030878427,
+          "unstaged_false_unknown_rate": 0.046645702306079666,
+          "unstaged_threshold": 0.9494921144079123
+        },
+        "known_false_unknown_rate": 0.06446540880503145,
+        "noise": {
+          "auroc": 0.9689142208245982,
+          "compute": {
+            "family": "noise",
+            "novelty_seed": 20260950,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 171,
+              "gated_fraction": 0.43,
+              "gated_rows": 129,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 16384,
+            "rows": 300,
+            "short_circuited": 129,
+            "short_circuited_fraction": 0.43,
+            "stage_one_feature_seconds": 0.1649371619998874,
+            "stage_one_score_seconds": 0.00010854199999243974,
+            "stage_two_rows_scored_staged": 171,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 0.9110097079999946,
+            "staged_total_seconds": 1.0760554119998744,
+            "unstaged_total_seconds": 1.6297297919999778,
+            "wall_clock_delta_seconds": -0.5536743800001034,
+            "wall_clock_speedup": 1.5145407697649014
+          },
+          "gated_at_stage_one_fraction": 0.43,
+          "rejected_at_stage_two_fraction": 0.41333333333333333,
+          "score_median": 0.9948704103671706,
+          "stage_one_raw_median": 2.1470231296291544,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 171,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.8433333333333334
+        },
+        "overall": {
+          "auroc": 0.9770125786163522,
+          "score_median": 0.9970596097300187,
+          "threshold_recall": 0.9216666666666666
+        }
+      },
+      "32768": {
+        "chirp": {
+          "auroc": 0.9850786163522013,
+          "compute": {
+            "family": "chirp",
+            "novelty_seed": 20260950,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 298,
+              "gated_fraction": 0.006666666666666667,
+              "gated_rows": 2,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 32768,
+            "rows": 300,
+            "short_circuited": 2,
+            "short_circuited_fraction": 0.006666666666666667,
+            "stage_one_feature_seconds": 0.1665953420002495,
+            "stage_one_score_seconds": 0.00011333300000160307,
+            "stage_two_rows_scored_staged": 298,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 1.7785483749999855,
+            "staged_total_seconds": 1.9452570500002366,
+            "unstaged_total_seconds": 1.82336858299999,
+            "wall_clock_delta_seconds": 0.12188846700024669,
+            "wall_clock_speedup": 0.9373406887278821
+          },
+          "gated_at_stage_one_fraction": 0.006666666666666667,
+          "rejected_at_stage_two_fraction": 0.9933333333333333,
+          "score_median": 0.9970596097300187,
+          "stage_one_raw_median": -0.8592765838240901,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 298,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 1.0
+        },
+        "known_false_unknown_by_stage": {
+          "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+          "rejected_by_stage_one_only": 19,
+          "rejected_by_stage_two_only": 102,
+          "rows": 1908,
+          "stage_one_gate_rate": 0.0110062893081761,
+          "stage_two_false_unknown_rate_among_survivors": 0.05405405405405406,
+          "stage_two_false_unknown_rate_marginal": 0.05345911949685535,
+          "staged_false_unknown_rate": 0.06446540880503145,
+          "staged_threshold": 0.9740452030878427,
+          "unstaged_false_unknown_rate": 0.046645702306079666,
+          "unstaged_threshold": 0.9494921144079123
+        },
+        "known_false_unknown_rate": 0.06446540880503145,
+        "noise": {
+          "auroc": 0.9683953529000698,
+          "compute": {
+            "family": "noise",
+            "novelty_seed": 20260950,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 171,
+              "gated_fraction": 0.43,
+              "gated_rows": 129,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 32768,
+            "rows": 300,
+            "short_circuited": 129,
+            "short_circuited_fraction": 0.43,
+            "stage_one_feature_seconds": 0.16513215400007653,
+            "stage_one_score_seconds": 0.00011508299999718474,
+            "stage_two_rows_scored_staged": 171,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 1.0186114169999883,
+            "staged_total_seconds": 1.183858654000062,
+            "unstaged_total_seconds": 1.7057805420000136,
+            "wall_clock_delta_seconds": -0.5219218879999517,
+            "wall_clock_speedup": 1.4408650359031159
+          },
+          "gated_at_stage_one_fraction": 0.43,
+          "rejected_at_stage_two_fraction": 0.41,
+          "score_median": 0.9948704103671706,
+          "stage_one_raw_median": 2.1470231296291544,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 171,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.84
+        },
+        "overall": {
+          "auroc": 0.9767369846261356,
+          "score_median": 0.9970596097300187,
+          "threshold_recall": 0.92
+        }
+      },
+      "4096": {
+        "chirp": {
+          "auroc": 0.9386652690426275,
+          "compute": {
+            "family": "chirp",
+            "novelty_seed": 20260950,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 300,
+              "gated_fraction": 0.0,
+              "gated_rows": 0,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 4096,
+            "rows": 300,
+            "short_circuited": 0,
+            "short_circuited_fraction": 0.0,
+            "stage_one_feature_seconds": 0.09133116299989297,
+            "stage_one_score_seconds": 0.00012070799999719384,
+            "stage_two_rows_scored_staged": 300,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 1.6797090830000059,
+            "staged_total_seconds": 1.771160953999896,
+            "unstaged_total_seconds": 1.7851033749999772,
+            "wall_clock_delta_seconds": -0.01394242100008114,
+            "wall_clock_speedup": 1.0078719107761462
+          },
+          "gated_at_stage_one_fraction": 0.0,
+          "rejected_at_stage_two_fraction": 0.61,
+          "score_median": 0.9778134188719594,
+          "stage_one_raw_median": -4.428130066333996,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 300,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.61
+        },
+        "known_false_unknown_by_stage": {
+          "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+          "rejected_by_stage_one_only": 19,
+          "rejected_by_stage_two_only": 102,
+          "rows": 1908,
+          "stage_one_gate_rate": 0.0110062893081761,
+          "stage_two_false_unknown_rate_among_survivors": 0.05405405405405406,
+          "stage_two_false_unknown_rate_marginal": 0.05345911949685535,
+          "staged_false_unknown_rate": 0.06446540880503145,
+          "staged_threshold": 0.9740452030878427,
+          "unstaged_false_unknown_rate": 0.046645702306079666,
+          "unstaged_threshold": 0.9494921144079123
+        },
+        "known_false_unknown_rate": 0.06446540880503145,
+        "noise": {
+          "auroc": 0.9727699161425577,
+          "compute": {
+            "family": "noise",
+            "novelty_seed": 20260950,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 161,
+              "gated_fraction": 0.4633333333333333,
+              "gated_rows": 139,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 4096,
+            "rows": 300,
+            "short_circuited": 139,
+            "short_circuited_fraction": 0.4633333333333333,
+            "stage_one_feature_seconds": 0.0882146330001774,
+            "stage_one_score_seconds": 0.00010554200000001401,
+            "stage_two_rows_scored_staged": 161,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 0.8364161659999922,
+            "staged_total_seconds": 0.9247363410001697,
+            "unstaged_total_seconds": 1.4825041670000019,
+            "wall_clock_delta_seconds": -0.5577678259998322,
+            "wall_clock_speedup": 1.6031641682823514
+          },
+          "gated_at_stage_one_fraction": 0.4633333333333333,
+          "rejected_at_stage_two_fraction": 0.39666666666666667,
+          "score_median": 0.9981101511879049,
+          "stage_one_raw_median": 2.387636701013708,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 161,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.86
+        },
+        "overall": {
+          "auroc": 0.9557175925925926,
+          "score_median": 0.9842288158246458,
+          "threshold_recall": 0.735
+        }
+      },
+      "8192": {
+        "chirp": {
+          "auroc": 0.9801022012578616,
+          "compute": {
+            "family": "chirp",
+            "novelty_seed": 20260950,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 300,
+              "gated_fraction": 0.0,
+              "gated_rows": 0,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 8192,
+            "rows": 300,
+            "short_circuited": 0,
+            "short_circuited_fraction": 0.0,
+            "stage_one_feature_seconds": 0.1151208679999911,
+            "stage_one_score_seconds": 0.00010870900001691552,
+            "stage_two_rows_scored_staged": 300,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 1.5811294160000102,
+            "staged_total_seconds": 1.6963589930000182,
+            "unstaged_total_seconds": 1.4642970000000162,
+            "wall_clock_delta_seconds": 0.23206199300000208,
+            "wall_clock_speedup": 0.8631999512145719
+          },
+          "gated_at_stage_one_fraction": 0.0,
+          "rejected_at_stage_two_fraction": 0.99,
+          "score_median": 0.9951884522854851,
+          "stage_one_raw_median": -2.4651638054259264,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 300,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.99
+        },
+        "known_false_unknown_by_stage": {
+          "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+          "rejected_by_stage_one_only": 19,
+          "rejected_by_stage_two_only": 102,
+          "rows": 1908,
+          "stage_one_gate_rate": 0.0110062893081761,
+          "stage_two_false_unknown_rate_among_survivors": 0.05405405405405406,
+          "stage_two_false_unknown_rate_marginal": 0.05345911949685535,
+          "staged_false_unknown_rate": 0.06446540880503145,
+          "staged_threshold": 0.9740452030878427,
+          "unstaged_false_unknown_rate": 0.046645702306079666,
+          "unstaged_threshold": 0.9494921144079123
+        },
+        "known_false_unknown_rate": 0.06446540880503145,
+        "noise": {
+          "auroc": 0.9736643955276031,
+          "compute": {
+            "family": "noise",
+            "novelty_seed": 20260950,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 167,
+              "gated_fraction": 0.44333333333333336,
+              "gated_rows": 133,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 8192,
+            "rows": 300,
+            "short_circuited": 133,
+            "short_circuited_fraction": 0.44333333333333336,
+            "stage_one_feature_seconds": 0.1242615739998314,
+            "stage_one_score_seconds": 0.00011733400000935035,
+            "stage_two_rows_scored_staged": 167,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 0.7867404590000149,
+            "staged_total_seconds": 0.9111193669998556,
+            "unstaged_total_seconds": 1.6937160839999876,
+            "wall_clock_delta_seconds": -0.782596717000132,
+            "wall_clock_speedup": 1.8589398330726692
+          },
+          "gated_at_stage_one_fraction": 0.44333333333333336,
+          "rejected_at_stage_two_fraction": 0.45666666666666667,
+          "score_median": 0.9971652267818574,
+          "stage_one_raw_median": 2.3044794767760326,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 167,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.9
+        },
+        "overall": {
+          "auroc": 0.9768832983927324,
+          "score_median": 0.9951884522854851,
+          "threshold_recall": 0.945
+        }
+      }
+    },
+    "20260951": {
+      "16384": {
+        "chirp": {
+          "auroc": 0.9850174703004891,
+          "compute": {
+            "family": "chirp",
+            "novelty_seed": 20260951,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 298,
+              "gated_fraction": 0.006666666666666667,
+              "gated_rows": 2,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 16384,
+            "rows": 300,
+            "short_circuited": 2,
+            "short_circuited_fraction": 0.006666666666666667,
+            "stage_one_feature_seconds": 0.1829022040002144,
+            "stage_one_score_seconds": 0.00012529200000699348,
+            "stage_two_rows_scored_staged": 298,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 2.0913089999999954,
+            "staged_total_seconds": 2.274336496000217,
+            "unstaged_total_seconds": 2.025994333,
+            "wall_clock_delta_seconds": 0.24834216300021694,
+            "wall_clock_speedup": 0.8908067634508059
+          },
+          "gated_at_stage_one_fraction": 0.006666666666666667,
+          "rejected_at_stage_two_fraction": 0.9933333333333333,
+          "score_median": 0.9970596097300187,
+          "stage_one_raw_median": -1.0343539839521374,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 298,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 1.0
+        },
+        "known_false_unknown_by_stage": {
+          "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+          "rejected_by_stage_one_only": 19,
+          "rejected_by_stage_two_only": 102,
+          "rows": 1908,
+          "stage_one_gate_rate": 0.0110062893081761,
+          "stage_two_false_unknown_rate_among_survivors": 0.05405405405405406,
+          "stage_two_false_unknown_rate_marginal": 0.05345911949685535,
+          "staged_false_unknown_rate": 0.06446540880503145,
+          "staged_threshold": 0.9740452030878427,
+          "unstaged_false_unknown_rate": 0.046645702306079666,
+          "unstaged_threshold": 0.9494921144079123
+        },
+        "known_false_unknown_rate": 0.06446540880503145,
+        "noise": {
+          "auroc": 0.9656350454227812,
+          "compute": {
+            "family": "noise",
+            "novelty_seed": 20260951,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 174,
+              "gated_fraction": 0.42,
+              "gated_rows": 126,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 16384,
+            "rows": 300,
+            "short_circuited": 126,
+            "short_circuited_fraction": 0.42,
+            "stage_one_feature_seconds": 0.1729919539997411,
+            "stage_one_score_seconds": 0.00011287500001344597,
+            "stage_two_rows_scored_staged": 174,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 1.0640163749999942,
+            "staged_total_seconds": 1.2371212039997488,
+            "unstaged_total_seconds": 2.003132708999999,
+            "wall_clock_delta_seconds": -0.7660115050002503,
+            "wall_clock_speedup": 1.6191887282536674
+          },
+          "gated_at_stage_one_fraction": 0.42,
+          "rejected_at_stage_two_fraction": 0.4166666666666667,
+          "score_median": 0.9948704103671706,
+          "stage_one_raw_median": 2.1264594299072073,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 174,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.8366666666666667
+        },
+        "overall": {
+          "auroc": 0.9753262578616352,
+          "score_median": 0.9970596097300187,
+          "threshold_recall": 0.9183333333333333
+        }
+      },
+      "32768": {
+        "chirp": {
+          "auroc": 0.9849737945492663,
+          "compute": {
+            "family": "chirp",
+            "novelty_seed": 20260951,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 298,
+              "gated_fraction": 0.006666666666666667,
+              "gated_rows": 2,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 32768,
+            "rows": 300,
+            "short_circuited": 2,
+            "short_circuited_fraction": 0.006666666666666667,
+            "stage_one_feature_seconds": 0.18233237399991253,
+            "stage_one_score_seconds": 0.00011491600000113067,
+            "stage_two_rows_scored_staged": 298,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 1.818478583000001,
+            "staged_total_seconds": 2.0009258729999146,
+            "unstaged_total_seconds": 1.8490327089999994,
+            "wall_clock_delta_seconds": 0.15189316399991526,
+            "wall_clock_speedup": 0.924088560176301
+          },
+          "gated_at_stage_one_fraction": 0.006666666666666667,
+          "rejected_at_stage_two_fraction": 0.9933333333333333,
+          "score_median": 0.9970596097300187,
+          "stage_one_raw_median": -1.0343539839521374,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 298,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 1.0
+        },
+        "known_false_unknown_by_stage": {
+          "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+          "rejected_by_stage_one_only": 19,
+          "rejected_by_stage_two_only": 102,
+          "rows": 1908,
+          "stage_one_gate_rate": 0.0110062893081761,
+          "stage_two_false_unknown_rate_among_survivors": 0.05405405405405406,
+          "stage_two_false_unknown_rate_marginal": 0.05345911949685535,
+          "staged_false_unknown_rate": 0.06446540880503145,
+          "staged_threshold": 0.9740452030878427,
+          "unstaged_false_unknown_rate": 0.046645702306079666,
+          "unstaged_threshold": 0.9494921144079123
+        },
+        "known_false_unknown_rate": 0.06446540880503145,
+        "noise": {
+          "auroc": 0.9659687281621244,
+          "compute": {
+            "family": "noise",
+            "novelty_seed": 20260951,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 174,
+              "gated_fraction": 0.42,
+              "gated_rows": 126,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 32768,
+            "rows": 300,
+            "short_circuited": 126,
+            "short_circuited_fraction": 0.42,
+            "stage_one_feature_seconds": 0.1748483859996952,
+            "stage_one_score_seconds": 0.00012474999999767533,
+            "stage_two_rows_scored_staged": 174,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 1.0575013340000226,
+            "staged_total_seconds": 1.2324744699997154,
+            "unstaged_total_seconds": 1.9021362089999911,
+            "wall_clock_delta_seconds": -0.6696617390002757,
+            "wall_clock_speedup": 1.543347351446907
+          },
+          "gated_at_stage_one_fraction": 0.42,
+          "rejected_at_stage_two_fraction": 0.41333333333333333,
+          "score_median": 0.9948704103671706,
+          "stage_one_raw_median": 2.1264594299072073,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 174,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.8333333333333334
+        },
+        "overall": {
+          "auroc": 0.9754712613556953,
+          "score_median": 0.9970596097300187,
+          "threshold_recall": 0.9166666666666666
+        }
+      },
+      "4096": {
+        "chirp": {
+          "auroc": 0.9407389937106918,
+          "compute": {
+            "family": "chirp",
+            "novelty_seed": 20260951,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 300,
+              "gated_fraction": 0.0,
+              "gated_rows": 0,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 4096,
+            "rows": 300,
+            "short_circuited": 0,
+            "short_circuited_fraction": 0.0,
+            "stage_one_feature_seconds": 0.10025854599999207,
+            "stage_one_score_seconds": 0.00011329100001944425,
+            "stage_two_rows_scored_staged": 300,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 1.63735566699998,
+            "staged_total_seconds": 1.7377275039999915,
+            "unstaged_total_seconds": 1.618019041999986,
+            "wall_clock_delta_seconds": 0.11970846200000551,
+            "wall_clock_speedup": 0.9311120634711402
+          },
+          "gated_at_stage_one_fraction": 0.0,
+          "rejected_at_stage_two_fraction": 0.6433333333333333,
+          "score_median": 0.9778134188719594,
+          "stage_one_raw_median": -4.538819800549222,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 300,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.6433333333333333
+        },
+        "known_false_unknown_by_stage": {
+          "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+          "rejected_by_stage_one_only": 19,
+          "rejected_by_stage_two_only": 102,
+          "rows": 1908,
+          "stage_one_gate_rate": 0.0110062893081761,
+          "stage_two_false_unknown_rate_among_survivors": 0.05405405405405406,
+          "stage_two_false_unknown_rate_marginal": 0.05345911949685535,
+          "staged_false_unknown_rate": 0.06446540880503145,
+          "staged_threshold": 0.9740452030878427,
+          "unstaged_false_unknown_rate": 0.046645702306079666,
+          "unstaged_threshold": 0.9494921144079123
+        },
+        "known_false_unknown_rate": 0.06446540880503145,
+        "noise": {
+          "auroc": 0.9695955625436757,
+          "compute": {
+            "family": "noise",
+            "novelty_seed": 20260951,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 163,
+              "gated_fraction": 0.45666666666666667,
+              "gated_rows": 137,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 4096,
+            "rows": 300,
+            "short_circuited": 137,
+            "short_circuited_fraction": 0.45666666666666667,
+            "stage_one_feature_seconds": 0.09328204600006984,
+            "stage_one_score_seconds": 0.00011783299999024166,
+            "stage_two_rows_scored_staged": 163,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 0.9842351249999979,
+            "staged_total_seconds": 1.077635004000058,
+            "unstaged_total_seconds": 1.858610958000014,
+            "wall_clock_delta_seconds": -0.7809759539999561,
+            "wall_clock_speedup": 1.7247128676231402
+          },
+          "gated_at_stage_one_fraction": 0.45666666666666667,
+          "rejected_at_stage_two_fraction": 0.4033333333333333,
+          "score_median": 0.9986501079913607,
+          "stage_one_raw_median": 2.4150190206354227,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 163,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.86
+        },
+        "overall": {
+          "auroc": 0.9551672781271838,
+          "score_median": 0.9842288158246458,
+          "threshold_recall": 0.7516666666666667
+        }
+      },
+      "8192": {
+        "chirp": {
+          "auroc": 0.979643605870021,
+          "compute": {
+            "family": "chirp",
+            "novelty_seed": 20260951,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 300,
+              "gated_fraction": 0.0,
+              "gated_rows": 0,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 8192,
+            "rows": 300,
+            "short_circuited": 0,
+            "short_circuited_fraction": 0.0,
+            "stage_one_feature_seconds": 0.12651078200008214,
+            "stage_one_score_seconds": 0.00012145799999530027,
+            "stage_two_rows_scored_staged": 300,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 2.139629874999997,
+            "staged_total_seconds": 2.2662621150000746,
+            "unstaged_total_seconds": 1.9393267499999922,
+            "wall_clock_delta_seconds": 0.32693536500008236,
+            "wall_clock_speedup": 0.855738061879011
+          },
+          "gated_at_stage_one_fraction": 0.0,
+          "rejected_at_stage_two_fraction": 0.99,
+          "score_median": 0.9951884522854851,
+          "stage_one_raw_median": -2.44969535228438,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 300,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.99
+        },
+        "known_false_unknown_by_stage": {
+          "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+          "rejected_by_stage_one_only": 19,
+          "rejected_by_stage_two_only": 102,
+          "rows": 1908,
+          "stage_one_gate_rate": 0.0110062893081761,
+          "stage_two_false_unknown_rate_among_survivors": 0.05405405405405406,
+          "stage_two_false_unknown_rate_marginal": 0.05345911949685535,
+          "staged_false_unknown_rate": 0.06446540880503145,
+          "staged_threshold": 0.9740452030878427,
+          "unstaged_false_unknown_rate": 0.046645702306079666,
+          "unstaged_threshold": 0.9494921144079123
+        },
+        "known_false_unknown_rate": 0.06446540880503145,
+        "noise": {
+          "auroc": 0.9701939203354297,
+          "compute": {
+            "family": "noise",
+            "novelty_seed": 20260951,
+            "prefilter_module_compute_saving": {
+              "counts": "rows that never reach the encoder, fusion, prototype distance or branch LOF",
+              "downstream_rows_evaluated": 165,
+              "gated_fraction": 0.45,
+              "gated_rows": 135,
+              "measured": true,
+              "rows": 300
+            },
+            "prefix_length": 8192,
+            "rows": 300,
+            "short_circuited": 135,
+            "short_circuited_fraction": 0.45,
+            "stage_one_feature_seconds": 0.11828037100002575,
+            "stage_one_score_seconds": 0.00011708299999213523,
+            "stage_two_rows_scored_staged": 165,
+            "stage_two_rows_scored_unstaged": 300,
+            "stage_two_seconds_staged": 1.0710450840000192,
+            "staged_total_seconds": 1.189442538000037,
+            "unstaged_total_seconds": 1.685300500000011,
+            "wall_clock_delta_seconds": -0.4958579619999739,
+            "wall_clock_speedup": 1.416882653981523
+          },
+          "gated_at_stage_one_fraction": 0.45,
+          "rejected_at_stage_two_fraction": 0.42333333333333334,
+          "score_median": 0.9975701943844493,
+          "stage_one_raw_median": 2.3334494314449374,
+          "subset_scoring_agreement": {
+            "exact": true,
+            "max_abs_difference": 0.0,
+            "survivor_rows": 165,
+            "tolerance": 1e-06
+          },
+          "threshold_recall": 0.8733333333333333
+        },
+        "overall": {
+          "auroc": 0.9749187631027254,
+          "score_median": 0.9951884522854851,
+          "threshold_recall": 0.9316666666666666
+        }
+      }
+    }
+  },
+  "protocol": {
+    "generation": "each novelty row generated exactly once at N32768; shorter lengths are exact raw prefixes of the same capture",
+    "known_classes": 7,
+    "known_reference": "immutable development-selection population at its native N16384; known FUR is therefore constant across novelty prefix lengths",
+    "known_rows": 1908,
+    "novelty_families": [
+      "noise",
+      "chirp"
+    ],
+    "novelty_frontend": "invariant-patch-time-domain-v1",
+    "novelty_n_each": 300,
+    "prefix_lengths": [
+      4096,
+      8192,
+      16384,
+      32768
+    ],
+    "stage_one_causal_prefix_rule_lengths": [
+      32768
+    ],
+    "stage_one_feature_length_by_prefix_length": {
+      "16384": 16384,
+      "32768": 16384,
+      "4096": 4096,
+      "8192": 8192
+    },
+    "stage_one_features_verified_against_stage_two_captures": true
+  },
+  "provenance": {
+    "command": [
+      "/Users/johnelliott/PersonalGitHub/Atom-Classifier/.venv-training/bin/python",
+      "training/zplane_ab/v2_full_variation/v3_scale/fit_v3_openset_staged.py",
+      "--fusion-dir",
+      "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_multilength_seed20260730",
+      "--prefilter-dir",
+      "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/noise_prefilter_fit20261001_budget001/bundles",
+      "--output-dir",
+      "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_validate_decoupled_rejector4k_classifier8k_budget001_seeds20260950_20260951",
+      "--role",
+      "validate",
+      "--design-novelty-seed",
+      "20260949",
+      "--novelty-seeds",
+      "20260950",
+      "20260951",
+      "--novelty-n",
+      "300",
+      "--prefix-lengths",
+      "4096",
+      "8192",
+      "16384",
+      "32768",
+      "--device",
+      "cpu"
+    ],
+    "cwd": "/Users/johnelliott/PersonalGitHub/Atom-Classifier",
+    "device": "cpu",
+    "numpy": "2.0.2",
+    "python": "3.9.6",
+    "torch": "2.8.0"
+  },
+  "rejector_is_additive_only": false,
+  "release_evidence": false,
+  "release_seed_20260735_used": false,
+  "role": "validate",
+  "sealed_release_data_used": 0,
+  "sealed_release_paths_read": 0,
+  "seeds": {
+    "consumed_sealed_release_seeds_excluded": {
+      "20260729": "consumed sealed v2 release suite",
+      "20260731": "consumed sealed v3.0 release suite (HANDOFF 25: 22/23 gates, known false-unknown failure frozen)",
+      "20260733": "consumed sealed v3.2 release suite (21/23 gates; known false-unknown and five-shot failures frozen)",
+      "20260734": "consumed sealed v3.2 release suite under its predeclared historical gate redeclaration (22/23 gates; five-shot failure frozen)"
+    },
+    "default_validation_novelty_seeds": [
+      20260950,
+      20260951
+    ],
+    "design_novelty_seed": 20260949,
+    "first_clean_novelty_seed": 20260950,
+    "fusion_artifact_seed": 20260730,
+    "ledger": "Novelty seeds are consumable evidence. [20260938, 20260939, 20260940, 20260941, 20260942, 20260943, 20260944, 20260945, 20260946, 20260947, 20260948, 20260949] are spent and are refused in both roles; [20260729, 20260731, 20260733, 20260734] are consumed sealed suites and 20260735 is the next untouched release seed, and none of them is a development novelty seed. 20260950 onward are clean, with the first two clean seeds reserved for validation: --role validate references the spent design seed 20260949 without redrawing it and draws untouched seeds [20260950, 20260951]. Making any staged-system choice against the validation seeds would convert validation evidence into training evidence, which evidence rule 4 forbids.",
+    "model_seed": 20260730,
+    "novelty_rows_used_to_choose_the_composite_threshold": 0,
+    "novelty_rows_used_to_choose_the_stage_one_operating_point": 0,
+    "novelty_seeds": [
+      20260950,
+      20260951
+    ],
+    "release_seed_not_spent": 20260735,
+    "spent_novelty_seed_reasons": {
+      "20260938": "designed the frozen 0.80/0.20 additive policy",
+      "20260939": "v3 open-set refit validation (HANDOFF 17) and pose-degeneracy feature scoring (HANDOFF 19.1)",
+      "20260940": "v3 open-set refit validation (HANDOFF 17) and pose-degeneracy feature scoring (HANDOFF 19.1)",
+      "20260941": "pose-degeneracy blend-weight design (HANDOFF 19.2)",
+      "20260942": "validated the staged v3.0 policy (HANDOFF 20.2) and its causal-prefix-rule revalidation; that policy was then sealed at release seed 20260731",
+      "20260943": "validated the staged v3.0 policy (HANDOFF 20.2) and its causal-prefix-rule revalidation; that policy was then sealed at release seed 20260731",
+      "20260944": "validated the v3.1 tightened-budget candidate (stage-1 budget 0.01): frozen FAIL, worst noise AUROC cell 0.7957 vs the 0.80 floor",
+      "20260945": "validated the v3.1 tightened-budget candidate (stage-1 budget 0.01): frozen FAIL, worst noise AUROC cell 0.7957 vs the 0.80 floor",
+      "20260946": "designed the v3.2 composite-survivor policy; its choices are frozen",
+      "20260947": "validated the v3.2 composite-survivor policy; validation evidence is consumed and may not be reused",
+      "20260948": "validated the v3.2 composite-survivor policy; validation evidence is consumed and may not be reused",
+      "20260949": "designed the 8k-regularized v3.3 composite candidate; frozen design_selection_fail because chirp failed at N4096/N8192. This spent design population may inform a documented design refinement but is never independent validation evidence"
+    },
+    "spent_novelty_seeds_excluded": [
+      20260938,
+      20260939,
+      20260940,
+      20260941,
+      20260942,
+      20260943,
+      20260944,
+      20260945,
+      20260946,
+      20260947,
+      20260948,
+      20260949
+    ]
+  },
+  "source_index_contract": {
+    "contract": {
+      "config": {
+        "patch_count": 16,
+        "patch_length": 64,
+        "target_frac": 0.5
+      },
+      "corpus": {
+        "corpus_f32": {
+          "mtime_ns": 1784934723216460520,
+          "size": 1834221568
+        },
+        "manifest_sha256": "956bec65c285eef73be5e6beb46b366af6f414e445cc4a4c2e8fbfb7d9a042a2"
+      },
+      "frontend": "invariant-patch-v1",
+      "id": "387ce172c114d671",
+      "schema": 1,
+      "source_sha256": {
+        "training/invariant_patch_preprocess.py": "04c66362e6978bc1827791653963d0921bcdde51f93b9dd74e6eb9b4e8217420",
+        "training/preprocess.py": "5369ea8277f64fcd6367a8a363bf7a5a28298663c39315126160ded5bcc0091d",
+        "training/zplane_ab/v2_full_variation/invariant_patch_data.py": "63e6134bddb927149a54c73fb011c580d1423b8b9977bab0e0b88655c3d0a798"
+      },
+      "split_policy": {
+        "edge_rule": "abs(centreOffsetFrac) + bandwidthHz/sampleRateHz/2 < 0.5",
+        "feature_standardization": {
+          "epsilon": 1e-06,
+          "fit": "edge-safe training raw features only"
+        },
+        "ground_selection_rng_seed": 20260728,
+        "ground_selection_rule": "per-stratum permutation; first floor(n/2) to selection; remainder held out and never serialized",
+        "ground_split_seed": 20260727,
+        "ground_strata": [
+          "class",
+          "impaired"
+        ],
+        "v2_carve": {
+          "enroll": "first floor(0.30*n)",
+          "populations": "clean and impaired independently",
+          "train": "remainder",
+          "validation": "next floor(0.30*n)"
+        },
+        "v2_rng": "numpy.default_rng",
+        "v2_rng_order": [
+          "permutation(clean corpus indices)",
+          "permutation(impaired corpus indices)"
+        ],
+        "v2_split_seed": 20260721,
+        "version": "v2-30-30-40-edge-safe-ground-half-v1"
+      }
+    },
+    "role": "identifies the raw corpus and exposed train/enroll/selection indices only; every tensor here was rebuilt with the v3 time-domain frontend and the v3 fusion"
+  },
+  "source_sha256": {
+    "assemble_v3_fusion.py": "961e493697d1d941395dafe32570262dc09996b53fed9b2a0e82525e43560daa",
+    "fit_v3_openset.py": "970e536087c0c4660424628a69e8bb08955885b337fd6ac560edf4bfaec1fba9",
+    "fit_v3_openset_staged.py": "6d6d252802029cd57cab1429640d0b285b117caa97a89b994037469e267aa176",
+    "invariant_fusion.py": "22a46a75c95cb4aa452bc44228b156b57474b981da20cf7095fff8a129f1c281",
+    "invariant_patch_data.py": "63e6134bddb927149a54c73fb011c580d1423b8b9977bab0e0b88655c3d0a798",
+    "known_only_patch_openset.py": "4764a9997331bb657787dcff211ab8d7098f98536208c1c0432af8f373763785",
+    "noise_prefilter.py": "435495e5b0d11558a2e0edfd7d6e6112e7cebf716460d3d81ae741d97deaa7b4",
+    "openset_eval.py": "1675b9ce60139e58b0d12dd287552b22d8bc47cfcb264a0ec347def251ed3354",
+    "pose_degeneracy.py": "431499124cd8470276a22356622b54f9c60c63c15e3770f49944bc626091aaf1",
+    "run_time_domain_dev.py": "9446a23b8d80c86fd7984307d3a2c04530e12f553df5b778967a4fd54dd193c4",
+    "time_domain_geometry.py": "a9735473f44105d20cffb9d4888ff8cf8e02503746f70b50e6d5d3737138da33",
+    "time_domain_invariant_patch_preprocess.py": "5cd1787aed0e5fd95adc2e4de56db460d753d0557350aa8f3aff0e393c0bb10a",
+    "train.py": "0669704ff4933b2ab7f8e35b0b6fb58553a06a8d75c93f54ee928ad33e2e257c",
+    "v3_time_domain_openset.py": "1bf16837ac76a525d5f28e3357d9afa147cf2a618aa202e98ce30ddb0b96bd58"
+  },
+  "stage_one": {
+    "architecture_contract_change": "The v3 open-set rejector is strictly additive and never alters the closed label. This noise prefilter is a GATE: when it fires, classification does not run and the row has no closed label at all. That is a deliberate change to the architecture contract, not an oversight, and it must be stated in the emitted JSON and in any release claim. It also means a gated row skips the encoder, the fusion, the prototype distance and the branch LOF; that saving is measured by compute_saving() and is never asserted.",
+    "capture_lengths": [
+      4096,
+      8192,
+      16384
+    ],
+    "contract_keys_for_release_claim": [
+      "additive_only",
+      "changes_closed_label",
+      "gates_before_classification",
+      "architecture_contract_change"
+    ],
+    "decision": "gated as noise iff score >= threshold_score",
+    "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/noise_prefilter_fit20261001_budget001/bundles",
+    "feature_count": 7,
+    "feature_names": [
+      "log10_relative_lag_magnitude_mean",
+      "relative_lag_magnitude_decay_slope",
+      "bandwidth_log_dispersion",
+      "carrier_phase_coherence",
+      "high_lag_qualified_fraction",
+      "prefix_bandwidth_log_dispersion",
+      "peak_normalized_mean_power"
+    ],
+    "fitted_by": "noise_prefilter.py's own CLI, which owns the training-only coefficient fit, the enrollment-only operating point and the fitting-seed ledger",
+    "fitted_here": false,
+    "known_capture_length": 16384,
+    "models": {
+      "16384": {
+        "additive_only": false,
+        "architecture_contract_change": "The v3 open-set rejector is strictly additive and never alters the closed label. This noise prefilter is a GATE: when it fires, classification does not run and the row has no closed label at all. That is a deliberate change to the architecture contract, not an oversight, and it must be stated in the emitted JSON and in any release claim. It also means a gated row skips the encoder, the fusion, the prototype distance and the branch LOF; that saving is measured by compute_saving() and is never asserted.",
+        "capture_length": 16384,
+        "changes_closed_label": true,
+        "consumed_test_rows_used": 0,
+        "decides": "noise vs not-noise only; chirp stays on the v3 path",
+        "extractor": {
+          "bandwidth_floor": 1e-05,
+          "base_lags": [
+            1,
+            2,
+            4,
+            8,
+            16
+          ],
+          "changes_closed_label": false,
+          "estimator_version": "time-correlation-v1",
+          "feature_count": 21,
+          "feature_names": [
+            "log10_relative_lag1_magnitude",
+            "log10_relative_lag_magnitude_mean",
+            "log10_relative_lag_magnitude_max",
+            "log10_lag1_sampling_margin",
+            "relative_lag_magnitude_decay_slope",
+            "bandwidth_log_dispersion",
+            "bandwidth_log_range",
+            "max_abs_unclipped_quotient",
+            "quotient_clip_fraction",
+            "carrier_phase_coherence",
+            "carrier_phase_coherence_sign_blind",
+            "degenerate_full_band_fallback",
+            "bandwidth_clipped_to_minimum",
+            "bandwidth_clipped_to_full",
+            "log2_selected_base_lag",
+            "high_lag_qualified_fraction",
+            "prefix_bandwidth_log_dispersion",
+            "prefix_centre_dispersion",
+            "prefix_relative_lag1_log_dispersion",
+            "zero_magnitude_prefix_fraction",
+            "peak_normalized_mean_power"
+          ],
+          "invariant_to_global_phase": true,
+          "invariant_to_global_scale": true,
+          "learned_calibration": false,
+          "magnitude_floor": 1e-09,
+          "maximum_lag": 32,
+          "minimum_prefix_samples": 66,
+          "prefix_fractions": [
+            0.25,
+            0.5,
+            1.0
+          ],
+          "quotient_cap": 10.0,
+          "uses_absolute_scale": false,
+          "uses_frequency_transform": false,
+          "version": "pose-degeneracy-v1"
+        },
+        "feature_names": [
+          "log10_relative_lag_magnitude_mean",
+          "relative_lag_magnitude_decay_slope",
+          "bandwidth_log_dispersion",
+          "carrier_phase_coherence",
+          "high_lag_qualified_fraction",
+          "prefix_bandwidth_log_dispersion",
+          "peak_normalized_mean_power"
+        ],
+        "feature_selection": {
+          "dropped": [
+            {
+              "feature": "log10_relative_lag1_magnitude",
+              "reason": "near-duplicate: the lag-one element of the same log-ratio statistic whose mean over BASE_LAGS is retained."
+            },
+            {
+              "feature": "log10_relative_lag_magnitude_max",
+              "reason": "near-duplicate: the max reduction of the same log-ratio statistic whose mean is retained."
+            },
+            {
+              "feature": "log10_lag1_sampling_margin",
+              "reason": "near-duplicate: log10_relative_lag1_magnitude minus a deterministic function of capture length. One model is fitted per length, so the length offset is a constant absorbed by the intercept and this reduces to the already-dropped lag-one element."
+            },
+            {
+              "feature": "bandwidth_log_range",
+              "reason": "near-duplicate: max minus min of the same per-lag log bandwidths whose population standard deviation is retained, and the less robust of the two reductions."
+            },
+            {
+              "feature": "max_abs_unclipped_quotient",
+              "reason": "cap-saturating heavy-tailed tail statistic of the same per-lag quotient set summarised by the retained bandwidth_log_dispersion and high_lag_qualified_fraction. A column that saturates at QUOTIENT_CAP is the worst kind of input to a standardised linear model. This is the most defensible re-addition candidate if the operating point misses, and it would need a fresh design seed."
+            },
+            {
+              "feature": "quotient_clip_fraction",
+              "reason": "measured dead: AUROC 0.5144 (HANDOFF 19.1)."
+            },
+            {
+              "feature": "carrier_phase_coherence_sign_blind",
+              "reason": "near-duplicate: the same circular-mean statistic evaluated on doubled angles; retained sibling is carrier_phase_coherence."
+            },
+            {
+              "feature": "degenerate_full_band_fallback",
+              "reason": "measured dead: AUROC exactly 0.5000 (HANDOFF 19.1). The estimator's own degeneracy flag never fires on any development or novelty row. Also a binary indicator."
+            },
+            {
+              "feature": "bandwidth_clipped_to_minimum",
+              "reason": "binary indicator of the same clipping mechanism whose continuous expression (bandwidth_log_dispersion) is retained; near-constant on the fit population, so standardising it divides by noise."
+            },
+            {
+              "feature": "bandwidth_clipped_to_full",
+              "reason": "measured dead: AUROC 0.5009 (HANDOFF 19.1). Also a binary indicator."
+            },
+            {
+              "feature": "log2_selected_base_lag",
+              "reason": "discrete estimator-internal index over five possible base lags; a small-support ordinal code is the wrong input to a standardised linear model, and its continuous counterpart (high_lag_qualified_fraction) is retained."
+            },
+            {
+              "feature": "prefix_centre_dispersion",
+              "reason": "the CHIRP carrier, not the noise carrier: chirp AUROC 0.9612 against noise AUROC 0.7230 (HANDOFF 19.1). Chirp is already solved by the existing v3 path (AUROC 0.9716, threshold recall 0.72-1.00) and is deliberately left there. A noise prefilter that also chases chirp reintroduces the very trade-off section 19.2 measured."
+            },
+            {
+              "feature": "prefix_relative_lag1_log_dispersion",
+              "reason": "near-duplicate: prefix dispersion of the lag-one magnitude, one of three prefix-dispersion statistics of which prefix_bandwidth_log_dispersion is retained."
+            },
+            {
+              "feature": "zero_magnitude_prefix_fraction",
+              "reason": "measured dead: AUROC 0.5066 (HANDOFF 19.1). Also near-constant."
+            }
+          ],
+          "rules": [
+            "measured dead in HANDOFF 19.1",
+            "continuous columns only: no binary indicators, no small-support discrete codes",
+            "one member per mechanism family: near-duplicate reductions of the same statistic are dropped",
+            "chirp-carrying features are left to the existing v3 path"
+          ],
+          "source_feature_count": 21,
+          "used": [
+            {
+              "feature": "log10_relative_lag_magnitude_mean",
+              "reason": "magnitude family: how much coherent structure exists at all, averaged over BASE_LAGS. Noise AUROC 0.9004 standalone (HANDOFF 19.1). Retained over the lag-one element and the max because the mean is the lowest-variance reduction of the same statistic."
+            },
+            {
+              "feature": "relative_lag_magnitude_decay_slope",
+              "reason": "lag-decay family: slope of that log ratio against log2(lag). A short-memory process collapses with lag, a narrowband emission does not. Noise AUROC 0.8872. Independent of the level above by construction (slope versus intercept)."
+            },
+            {
+              "feature": "bandwidth_log_dispersion",
+              "reason": "multiscale-agreement family: population standard deviation of log10 of the per-lag bandwidth estimates. A coherent emission must agree across scales; a degenerate pose estimate disagrees. This is the quantity the frontend computes and discards, and is the direct expression of the HANDOFF 17 mechanism."
+            },
+            {
+              "feature": "carrier_phase_coherence",
+              "reason": "phase family: |mean_k exp(i(angle(R[k]) - k angle(R[1])))|. A single carrier makes every term identically 1. Best standalone noise separator measured, AUROC 0.9154."
+            },
+            {
+              "feature": "high_lag_qualified_fraction",
+              "reason": "estimator-admission family: fraction of higher base lags passing both of estimate_band's own admission tests. Noise AUROC 0.8579. It says how much of the estimator's evidence survived its own gate, which no other retained feature reports."
+            },
+            {
+              "feature": "prefix_bandwidth_log_dispersion",
+              "reason": "temporal-stability family: dispersion of log10(bandwidth) re-estimated on nested prefixes of the same capture. Multiscale agreement (bandwidth_log_dispersion) and temporal agreement are different failures; noise fails both, a gated or bursty emission fails only the second."
+            },
+            {
+              "feature": "peak_normalized_mean_power",
+              "reason": "amplitude-shape family: inverse squared crest factor, in (0, 1], exactly invariant to global scale and phase. It is a shape statistic, not an absolute level, so it adds no scale dependence; complex Gaussian noise has a characteristic crest factor that no retained correlation statistic sees."
+            }
+          ],
+          "used_feature_count": 7
+        },
+        "fit": {
+          "class_weighting": "balanced, 0.5 total mass per class",
+          "clean_validation_seeds_from": 20260942,
+          "consumed_test_rows_used_in_fit": 0,
+          "converged": true,
+          "enrollment_rows_used_in_fit": 0,
+          "fitting_noise": {
+            "chirp_drawn": false,
+            "family": "noise",
+            "generated_once_at": 16384,
+            "generator": "openset_eval.NOVELTY['noise']",
+            "longest_capture_sha256": "4137525383a659e6d90ce67afb92a60b11f78e6e770d3deb5267ba4585879a3b",
+            "min_bandwidth_mode": "frontend",
+            "n_rows": 600,
+            "seed": 20261001,
+            "seed_role": "fit only",
+            "shorter_lengths_are_exact_raw_prefixes": true
+          },
+          "fitting_noise_rows": 600,
+          "fitting_seed": 20261001,
+          "fitting_seed_is_not_a_validation_seed": true,
+          "fitting_seed_namespace": [
+            20261000,
+            20261999
+          ],
+          "iterations": 8,
+          "known_population": "train",
+          "known_rows": 5049,
+          "l2_penalty": 0.01,
+          "max_iterations": 100,
+          "objective": 0.25235473401820374,
+          "selection_rows_used_in_fit": 0,
+          "solver": "damped Newton / IRLS, zero start, fixed halving backtrack",
+          "spent_novelty_seeds_refused": [
+            20260938,
+            20260939,
+            20260940,
+            20260941
+          ],
+          "standardizer_population": "training known rows plus fitting-seed noise, class-balanced weighted mean and standard deviation",
+          "tolerance": 1e-12
+        },
+        "fit_population": "train",
+        "fitting_noise_generator_uses_frequency_transform": true,
+        "gates_before_classification": true,
+        "inference_uses_frequency_transform": false,
+        "invariant_to_global_phase": true,
+        "invariant_to_global_scale": true,
+        "model": "ridge logistic regression on standardised features",
+        "operating_point": {
+          "allowance": 37,
+          "chosen": true,
+          "gate_rule": "gated as NOISE when score >= threshold_score",
+          "inherited_from_another_model": false,
+          "known_false_positive_budget": 0.01,
+          "novelty_rows_used_for_threshold": 0,
+          "policy": "enrollment_known_false_positive_budget",
+          "population": "enroll",
+          "realised_known_false_positive_rate": 0.009893048128342246,
+          "rows": 3740,
+          "selection_rows_used_for_threshold": 0,
+          "threshold_probability": 0.9223123766185274,
+          "threshold_score": 2.4741880120033097,
+          "threshold_space": "linear score (log-odds), not probability, because probabilities saturate to 1.0 in float64",
+          "training_rows_used_for_threshold": 0
+        },
+        "release_seed_not_spent": 20260731,
+        "schema": "noise-prefilter-bundle-v1",
+        "sealed_release_paths_read": 0,
+        "selection_rows_used": 0,
+        "threshold_population": "enroll",
+        "uses_absolute_scale": false,
+        "version": "noise-prefilter-v1"
+      },
+      "4096": {
+        "additive_only": false,
+        "architecture_contract_change": "The v3 open-set rejector is strictly additive and never alters the closed label. This noise prefilter is a GATE: when it fires, classification does not run and the row has no closed label at all. That is a deliberate change to the architecture contract, not an oversight, and it must be stated in the emitted JSON and in any release claim. It also means a gated row skips the encoder, the fusion, the prototype distance and the branch LOF; that saving is measured by compute_saving() and is never asserted.",
+        "capture_length": 4096,
+        "changes_closed_label": true,
+        "consumed_test_rows_used": 0,
+        "decides": "noise vs not-noise only; chirp stays on the v3 path",
+        "extractor": {
+          "bandwidth_floor": 1e-05,
+          "base_lags": [
+            1,
+            2,
+            4,
+            8,
+            16
+          ],
+          "changes_closed_label": false,
+          "estimator_version": "time-correlation-v1",
+          "feature_count": 21,
+          "feature_names": [
+            "log10_relative_lag1_magnitude",
+            "log10_relative_lag_magnitude_mean",
+            "log10_relative_lag_magnitude_max",
+            "log10_lag1_sampling_margin",
+            "relative_lag_magnitude_decay_slope",
+            "bandwidth_log_dispersion",
+            "bandwidth_log_range",
+            "max_abs_unclipped_quotient",
+            "quotient_clip_fraction",
+            "carrier_phase_coherence",
+            "carrier_phase_coherence_sign_blind",
+            "degenerate_full_band_fallback",
+            "bandwidth_clipped_to_minimum",
+            "bandwidth_clipped_to_full",
+            "log2_selected_base_lag",
+            "high_lag_qualified_fraction",
+            "prefix_bandwidth_log_dispersion",
+            "prefix_centre_dispersion",
+            "prefix_relative_lag1_log_dispersion",
+            "zero_magnitude_prefix_fraction",
+            "peak_normalized_mean_power"
+          ],
+          "invariant_to_global_phase": true,
+          "invariant_to_global_scale": true,
+          "learned_calibration": false,
+          "magnitude_floor": 1e-09,
+          "maximum_lag": 32,
+          "minimum_prefix_samples": 66,
+          "prefix_fractions": [
+            0.25,
+            0.5,
+            1.0
+          ],
+          "quotient_cap": 10.0,
+          "uses_absolute_scale": false,
+          "uses_frequency_transform": false,
+          "version": "pose-degeneracy-v1"
+        },
+        "feature_names": [
+          "log10_relative_lag_magnitude_mean",
+          "relative_lag_magnitude_decay_slope",
+          "bandwidth_log_dispersion",
+          "carrier_phase_coherence",
+          "high_lag_qualified_fraction",
+          "prefix_bandwidth_log_dispersion",
+          "peak_normalized_mean_power"
+        ],
+        "feature_selection": {
+          "dropped": [
+            {
+              "feature": "log10_relative_lag1_magnitude",
+              "reason": "near-duplicate: the lag-one element of the same log-ratio statistic whose mean over BASE_LAGS is retained."
+            },
+            {
+              "feature": "log10_relative_lag_magnitude_max",
+              "reason": "near-duplicate: the max reduction of the same log-ratio statistic whose mean is retained."
+            },
+            {
+              "feature": "log10_lag1_sampling_margin",
+              "reason": "near-duplicate: log10_relative_lag1_magnitude minus a deterministic function of capture length. One model is fitted per length, so the length offset is a constant absorbed by the intercept and this reduces to the already-dropped lag-one element."
+            },
+            {
+              "feature": "bandwidth_log_range",
+              "reason": "near-duplicate: max minus min of the same per-lag log bandwidths whose population standard deviation is retained, and the less robust of the two reductions."
+            },
+            {
+              "feature": "max_abs_unclipped_quotient",
+              "reason": "cap-saturating heavy-tailed tail statistic of the same per-lag quotient set summarised by the retained bandwidth_log_dispersion and high_lag_qualified_fraction. A column that saturates at QUOTIENT_CAP is the worst kind of input to a standardised linear model. This is the most defensible re-addition candidate if the operating point misses, and it would need a fresh design seed."
+            },
+            {
+              "feature": "quotient_clip_fraction",
+              "reason": "measured dead: AUROC 0.5144 (HANDOFF 19.1)."
+            },
+            {
+              "feature": "carrier_phase_coherence_sign_blind",
+              "reason": "near-duplicate: the same circular-mean statistic evaluated on doubled angles; retained sibling is carrier_phase_coherence."
+            },
+            {
+              "feature": "degenerate_full_band_fallback",
+              "reason": "measured dead: AUROC exactly 0.5000 (HANDOFF 19.1). The estimator's own degeneracy flag never fires on any development or novelty row. Also a binary indicator."
+            },
+            {
+              "feature": "bandwidth_clipped_to_minimum",
+              "reason": "binary indicator of the same clipping mechanism whose continuous expression (bandwidth_log_dispersion) is retained; near-constant on the fit population, so standardising it divides by noise."
+            },
+            {
+              "feature": "bandwidth_clipped_to_full",
+              "reason": "measured dead: AUROC 0.5009 (HANDOFF 19.1). Also a binary indicator."
+            },
+            {
+              "feature": "log2_selected_base_lag",
+              "reason": "discrete estimator-internal index over five possible base lags; a small-support ordinal code is the wrong input to a standardised linear model, and its continuous counterpart (high_lag_qualified_fraction) is retained."
+            },
+            {
+              "feature": "prefix_centre_dispersion",
+              "reason": "the CHIRP carrier, not the noise carrier: chirp AUROC 0.9612 against noise AUROC 0.7230 (HANDOFF 19.1). Chirp is already solved by the existing v3 path (AUROC 0.9716, threshold recall 0.72-1.00) and is deliberately left there. A noise prefilter that also chases chirp reintroduces the very trade-off section 19.2 measured."
+            },
+            {
+              "feature": "prefix_relative_lag1_log_dispersion",
+              "reason": "near-duplicate: prefix dispersion of the lag-one magnitude, one of three prefix-dispersion statistics of which prefix_bandwidth_log_dispersion is retained."
+            },
+            {
+              "feature": "zero_magnitude_prefix_fraction",
+              "reason": "measured dead: AUROC 0.5066 (HANDOFF 19.1). Also near-constant."
+            }
+          ],
+          "rules": [
+            "measured dead in HANDOFF 19.1",
+            "continuous columns only: no binary indicators, no small-support discrete codes",
+            "one member per mechanism family: near-duplicate reductions of the same statistic are dropped",
+            "chirp-carrying features are left to the existing v3 path"
+          ],
+          "source_feature_count": 21,
+          "used": [
+            {
+              "feature": "log10_relative_lag_magnitude_mean",
+              "reason": "magnitude family: how much coherent structure exists at all, averaged over BASE_LAGS. Noise AUROC 0.9004 standalone (HANDOFF 19.1). Retained over the lag-one element and the max because the mean is the lowest-variance reduction of the same statistic."
+            },
+            {
+              "feature": "relative_lag_magnitude_decay_slope",
+              "reason": "lag-decay family: slope of that log ratio against log2(lag). A short-memory process collapses with lag, a narrowband emission does not. Noise AUROC 0.8872. Independent of the level above by construction (slope versus intercept)."
+            },
+            {
+              "feature": "bandwidth_log_dispersion",
+              "reason": "multiscale-agreement family: population standard deviation of log10 of the per-lag bandwidth estimates. A coherent emission must agree across scales; a degenerate pose estimate disagrees. This is the quantity the frontend computes and discards, and is the direct expression of the HANDOFF 17 mechanism."
+            },
+            {
+              "feature": "carrier_phase_coherence",
+              "reason": "phase family: |mean_k exp(i(angle(R[k]) - k angle(R[1])))|. A single carrier makes every term identically 1. Best standalone noise separator measured, AUROC 0.9154."
+            },
+            {
+              "feature": "high_lag_qualified_fraction",
+              "reason": "estimator-admission family: fraction of higher base lags passing both of estimate_band's own admission tests. Noise AUROC 0.8579. It says how much of the estimator's evidence survived its own gate, which no other retained feature reports."
+            },
+            {
+              "feature": "prefix_bandwidth_log_dispersion",
+              "reason": "temporal-stability family: dispersion of log10(bandwidth) re-estimated on nested prefixes of the same capture. Multiscale agreement (bandwidth_log_dispersion) and temporal agreement are different failures; noise fails both, a gated or bursty emission fails only the second."
+            },
+            {
+              "feature": "peak_normalized_mean_power",
+              "reason": "amplitude-shape family: inverse squared crest factor, in (0, 1], exactly invariant to global scale and phase. It is a shape statistic, not an absolute level, so it adds no scale dependence; complex Gaussian noise has a characteristic crest factor that no retained correlation statistic sees."
+            }
+          ],
+          "used_feature_count": 7
+        },
+        "fit": {
+          "class_weighting": "balanced, 0.5 total mass per class",
+          "clean_validation_seeds_from": 20260942,
+          "consumed_test_rows_used_in_fit": 0,
+          "converged": true,
+          "enrollment_rows_used_in_fit": 0,
+          "fitting_noise": {
+            "chirp_drawn": false,
+            "family": "noise",
+            "generated_once_at": 16384,
+            "generator": "openset_eval.NOVELTY['noise']",
+            "longest_capture_sha256": "4137525383a659e6d90ce67afb92a60b11f78e6e770d3deb5267ba4585879a3b",
+            "min_bandwidth_mode": "frontend",
+            "n_rows": 600,
+            "seed": 20261001,
+            "seed_role": "fit only",
+            "shorter_lengths_are_exact_raw_prefixes": true
+          },
+          "fitting_noise_rows": 600,
+          "fitting_seed": 20261001,
+          "fitting_seed_is_not_a_validation_seed": true,
+          "fitting_seed_namespace": [
+            20261000,
+            20261999
+          ],
+          "iterations": 8,
+          "known_population": "train",
+          "known_rows": 4834,
+          "l2_penalty": 0.01,
+          "max_iterations": 100,
+          "objective": 0.22976603221955524,
+          "selection_rows_used_in_fit": 0,
+          "solver": "damped Newton / IRLS, zero start, fixed halving backtrack",
+          "spent_novelty_seeds_refused": [
+            20260938,
+            20260939,
+            20260940,
+            20260941
+          ],
+          "standardizer_population": "training known rows plus fitting-seed noise, class-balanced weighted mean and standard deviation",
+          "tolerance": 1e-12
+        },
+        "fit_population": "train",
+        "fitting_noise_generator_uses_frequency_transform": true,
+        "gates_before_classification": true,
+        "inference_uses_frequency_transform": false,
+        "invariant_to_global_phase": true,
+        "invariant_to_global_scale": true,
+        "model": "ridge logistic regression on standardised features",
+        "operating_point": {
+          "allowance": 35,
+          "chosen": true,
+          "gate_rule": "gated as NOISE when score >= threshold_score",
+          "inherited_from_another_model": false,
+          "known_false_positive_budget": 0.01,
+          "novelty_rows_used_for_threshold": 0,
+          "policy": "enrollment_known_false_positive_budget",
+          "population": "enroll",
+          "realised_known_false_positive_rate": 0.009757457485363814,
+          "rows": 3587,
+          "selection_rows_used_for_threshold": 0,
+          "threshold_probability": 0.9266547558107097,
+          "threshold_score": 2.536403399233809,
+          "threshold_space": "linear score (log-odds), not probability, because probabilities saturate to 1.0 in float64",
+          "training_rows_used_for_threshold": 0
+        },
+        "release_seed_not_spent": 20260731,
+        "schema": "noise-prefilter-bundle-v1",
+        "sealed_release_paths_read": 0,
+        "selection_rows_used": 0,
+        "threshold_population": "enroll",
+        "uses_absolute_scale": false,
+        "version": "noise-prefilter-v1"
+      },
+      "8192": {
+        "additive_only": false,
+        "architecture_contract_change": "The v3 open-set rejector is strictly additive and never alters the closed label. This noise prefilter is a GATE: when it fires, classification does not run and the row has no closed label at all. That is a deliberate change to the architecture contract, not an oversight, and it must be stated in the emitted JSON and in any release claim. It also means a gated row skips the encoder, the fusion, the prototype distance and the branch LOF; that saving is measured by compute_saving() and is never asserted.",
+        "capture_length": 8192,
+        "changes_closed_label": true,
+        "consumed_test_rows_used": 0,
+        "decides": "noise vs not-noise only; chirp stays on the v3 path",
+        "extractor": {
+          "bandwidth_floor": 1e-05,
+          "base_lags": [
+            1,
+            2,
+            4,
+            8,
+            16
+          ],
+          "changes_closed_label": false,
+          "estimator_version": "time-correlation-v1",
+          "feature_count": 21,
+          "feature_names": [
+            "log10_relative_lag1_magnitude",
+            "log10_relative_lag_magnitude_mean",
+            "log10_relative_lag_magnitude_max",
+            "log10_lag1_sampling_margin",
+            "relative_lag_magnitude_decay_slope",
+            "bandwidth_log_dispersion",
+            "bandwidth_log_range",
+            "max_abs_unclipped_quotient",
+            "quotient_clip_fraction",
+            "carrier_phase_coherence",
+            "carrier_phase_coherence_sign_blind",
+            "degenerate_full_band_fallback",
+            "bandwidth_clipped_to_minimum",
+            "bandwidth_clipped_to_full",
+            "log2_selected_base_lag",
+            "high_lag_qualified_fraction",
+            "prefix_bandwidth_log_dispersion",
+            "prefix_centre_dispersion",
+            "prefix_relative_lag1_log_dispersion",
+            "zero_magnitude_prefix_fraction",
+            "peak_normalized_mean_power"
+          ],
+          "invariant_to_global_phase": true,
+          "invariant_to_global_scale": true,
+          "learned_calibration": false,
+          "magnitude_floor": 1e-09,
+          "maximum_lag": 32,
+          "minimum_prefix_samples": 66,
+          "prefix_fractions": [
+            0.25,
+            0.5,
+            1.0
+          ],
+          "quotient_cap": 10.0,
+          "uses_absolute_scale": false,
+          "uses_frequency_transform": false,
+          "version": "pose-degeneracy-v1"
+        },
+        "feature_names": [
+          "log10_relative_lag_magnitude_mean",
+          "relative_lag_magnitude_decay_slope",
+          "bandwidth_log_dispersion",
+          "carrier_phase_coherence",
+          "high_lag_qualified_fraction",
+          "prefix_bandwidth_log_dispersion",
+          "peak_normalized_mean_power"
+        ],
+        "feature_selection": {
+          "dropped": [
+            {
+              "feature": "log10_relative_lag1_magnitude",
+              "reason": "near-duplicate: the lag-one element of the same log-ratio statistic whose mean over BASE_LAGS is retained."
+            },
+            {
+              "feature": "log10_relative_lag_magnitude_max",
+              "reason": "near-duplicate: the max reduction of the same log-ratio statistic whose mean is retained."
+            },
+            {
+              "feature": "log10_lag1_sampling_margin",
+              "reason": "near-duplicate: log10_relative_lag1_magnitude minus a deterministic function of capture length. One model is fitted per length, so the length offset is a constant absorbed by the intercept and this reduces to the already-dropped lag-one element."
+            },
+            {
+              "feature": "bandwidth_log_range",
+              "reason": "near-duplicate: max minus min of the same per-lag log bandwidths whose population standard deviation is retained, and the less robust of the two reductions."
+            },
+            {
+              "feature": "max_abs_unclipped_quotient",
+              "reason": "cap-saturating heavy-tailed tail statistic of the same per-lag quotient set summarised by the retained bandwidth_log_dispersion and high_lag_qualified_fraction. A column that saturates at QUOTIENT_CAP is the worst kind of input to a standardised linear model. This is the most defensible re-addition candidate if the operating point misses, and it would need a fresh design seed."
+            },
+            {
+              "feature": "quotient_clip_fraction",
+              "reason": "measured dead: AUROC 0.5144 (HANDOFF 19.1)."
+            },
+            {
+              "feature": "carrier_phase_coherence_sign_blind",
+              "reason": "near-duplicate: the same circular-mean statistic evaluated on doubled angles; retained sibling is carrier_phase_coherence."
+            },
+            {
+              "feature": "degenerate_full_band_fallback",
+              "reason": "measured dead: AUROC exactly 0.5000 (HANDOFF 19.1). The estimator's own degeneracy flag never fires on any development or novelty row. Also a binary indicator."
+            },
+            {
+              "feature": "bandwidth_clipped_to_minimum",
+              "reason": "binary indicator of the same clipping mechanism whose continuous expression (bandwidth_log_dispersion) is retained; near-constant on the fit population, so standardising it divides by noise."
+            },
+            {
+              "feature": "bandwidth_clipped_to_full",
+              "reason": "measured dead: AUROC 0.5009 (HANDOFF 19.1). Also a binary indicator."
+            },
+            {
+              "feature": "log2_selected_base_lag",
+              "reason": "discrete estimator-internal index over five possible base lags; a small-support ordinal code is the wrong input to a standardised linear model, and its continuous counterpart (high_lag_qualified_fraction) is retained."
+            },
+            {
+              "feature": "prefix_centre_dispersion",
+              "reason": "the CHIRP carrier, not the noise carrier: chirp AUROC 0.9612 against noise AUROC 0.7230 (HANDOFF 19.1). Chirp is already solved by the existing v3 path (AUROC 0.9716, threshold recall 0.72-1.00) and is deliberately left there. A noise prefilter that also chases chirp reintroduces the very trade-off section 19.2 measured."
+            },
+            {
+              "feature": "prefix_relative_lag1_log_dispersion",
+              "reason": "near-duplicate: prefix dispersion of the lag-one magnitude, one of three prefix-dispersion statistics of which prefix_bandwidth_log_dispersion is retained."
+            },
+            {
+              "feature": "zero_magnitude_prefix_fraction",
+              "reason": "measured dead: AUROC 0.5066 (HANDOFF 19.1). Also near-constant."
+            }
+          ],
+          "rules": [
+            "measured dead in HANDOFF 19.1",
+            "continuous columns only: no binary indicators, no small-support discrete codes",
+            "one member per mechanism family: near-duplicate reductions of the same statistic are dropped",
+            "chirp-carrying features are left to the existing v3 path"
+          ],
+          "source_feature_count": 21,
+          "used": [
+            {
+              "feature": "log10_relative_lag_magnitude_mean",
+              "reason": "magnitude family: how much coherent structure exists at all, averaged over BASE_LAGS. Noise AUROC 0.9004 standalone (HANDOFF 19.1). Retained over the lag-one element and the max because the mean is the lowest-variance reduction of the same statistic."
+            },
+            {
+              "feature": "relative_lag_magnitude_decay_slope",
+              "reason": "lag-decay family: slope of that log ratio against log2(lag). A short-memory process collapses with lag, a narrowband emission does not. Noise AUROC 0.8872. Independent of the level above by construction (slope versus intercept)."
+            },
+            {
+              "feature": "bandwidth_log_dispersion",
+              "reason": "multiscale-agreement family: population standard deviation of log10 of the per-lag bandwidth estimates. A coherent emission must agree across scales; a degenerate pose estimate disagrees. This is the quantity the frontend computes and discards, and is the direct expression of the HANDOFF 17 mechanism."
+            },
+            {
+              "feature": "carrier_phase_coherence",
+              "reason": "phase family: |mean_k exp(i(angle(R[k]) - k angle(R[1])))|. A single carrier makes every term identically 1. Best standalone noise separator measured, AUROC 0.9154."
+            },
+            {
+              "feature": "high_lag_qualified_fraction",
+              "reason": "estimator-admission family: fraction of higher base lags passing both of estimate_band's own admission tests. Noise AUROC 0.8579. It says how much of the estimator's evidence survived its own gate, which no other retained feature reports."
+            },
+            {
+              "feature": "prefix_bandwidth_log_dispersion",
+              "reason": "temporal-stability family: dispersion of log10(bandwidth) re-estimated on nested prefixes of the same capture. Multiscale agreement (bandwidth_log_dispersion) and temporal agreement are different failures; noise fails both, a gated or bursty emission fails only the second."
+            },
+            {
+              "feature": "peak_normalized_mean_power",
+              "reason": "amplitude-shape family: inverse squared crest factor, in (0, 1], exactly invariant to global scale and phase. It is a shape statistic, not an absolute level, so it adds no scale dependence; complex Gaussian noise has a characteristic crest factor that no retained correlation statistic sees."
+            }
+          ],
+          "used_feature_count": 7
+        },
+        "fit": {
+          "class_weighting": "balanced, 0.5 total mass per class",
+          "clean_validation_seeds_from": 20260942,
+          "consumed_test_rows_used_in_fit": 0,
+          "converged": true,
+          "enrollment_rows_used_in_fit": 0,
+          "fitting_noise": {
+            "chirp_drawn": false,
+            "family": "noise",
+            "generated_once_at": 16384,
+            "generator": "openset_eval.NOVELTY['noise']",
+            "longest_capture_sha256": "4137525383a659e6d90ce67afb92a60b11f78e6e770d3deb5267ba4585879a3b",
+            "min_bandwidth_mode": "frontend",
+            "n_rows": 600,
+            "seed": 20261001,
+            "seed_role": "fit only",
+            "shorter_lengths_are_exact_raw_prefixes": true
+          },
+          "fitting_noise_rows": 600,
+          "fitting_seed": 20261001,
+          "fitting_seed_is_not_a_validation_seed": true,
+          "fitting_seed_namespace": [
+            20261000,
+            20261999
+          ],
+          "iterations": 8,
+          "known_population": "train",
+          "known_rows": 4874,
+          "l2_penalty": 0.01,
+          "max_iterations": 100,
+          "objective": 0.23736762500882908,
+          "selection_rows_used_in_fit": 0,
+          "solver": "damped Newton / IRLS, zero start, fixed halving backtrack",
+          "spent_novelty_seeds_refused": [
+            20260938,
+            20260939,
+            20260940,
+            20260941
+          ],
+          "standardizer_population": "training known rows plus fitting-seed noise, class-balanced weighted mean and standard deviation",
+          "tolerance": 1e-12
+        },
+        "fit_population": "train",
+        "fitting_noise_generator_uses_frequency_transform": true,
+        "gates_before_classification": true,
+        "inference_uses_frequency_transform": false,
+        "invariant_to_global_phase": true,
+        "invariant_to_global_scale": true,
+        "model": "ridge logistic regression on standardised features",
+        "operating_point": {
+          "allowance": 36,
+          "chosen": true,
+          "gate_rule": "gated as NOISE when score >= threshold_score",
+          "inherited_from_another_model": false,
+          "known_false_positive_budget": 0.01,
+          "novelty_rows_used_for_threshold": 0,
+          "policy": "enrollment_known_false_positive_budget",
+          "population": "enroll",
+          "realised_known_false_positive_rate": 0.00995575221238938,
+          "rows": 3616,
+          "selection_rows_used_for_threshold": 0,
+          "threshold_probability": 0.9248364739012148,
+          "threshold_score": 2.5099508489015876,
+          "threshold_space": "linear score (log-odds), not probability, because probabilities saturate to 1.0 in float64",
+          "training_rows_used_for_threshold": 0
+        },
+        "release_seed_not_spent": 20260731,
+        "schema": "noise-prefilter-bundle-v1",
+        "sealed_release_paths_read": 0,
+        "selection_rows_used": 0,
+        "threshold_population": "enroll",
+        "uses_absolute_scale": false,
+        "version": "noise-prefilter-v1"
+      }
+    },
+    "module": "noise_prefilter",
+    "posedegen": {
+      "extractor_metadata": {
+        "bandwidth_floor": 1e-05,
+        "base_lags": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ],
+        "changes_closed_label": false,
+        "estimator_version": "time-correlation-v1",
+        "feature_count": 21,
+        "feature_names": [
+          "log10_relative_lag1_magnitude",
+          "log10_relative_lag_magnitude_mean",
+          "log10_relative_lag_magnitude_max",
+          "log10_lag1_sampling_margin",
+          "relative_lag_magnitude_decay_slope",
+          "bandwidth_log_dispersion",
+          "bandwidth_log_range",
+          "max_abs_unclipped_quotient",
+          "quotient_clip_fraction",
+          "carrier_phase_coherence",
+          "carrier_phase_coherence_sign_blind",
+          "degenerate_full_band_fallback",
+          "bandwidth_clipped_to_minimum",
+          "bandwidth_clipped_to_full",
+          "log2_selected_base_lag",
+          "high_lag_qualified_fraction",
+          "prefix_bandwidth_log_dispersion",
+          "prefix_centre_dispersion",
+          "prefix_relative_lag1_log_dispersion",
+          "zero_magnitude_prefix_fraction",
+          "peak_normalized_mean_power"
+        ],
+        "invariant_to_global_phase": true,
+        "invariant_to_global_scale": true,
+        "learned_calibration": false,
+        "magnitude_floor": 1e-09,
+        "maximum_lag": 32,
+        "minimum_prefix_samples": 66,
+        "prefix_fractions": [
+          0.25,
+          0.5,
+          1.0
+        ],
+        "quotient_cap": 10.0,
+        "uses_absolute_scale": false,
+        "uses_frequency_transform": false,
+        "version": "pose-degeneracy-v1"
+      },
+      "feature_count": 21,
+      "min_bandwidth_matches_frontend": true,
+      "module": "pose_degeneracy",
+      "source_path": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/v3_scale/pose_degeneracy.py",
+      "source_sha256": "431499124cd8470276a22356622b54f9c60c63c15e3770f49944bc626091aaf1",
+      "version": "pose-degeneracy-v1"
+    },
+    "selection_feature_seconds": 1.0760268750000002,
+    "selection_features_sha256": "7594532116d174e3a472a857f81013668b0cbc3083ddddd67ed45550089c1d9e",
+    "selection_protocol": "--prefilter-dir is a fitted noise-prefilter set, one bundle per capture length, produced by noise_prefilter.py. This module LOADS it and never fits it: the coefficients are fit on training rows, the operating point is a known-false-positive budget chosen on enrollment rows, and the synthetic fitting noise comes from a fitting-seed namespace disjoint from every novelty seed. All of that is the prefilter module's contract and is verified here from each bundle's own provenance rather than assumed. Consequently NO novelty seed took part in choosing the stage-1 operating point. --role and --design-novelty-seed still govern the staged system's own choices -- which bundle, which prefix lengths -- and keep the audit trail. Novelty seeds are consumable evidence. [20260938, 20260939, 20260940, 20260941, 20260942, 20260943, 20260944, 20260945, 20260946, 20260947, 20260948, 20260949] are spent and are refused in both roles; [20260729, 20260731, 20260733, 20260734] are consumed sealed suites and 20260735 is the next untouched release seed, and none of them is a development novelty seed. 20260950 onward are clean, with the first two clean seeds reserved for validation: --role validate references the spent design seed 20260949 without redrawing it and draws untouched seeds [20260950, 20260951]. Making any staged-system choice against the validation seeds would convert validation evidence into training evidence, which evidence rule 4 forbids.",
+    "set_sha256": "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2",
+    "source_path": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/v3_scale/noise_prefilter.py",
+    "source_sha256": "435495e5b0d11558a2e0edfd7d6e6112e7cebf716460d3d81ae741d97deaa7b4",
+    "stage_one_prefix_rule": {
+      "max_fitted_length": 16384,
+      "rule": "at a capture length ABOVE the longest fitted prefilter length, the stage-1 pose-degeneracy features are computed on the capture's FIRST max-fitted-length samples and gated with that length's bundle.  The first N samples of a longer capture are exactly an N-sample capture of the same emission, so this is the same causal-prefix rule the release protocol's length suite is built on, not an approximation.  Lengths BELOW the smallest fitted length keep the existing refusal semantics: no fitted length is a causal prefix of such a capture, so no bundle may be substituted"
+    },
+    "version": "noise-prefilter-v1"
+  },
+  "stage_two": {
+    "branch_lof_components": [
+      {
+        "branch": "real",
+        "neighbors": 2,
+        "weight": 0.4
+      },
+      {
+        "branch": "complex",
+        "neighbors": 64,
+        "weight": 0.6
+      }
+    ],
+    "branch_lof_hyperparameters_source": "inherited from the v2 ensemble and re-fit on v3 embeddings; not re-searched here",
+    "branch_lof_rank_weight": 0.8,
+    "cannot_change_closed_label": true,
+    "geometry_feature": "across_patch_frequency_dispersion",
+    "geometry_rank_weight": 0.2,
+    "kind": "v3_known_only_lof_frequency_dispersion_rank_blend",
+    "threshold": 0.9494921144079123,
+    "threshold_quantile": 0.95,
+    "threshold_role": "the stage-2 policy's own internal enrollment q95, untouched. The STAGED decision threshold is the composite block's threshold; this one still governs the unstaged control arm"
+  },
+  "stage_two_closed_label_altered": false,
+  "status": "development_openset_pass",
+  "unstaged_control": {
+    "all_pass": false,
+    "description": "the same rows through fit_v3_openset unchanged, with no gate. The only difference from the staged arm is stage 1, so the delta is attributable to the gate",
+    "gates": {
+      "chirp_auroc": {
+        "floor": 0.8,
+        "passes": true,
+        "worst": 0.9766719077568135
+      },
+      "chirp_threshold_recall": {
+        "floor": 0.1,
+        "passes": true,
+        "worst": 0.9633333333333334
+      },
+      "known_false_unknown_rate": {
+        "ceiling": 0.1,
+        "passes": true,
+        "worst": 0.046645702306079666
+      },
+      "noise_auroc": {
+        "floor": 0.8,
+        "passes": false,
+        "worst": 0.6375847309573724
+      },
+      "noise_threshold_recall": {
+        "floor": 0.1,
+        "passes": false,
+        "worst": 0.04
+      },
+      "overall_auroc": {
+        "floor": 0.72,
+        "passes": true,
+        "worst": 0.807128319357093
+      }
+    },
+    "known_false_unknown_rate": 0.046645702306079666
+  },
+  "wall_clock_s": 186.39798037499997
+}

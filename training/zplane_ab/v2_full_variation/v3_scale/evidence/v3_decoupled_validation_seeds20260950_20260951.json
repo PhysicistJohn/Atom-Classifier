@@ -1,0 +1,121 @@
+{
+  "schema": "time-domain-v3-decoupled-validation-evidence-v1",
+  "status": "development_openset_pass",
+  "candidate_id": "v3.3-decoupled-8k-classifier-4k-rejector",
+  "candidate_contract": {
+    "path": "training/zplane_ab/v2_full_variation/v3_scale/evidence/v3_decoupled_candidate_contract.json",
+    "sha256": "2209a56df22ff0c3ffd152bf2973f94da2d3488536a9cfcbf3904d077a1ba706",
+    "committed_before_validation": true,
+    "commit": "e2e4805"
+  },
+  "validation": {
+    "role": "validate",
+    "design_seed_reference_only": 20260949,
+    "novelty_seeds_consumed_once": [
+      20260950,
+      20260951
+    ],
+    "novelty_rows_per_family_per_seed": 300,
+    "prefix_lengths": [
+      4096,
+      8192,
+      16384,
+      32768
+    ],
+    "device": "cpu",
+    "report": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_validate_decoupled_rejector4k_classifier8k_budget001_seeds20260950_20260951/openset_metrics.json",
+    "report_sha256": "24241bcb2e47c96e855f2b3e1d213ed5c02ee7c392758af8c62ea41557ea848c",
+    "gates_are_evidence": true,
+    "all_pass": true,
+    "sealed_release_data_used": 0,
+    "consumed_test_rows_used": 0,
+    "release_seed_20260735_used": false
+  },
+  "strict_gate_summary": {
+    "noise_auroc": {
+      "floor": 0.8,
+      "worst": 0.9656350454227812,
+      "passes": true
+    },
+    "chirp_auroc": {
+      "floor": 0.8,
+      "worst": 0.9386652690426275,
+      "passes": true
+    },
+    "overall_auroc": {
+      "floor": 0.72,
+      "worst": 0.9551672781271838,
+      "passes": true
+    },
+    "noise_threshold_recall": {
+      "floor": 0.1,
+      "worst": 0.8333333333333334,
+      "passes": true
+    },
+    "chirp_threshold_recall": {
+      "floor": 0.1,
+      "worst": 0.61,
+      "passes": true
+    },
+    "known_false_unknown_rate": {
+      "ceiling": 0.1,
+      "worst": 0.06446540880503145,
+      "passes": true
+    }
+  },
+  "validated_rejector": {
+    "fusion_directory_sha256": "0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5",
+    "fusion_reproduction": {
+      "tolerance": 0.0001,
+      "real_center_max_abs_error": 1.4901161193847656e-08,
+      "complex_center_max_abs_error": 1.4901161193847656e-08,
+      "prototypes_max_abs_error": 4.470348358154297e-08,
+      "feature_mean_max_abs_error": 0.0,
+      "feature_std_max_abs_error": 0.0
+    },
+    "canonical_prefilter_set_sha256": "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2",
+    "prefilter_bundle_sha256": {
+      "4096": "5ef175f5ddc296ec9ae0ffb8ac6801504fd609d6a852dbd5c4b1bf9a10de0f85",
+      "8192": "e0e972be4d1b7e43929b6c45c69d2dada884b49b39e16555998c375edf744557",
+      "16384": "3d56108fc016d8fb8ff7f4c18f8fc2fa6a1443d5d32d30cd769d52de087384db"
+    },
+    "policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+    "stage_two_threshold": 0.9494921144079123,
+    "composite_threshold": 0.9740452030878427
+  },
+  "validation_locked_policy_artifacts": {
+    "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_validate_decoupled_rejector4k_classifier8k_budget001_seeds20260950_20260951",
+    "v3_branch_lof_components.npz": "0a66ca267356bdacf239de5512b9406e010526c990dc38c137cac84342a062a6",
+    "v3_open_policy_stage_two.npz": "9378f6eea893174b4f716f4db5ea6ea2b637d64b04a0e7672bb39b2e50600dd8",
+    "v3_staged_composite_policy.npz": "7a3d5b8b1bdd67053f5f48a16d97cc2eef1fce909bd68f514c89c8bb4a64c133",
+    "derivation_population": "training and enrollment only; generated before novelty scoring by the predeclared validation command",
+    "novelty_rows_used_to_fit_rank_or_threshold": 0,
+    "deployment_role": "the exact rejector materialization validated on CPU and required by evaluator, exporter, preflight and promotion"
+  },
+  "cross_device_policy_reproduction": {
+    "reference": "the candidate contract's exact seed46 MPS policy artifacts",
+    "thresholds_bit_equal": true,
+    "stage_one_calibration_bit_equal": true,
+    "combined_calibration_order_bit_equal": true,
+    "composite_calibration_order_bit_equal": true,
+    "maximum_combined_calibration_raw_absolute_delta": 0.0002673082063618937,
+    "maximum_composite_calibration_raw_absolute_delta": 0.0002699784017278217,
+    "maximum_stage_two_calibration_score_absolute_delta": 0.000801924619085792,
+    "maximum_stage_two_calibration_rank_position_delta": 3,
+    "note": "The candidate contract recorded the design-device policy hashes. The predeclared CPU validation rebuilt the same fixed training/enrollment-only policy before drawing novelty, with identical thresholds and calibration order. Its exact emitted bytes are now locked for deployment; this is numerical materialization, not a validation-informed policy choice."
+  },
+  "candidate_contract_clarification": {
+    "field": "stage_one_noise_prefilter.directory_sha256",
+    "recorded_value": "7780fdbb77eb72c67ae5d0ec8073955fa307b786a77a1186e8723402fa56d16c",
+    "meaning": "generic sorted file-manifest SHA-256 used while freezing the pre-validation contract",
+    "canonical_behavioral_hash": "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2",
+    "changes_candidate_behavior": false
+  },
+  "post_validation_rules": {
+    "validation_seeds_are_spent": true,
+    "validation_may_not_be_redrawn": true,
+    "candidate_changes_permitted": false,
+    "next_clean_development_novelty_seed": 20260952,
+    "next_untouched_release_seed": 20260735
+  }
+}
