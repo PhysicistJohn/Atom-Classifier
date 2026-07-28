@@ -40,12 +40,27 @@ PACKED_WIDTH = PATCH_COUNT * PATCH_LENGTH
 
 DESIGN_SEED = subject.PROPOSED_DESIGN_NOVELTY_SEED
 VALIDATION_SEED = subject.DEFAULT_VALIDATION_NOVELTY_SEEDS[0]
+# Unreserved clean seed used only by tiny synthetic unit fixtures. It is not
+# scored as project evidence and is never written to an artifact.
+UNIT_NOVELTY_SEED = 20260952
 FITTING_SEED = prefilter.PROPOSED_FITTING_SEED
 
 # Short lengths so the tests stay fast.  The prefilter is length dependent, so
 # a bundle is fitted for each of these plus the known-population length.
 TEST_LENGTHS = (1024, 2048)
 KNOWN_LENGTH = 2048
+
+
+@contextlib.contextmanager
+def _temporarily_unspent_design_seed():
+    """Exercise the pre-draw design branch without falsifying the live ledger."""
+    ledger = {
+        seed: reason
+        for seed, reason in subject.SPENT_NOVELTY_SEEDS.items()
+        if seed != DESIGN_SEED
+    }
+    with mock.patch.dict(subject.SPENT_NOVELTY_SEEDS, ledger, clear=True):
+        yield
 
 
 def _packed(rows: int, seed: int) -> np.ndarray:
@@ -359,9 +374,10 @@ class SeedLedgerTests(unittest.TestCase):
                 20260946,
                 20260947,
                 20260948,
+                20260949,
             ],
         )
-        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260949)
+        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260950)
         self.assertEqual(subject.PROPOSED_DESIGN_NOVELTY_SEED, 20260949)
         self.assertEqual(
             subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, (20260950, 20260951)
@@ -446,18 +462,18 @@ class SeedLedgerTests(unittest.TestCase):
 
     def test_a_clean_seed_is_accepted(self) -> None:
         self.assertEqual(
-            subject.validate_novelty_seeds([20260949, 20260950]),
-            (20260949, 20260950),
+            subject.validate_novelty_seeds([20260950, 20260951]),
+            (20260950, 20260951),
         )
 
     def test_duplicate_and_empty_seed_sets_are_refused(self) -> None:
         with self.assertRaisesRegex(ValueError, "distinct"):
-            subject.validate_novelty_seeds([20260949, 20260949])
+            subject.validate_novelty_seeds([20260950, 20260950])
         with self.assertRaisesRegex(ValueError, "distinct"):
             subject.validate_novelty_seeds([])
 
-    def test_validate_refuses_design_and_novelty_overlap(self) -> None:
-        with self.assertRaisesRegex(ValueError, "cannot"):
+    def test_validate_refuses_redrawing_the_spent_design_seed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "SPENT"):
             subject.validate_seed_plan("validate", 20260949, [20260949])
 
     def test_validate_accepts_the_default_pair(self) -> None:
@@ -473,18 +489,24 @@ class SeedLedgerTests(unittest.TestCase):
             subject.validate_seed_plan("design", VALIDATION_SEED, [VALIDATION_SEED])
 
     def test_design_refuses_the_reserved_validation_seeds(self) -> None:
-        with self.assertRaisesRegex(ValueError, "stay untouched"):
-            subject.validate_seed_plan(
-                "design", DESIGN_SEED, [DESIGN_SEED, VALIDATION_SEED]
-            )
+        with _temporarily_unspent_design_seed():
+            with self.assertRaisesRegex(ValueError, "stay untouched"):
+                subject.validate_seed_plan(
+                    "design", DESIGN_SEED, [DESIGN_SEED, VALIDATION_SEED]
+                )
 
     def test_design_must_draw_its_own_declared_seed(self) -> None:
-        with self.assertRaisesRegex(ValueError, "must draw novelty"):
-            subject.validate_seed_plan("design", DESIGN_SEED, [20260952])
-        self.assertEqual(
-            subject.validate_seed_plan("design", DESIGN_SEED, [DESIGN_SEED]),
-            ("design", DESIGN_SEED, (DESIGN_SEED,)),
-        )
+        with _temporarily_unspent_design_seed():
+            with self.assertRaisesRegex(ValueError, "must draw novelty"):
+                subject.validate_seed_plan(
+                    "design", DESIGN_SEED, [UNIT_NOVELTY_SEED]
+                )
+            self.assertEqual(
+                subject.validate_seed_plan(
+                    "design", DESIGN_SEED, [DESIGN_SEED]
+                ),
+                ("design", DESIGN_SEED, (DESIGN_SEED,)),
+            )
 
     def test_an_absent_or_non_integer_design_seed_is_refused(self) -> None:
         with self.assertRaisesRegex(ValueError, "required"):
@@ -1400,7 +1422,9 @@ class PrefilterRecorderTests(unittest.TestCase):
 
 
 class NoveltyFeatureTests(unittest.TestCase):
-    def _base_fixtures(self, seeds=(DESIGN_SEED,), lengths=TEST_LENGTHS):
+    def _base_fixtures(
+        self, seeds=(UNIT_NOVELTY_SEED,), lengths=TEST_LENGTHS
+    ):
         return base.generate_novelty(
             seeds,
             n_each=2,
@@ -1412,7 +1436,9 @@ class NoveltyFeatureTests(unittest.TestCase):
             target_frac=0.5,
         )
 
-    def _features(self, provenance, seeds=(DESIGN_SEED,), lengths=TEST_LENGTHS):
+    def _features(
+        self, provenance, seeds=(UNIT_NOVELTY_SEED,), lengths=TEST_LENGTHS
+    ):
         _, posedegen = _sources()
         return subject.generate_prefilter_features(
             posedegen,
@@ -1429,7 +1455,7 @@ class NoveltyFeatureTests(unittest.TestCase):
         features = self._features(provenance)
         for family in subject.NOVELTY_FAMILIES:
             for length in TEST_LENGTHS:
-                entry = features[DESIGN_SEED][family][length]
+                entry = features[UNIT_NOVELTY_SEED][family][length]
                 self.assertEqual(entry.features.shape, (2, pdg.FEATURE_COUNT))
                 self.assertTrue(np.isfinite(entry.features).all())
                 self.assertGreaterEqual(entry.seconds, 0.0)
@@ -1438,14 +1464,16 @@ class NoveltyFeatureTests(unittest.TestCase):
         """This is what proves stage 1 and stage 2 scored the same rows."""
         _fixtures, provenance = self._base_fixtures()
         tampered = json.loads(json.dumps(provenance))
-        tampered[str(DESIGN_SEED)]["noise"]["longest_capture_sha256"] = "0" * 64
+        tampered[str(UNIT_NOVELTY_SEED)]["noise"][
+            "longest_capture_sha256"
+        ] = "0" * 64
         with self.assertRaisesRegex(AssertionError, "do not match the digest"):
             self._features(tampered)
 
     def test_a_tampered_prefix_digest_is_caught(self) -> None:
         _fixtures, provenance = self._base_fixtures()
         tampered = json.loads(json.dumps(provenance))
-        tampered[str(DESIGN_SEED)]["chirp"]["prefix_sha256"][
+        tampered[str(UNIT_NOVELTY_SEED)]["chirp"]["prefix_sha256"][
             str(TEST_LENGTHS[0])
         ] = "0" * 64
         with self.assertRaisesRegex(AssertionError, "prefix digest"):
@@ -1456,15 +1484,19 @@ class NoveltyFeatureTests(unittest.TestCase):
         first = self._features(provenance)
         second = self._features(provenance)
         np.testing.assert_array_equal(
-            first[DESIGN_SEED]["noise"][TEST_LENGTHS[0]].features,
-            second[DESIGN_SEED]["noise"][TEST_LENGTHS[0]].features,
+            first[UNIT_NOVELTY_SEED]["noise"][TEST_LENGTHS[0]].features,
+            second[UNIT_NOVELTY_SEED]["noise"][TEST_LENGTHS[0]].features,
         )
 
     def test_noise_and_chirp_features_differ(self) -> None:
         _fixtures, provenance = self._base_fixtures()
         features = self._features(provenance)
-        noise = features[DESIGN_SEED]["noise"][TEST_LENGTHS[1]].features
-        chirp = features[DESIGN_SEED]["chirp"][TEST_LENGTHS[1]].features
+        noise = features[UNIT_NOVELTY_SEED]["noise"][
+            TEST_LENGTHS[1]
+        ].features
+        chirp = features[UNIT_NOVELTY_SEED]["chirp"][
+            TEST_LENGTHS[1]
+        ].features
         self.assertFalse(np.allclose(noise.mean(axis=0), chirp.mean(axis=0)))
 
     def test_a_spent_seed_is_refused_here_too(self) -> None:
@@ -1495,7 +1527,7 @@ class NoveltyFeatureTests(unittest.TestCase):
             )
             features = subject.generate_prefilter_features(
                 posedegen,
-                (DESIGN_SEED,),
+                (UNIT_NOVELTY_SEED,),
                 n_each=2,
                 lengths=sweep,
                 patch_length=PATCH_LENGTH,
@@ -1510,7 +1542,7 @@ class NoveltyFeatureTests(unittest.TestCase):
             # its own native-length featurization.
             plain = subject.generate_prefilter_features(
                 posedegen,
-                (DESIGN_SEED,),
+                (UNIT_NOVELTY_SEED,),
                 n_each=2,
                 lengths=sweep,
                 patch_length=PATCH_LENGTH,
@@ -1521,18 +1553,20 @@ class NoveltyFeatureTests(unittest.TestCase):
         self.assertLess(longest_fitted, 4096)
         for family in subject.NOVELTY_FAMILIES:
             np.testing.assert_array_equal(
-                features[DESIGN_SEED][family][4096].features,
-                features[DESIGN_SEED][family][longest_fitted].features,
+                features[UNIT_NOVELTY_SEED][family][4096].features,
+                features[UNIT_NOVELTY_SEED][family][
+                    longest_fitted
+                ].features,
             )
             for length in TEST_LENGTHS:
                 np.testing.assert_array_equal(
-                    features[DESIGN_SEED][family][length].features,
-                    plain[DESIGN_SEED][family][length].features,
+                    features[UNIT_NOVELTY_SEED][family][length].features,
+                    plain[UNIT_NOVELTY_SEED][family][length].features,
                 )
             self.assertFalse(
                 np.array_equal(
-                    features[DESIGN_SEED][family][4096].features,
-                    plain[DESIGN_SEED][family][4096].features,
+                    features[UNIT_NOVELTY_SEED][family][4096].features,
+                    plain[UNIT_NOVELTY_SEED][family][4096].features,
                 ),
                 "the prefix rule must change the above-max featurization",
             )
@@ -2073,9 +2107,10 @@ class EndToEndRunTests(unittest.TestCase):
         self.assertTrue(validated["gates_are_evidence"])
         self.assertTrue(validated["status"].startswith("development_openset_"))
         with tempfile.TemporaryDirectory() as root:
-            designed = self._run(
-                Path(root), role="design", novelty_seeds=[DESIGN_SEED]
-            )
+            with _temporarily_unspent_design_seed():
+                designed = self._run(
+                    Path(root), role="design", novelty_seeds=[DESIGN_SEED]
+                )
         self.assertFalse(designed["gates_are_evidence"])
         self.assertTrue(designed["status"].startswith("design_selection_"))
         self.assertIn("NOT validation evidence", designed["evidence_role"])

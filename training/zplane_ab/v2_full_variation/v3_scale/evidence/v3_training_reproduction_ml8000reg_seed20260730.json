@@ -1,0 +1,76 @@
+{
+  "schema": "time-domain-v3-training-reproduction-v1",
+  "status": "bit_exact_reproduction",
+  "model_seed": 20260730,
+  "purpose": "Recover and verify the complete training configuration omitted by the historical reports without replacing or modifying the original candidate artifacts.",
+  "data_contract": {
+    "training_only_for_gradients": true,
+    "enrollment_only_for_prototypes": true,
+    "development_selection_only_for_checkpoint_selection_and_metrics": true,
+    "consumed_test_rows_used": 0,
+    "sealed_release_rows_used": 0
+  },
+  "common_arguments": {
+    "device": "mps",
+    "dropout": 0.35,
+    "episodes": 8000,
+    "eval_every": 1000,
+    "label_smoothing": 0.0,
+    "learning_rate": 0.001,
+    "multilength_train": true,
+    "novelty_floor_fraction": 0.25,
+    "patch_count": 16,
+    "patch_dim": 64,
+    "patch_length": 64,
+    "phase_augmentation": true,
+    "selection_policy": "closed",
+    "set_pool": "mean_std",
+    "target_frac": 0.5,
+    "view_consistency_weight": 0.0,
+    "warmup_fraction": 0.03,
+    "weight_decay": 0.0005
+  },
+  "software": {
+    "numpy": "2.0.2",
+    "python": "3.9.6",
+    "torch": "2.8.0",
+    "resolved_device": "mps"
+  },
+  "source": {
+    "historical_run_time_domain_dev_sha256": "8ed452ce30eef1395eb96b348224681672e89252903f82a4332789d2f8240acd",
+    "reproduction_run_time_domain_dev_sha256": "9446a23b8d80c86fd7984307d3a2c04530e12f553df5b778967a4fd54dd193c4",
+    "reproduction_configuration_commit": "092c473"
+  },
+  "commands": {
+    "real": ".venv-training/bin/python training/zplane_ab/v2_full_variation/v3_scale/run_time_domain_dev.py --output-dir training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/timecorr_real_ml8000reg_repro_seed20260730 --device mps --seed 20260730 --encoder real --episodes 8000 --eval-every 1000 --multilength-train --dropout 0.35 --weight-decay 0.0005",
+    "complex": ".venv-training/bin/python training/zplane_ab/v2_full_variation/v3_scale/run_time_domain_dev.py --output-dir training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/timecorr_complex_ml8000reg_repro_seed20260730 --device mps --seed 20260730 --encoder complex --episodes 8000 --eval-every 1000 --multilength-train --dropout 0.35 --weight-decay 0.0005"
+  },
+  "branches": {
+    "real": {
+      "original_report_sha256": "d16f32b266289da5a6fcfacde754c242480d62aa22ecc2dc429632106780c28f",
+      "reproduction_report_sha256": "9b144b7f63ce1b396250b07f3ae012986c32d180be7038d7a62670e6b7ca72cf",
+      "original_state_dict_sha256": "3690ef7b6df99d4a577400b76991fd31c7506d9f710cfc210fbf8a3ba6e1e16e",
+      "reproduction_state_dict_sha256": "3690ef7b6df99d4a577400b76991fd31c7506d9f710cfc210fbf8a3ba6e1e16e",
+      "original_prototypes_sha256": "92fe2755a57ff9301b197793a0ddb4ba8d382387520f575a8bfa2e7b653a4f47",
+      "reproduction_prototypes_sha256": "92fe2755a57ff9301b197793a0ddb4ba8d382387520f575a8bfa2e7b653a4f47",
+      "state_keys_equal": true,
+      "all_state_tensors_bit_equal": true,
+      "maximum_state_tensor_absolute_delta": 0.0,
+      "prototypes_bit_equal": true,
+      "architecture_and_all_recorded_science_metrics_equal": true
+    },
+    "complex": {
+      "original_report_sha256": "61d5aa4e6ca7d94a23a7e28c5f7070fdeecd411d6e7d0fc4bc778251df821d19",
+      "reproduction_report_sha256": "885a98114c000e3366e8fb2e34f2528a0e30964c1f1681b3aa985a575a4bb86d",
+      "original_state_dict_sha256": "e69294927c716b85965ce08101d7f41bdd370ba9e2832ad5fa0043e6c926da83",
+      "reproduction_state_dict_sha256": "e69294927c716b85965ce08101d7f41bdd370ba9e2832ad5fa0043e6c926da83",
+      "original_prototypes_sha256": "57ac9d13d343636ec0dc6ad231320d75d6f7eabdcf3a33598c4186586b397fd5",
+      "reproduction_prototypes_sha256": "57ac9d13d343636ec0dc6ad231320d75d6f7eabdcf3a33598c4186586b397fd5",
+      "state_keys_equal": true,
+      "all_state_tensors_bit_equal": true,
+      "maximum_state_tensor_absolute_delta": 0.0,
+      "prototypes_bit_equal": true,
+      "architecture_and_all_recorded_science_metrics_equal": true
+    }
+  }
+}

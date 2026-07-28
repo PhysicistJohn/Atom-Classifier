@@ -1070,13 +1070,14 @@ def check_frozen_policy(pins: Mapping[str, Any]) -> list[Check]:
             20260946,
             20260947,
             20260948,
+            20260949,
         ]
         and int(staged.PROPOSED_DESIGN_NOVELTY_SEED)
         == int(pins["staged_design_novelty_seed"])
         and tuple(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS)
         == tuple(pins["staged_validation_novelty_seeds"])
         and int(staged.PROPOSED_DESIGN_NOVELTY_SEED)
-        not in staged.SPENT_NOVELTY_SEEDS
+        in staged.SPENT_NOVELTY_SEEDS
         and not (
             set(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS)
             & set(staged.SPENT_NOVELTY_SEEDS)
@@ -1088,7 +1089,7 @@ def check_frozen_policy(pins: Mapping[str, Any]) -> list[Check]:
             ledger_ok,
             f"release seed {new_seed} reserved and unreachable from "
             f"development; consumed releases {consumed_now}; spent novelty "
-            "seeds 20260938-20260948; reserved design/validation seeds "
+            "seeds 20260938-20260949; spent design and reserved validation "
             f"{pins['staged_design_novelty_seed']}/"
             f"{list(pins['staged_validation_novelty_seeds'])}"
             if ledger_ok

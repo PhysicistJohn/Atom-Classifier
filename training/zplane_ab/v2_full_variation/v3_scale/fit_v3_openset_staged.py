@@ -266,6 +266,12 @@ SPENT_NOVELTY_SEEDS: dict[int, str] = {
         "validated the v3.2 composite-survivor policy; validation evidence is "
         "consumed and may not be reused"
     ),
+    20260949: (
+        "designed the 8k-regularized v3.3 composite candidate; frozen "
+        "design_selection_fail because chirp failed at N4096/N8192. This "
+        "spent design population may inform a documented design refinement "
+        "but is never independent validation evidence"
+    ),
 }
 
 # Consumed sealed release suites (evidence rule 2): never re-run, never fit,
@@ -289,10 +295,11 @@ CONSUMED_SEALED_RELEASE_SEEDS: dict[int, str] = {
 }
 RELEASE_SEED_NEVER_SPENT_HERE = 20260735
 
-# Seeds through 20260948 are consumed.  The next candidate may design exactly
-# once on 20260949, then validate exactly once on the reserved untouched pair
-# 20260950/20260951.
-FIRST_CLEAN_NOVELTY_SEED = 20260949
+# Seeds through 20260949 are consumed.  The failed design draw remains the
+# declared design population; validation may reference it but never redraw it.
+# The reserved untouched pair 20260950/20260951 is the next independent
+# evidence and may be drawn exactly once after a design refinement is frozen.
+FIRST_CLEAN_NOVELTY_SEED = 20260950
 PROPOSED_DESIGN_NOVELTY_SEED = 20260949
 DEFAULT_VALIDATION_NOVELTY_SEEDS = (20260950, 20260951)
 
@@ -304,12 +311,12 @@ SEED_LEDGER_NOTE = (
     f"{sorted(CONSUMED_SEALED_RELEASE_SEEDS)} are consumed sealed suites and "
     f"{RELEASE_SEED_NEVER_SPENT_HERE} is the next untouched release seed, and "
     f"none of them is a development novelty seed. {FIRST_CLEAN_NOVELTY_SEED} "
-    "onward are clean: --role design draws its declared design seed (proposed "
-    f"{PROPOSED_DESIGN_NOVELTY_SEED}) and --role validate draws untouched seeds "
-    f"(default {list(DEFAULT_VALIDATION_NOVELTY_SEEDS)}) that the design seed "
-    "may not overlap. Making any staged-system choice against the validation "
-    "seeds would convert validation evidence into training evidence, which "
-    "evidence rule 4 forbids."
+    "onward are clean, with the first two clean seeds reserved for validation: "
+    f"--role validate references the spent design seed "
+    f"{PROPOSED_DESIGN_NOVELTY_SEED} without redrawing it and draws untouched "
+    f"seeds {list(DEFAULT_VALIDATION_NOVELTY_SEEDS)}. Making any staged-system "
+    "choice against the validation seeds would convert validation evidence "
+    "into training evidence, which evidence rule 4 forbids."
 )
 
 
