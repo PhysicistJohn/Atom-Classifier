@@ -1,0 +1,151 @@
+{
+  "architecture": {
+    "execution_order": [
+      "stage_one_noise_gate",
+      "rejector_known_unknown",
+      "classifier_known_label"
+    ],
+    "frontend": "invariant-patch-time-domain-v1",
+    "intentional_dual_fusion": true,
+    "known_label_source": "classifier_fusion_8k_regularized",
+    "known_unknown_source": "rejector_fusion_4k_frozen_policy",
+    "open_set_decision_changes_closed_label": true,
+    "stage_one_causal_prefix_rule": {
+      "16384": 16384,
+      "32768": 16384,
+      "4096": 4096,
+      "8192": 8192
+    },
+    "stage_one_short_circuit": true,
+    "uses_frequency_transform": false
+  },
+  "candidate_id": "v3.4-q97-decoupled-8k-classifier-4k-rejector",
+  "classifier_fusion_8k_regularized": {
+    "development_remaining_gates": {
+      "five_shot_delta_over_fresh_same_data_4k_incumbent": 0.0142124836252136,
+      "five_shot_worst_length_balanced_enrollment_support": 0.7706529687252136,
+      "fresh_same_data_4k_incumbent": 0.7564404851,
+      "n4096_clean_balanced_accuracy": 0.9313984168865436,
+      "note": "The absolute development five-shot gate does not pass. This is development selection evidence on a population whose fresh same-data incumbent is also below the sealed threshold; only the untouched sealed suite can satisfy the release gate.",
+      "record": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_remaining_gates_ml8000reg_seed20260730/remaining_gates.json",
+      "record_sha256": "ecf311254b9bb48d761fe871235e60e35df77c36c403e9a61df9890cba240649"
+    },
+    "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_ml8000reg_seed20260730",
+    "directory_sha256": "ecd894281b4cbac0917304b22ad7be194d41f994dcf2c008ca6ea0643b58667b",
+    "file_sha256": {
+      "complex_center.npy": "f2d00e61dccad4790d3b2da00b6a677be2dba2daa1aa42894cc5ccf514985f6b",
+      "dev_metrics.json": "a962c94dab4dd3c39f45fce54f3af8235fa681857e7829080929fcc31350bea3",
+      "feature_mean.npy": "29883542bd57f812b74050d2814497ec169cac240ed1fd6d136d7887fdbf8b64",
+      "feature_std.npy": "28f9f430d40603fab7ba3f6f49951a2b18033b91425363ae36e679850d1635fe",
+      "fusion_prototypes.npy": "fade48b8975c94b0fb202d3b83a79353f5dc8876d79e7e7e5953124cbc45df85",
+      "fusion_state_dict.pt": "c85238f97741049f7e19c6e1ef5b81209ece1b9caf5b5702899ce05a96bd111d",
+      "real_center.npy": "5892bc6858c6358a4876804c53c147717034b9f0944f230b55d95d94c0c695cc"
+    },
+    "training_reproduction": {
+      "bit_exact": true,
+      "record": "training/zplane_ab/v2_full_variation/v3_scale/evidence/v3_training_reproduction_ml8000reg_seed20260730.json",
+      "record_sha256": "0496c248b6e22cd122278ad0e7bf8cb2f29ffc02823e399330156811ea99f27a"
+    }
+  },
+  "q97_design_evidence": {
+    "commit": "825cf3eace2443aa18899dc192911c060045b068",
+    "novelty_seed": 20260955,
+    "path": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_design_v34_q97_rejector4k_budget001_seed20260955/openset_metrics.json",
+    "role": "design",
+    "sha256": "bb749aadd5395a3fc21ff9453621ad8fa7a7512f9b3c21c29cee933b09adfb0f",
+    "source_sha256": "4cca22059959ec472278f28594bd54a72bbbab04fcf9a294baa81d31fea59be9",
+    "status": "design_selection_pass"
+  },
+  "q97_policy": {
+    "calibration_hygiene": {
+      "classifier_cnn_fusion_changed": false,
+      "gate_contract_changed": false,
+      "nominal_enrollment_false_unknown_budget": 0.03970000000000003,
+      "novelty_rows_used_for_threshold": 0,
+      "only_policy_change": "composite survivor enrollment threshold quantile q99 -> q97",
+      "rejector_cnn_fusion_changed": false,
+      "release_rows_used_for_threshold": 0,
+      "selection_rows_used_for_threshold": 0,
+      "stage_one_changed": false,
+      "stage_one_known_false_positive_budget": 0.01,
+      "survivor_known_false_positive_budget": 0.030000000000000027,
+      "threshold_population": "enrollment_stage_one_survivors_only",
+      "training_rows_used_for_threshold": 0
+    },
+    "design_novelty_seed": 20260955,
+    "kind": "v3_staged_noise_prefilter_then_q97_composite_survivor_lof_geometry",
+    "only_policy_change": "composite survivor enrollment threshold quantile q99 -> q97",
+    "release_seed_never_spent_in_development": 20260736,
+    "schema": 4,
+    "survivor_score": "max(stage2_enrollment_rank, stage1_score_enrollment_rank)",
+    "threshold_quantile": 0.97,
+    "validation_novelty_seeds": [
+      20260953,
+      20260954
+    ],
+    "version": "v3-staged-openset-policy-v4-composite-survivor-q97"
+  },
+  "rejector_fusion_4k": {
+    "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_multilength_seed20260730",
+    "directory_sha256": "0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5",
+    "file_sha256": {
+      "complex_center.npy": "dd281fe23c628bb454c175eb594e0f3fa87a4b033c61cae364ee99e618b95d84",
+      "dev_metrics.json": "ddf0768bec34dead441a3c5dc26c6627cfa4830c395b5b1521d6337af634e3a2",
+      "feature_mean.npy": "29883542bd57f812b74050d2814497ec169cac240ed1fd6d136d7887fdbf8b64",
+      "feature_std.npy": "28f9f430d40603fab7ba3f6f49951a2b18033b91425363ae36e679850d1635fe",
+      "fusion_prototypes.npy": "aa4fe2a4e0f9999f541d90ffbf99084c7cb670bcd8072422b5d62e11e100dee4",
+      "fusion_state_dict.pt": "b8da74d10d684fcd1c231a226cef520db31a55c6d54d4c1b607641799f95f894",
+      "real_center.npy": "a347253f4f3e13938a72ea8bf4309995575d57ee5b679b589bc24d94dd9bca9c"
+    }
+  },
+  "schema": "time-domain-v3-q97-candidate-v1",
+  "source_transition_intent": {
+    "candidate_inference_behavior_changed": false,
+    "ledger_only": true,
+    "ordered_phases": [
+      "predesign",
+      "postdesign",
+      "postvalidation"
+    ],
+    "schema": "time-domain-v3-q97-source-transition-intent-v1",
+    "source": "fit_v3_openset_staged.py",
+    "transitions": [
+      {
+        "consumed_novelty_seeds": [
+          20260955
+        ],
+        "excluded_top_level_assignments": [
+          "SPENT_NOVELTY_SEEDS",
+          "SEED_LEDGER_NOTE"
+        ],
+        "from_phase": "predesign",
+        "order": 1,
+        "to_phase": "postdesign",
+        "transition_id": "predesign_to_postdesign"
+      },
+      {
+        "consumed_novelty_seeds": [
+          20260953,
+          20260954
+        ],
+        "excluded_top_level_assignments": [
+          "SPENT_NOVELTY_SEEDS",
+          "FIRST_CLEAN_NOVELTY_SEED",
+          "SEED_LEDGER_NOTE"
+        ],
+        "from_phase": "postdesign",
+        "order": 2,
+        "to_phase": "postvalidation",
+        "transition_id": "validation_to_postvalidation"
+      }
+    ]
+  },
+  "stage_one_noise_prefilter": {
+    "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/noise_prefilter_fit20261001_budget001/bundles",
+    "directory_sha256": "7780fdbb77eb72c67ae5d0ec8073955fa307b786a77a1186e8723402fa56d16c",
+    "fit_seed": 20261001,
+    "inference_uses_frequency_transform": false,
+    "known_false_positive_budget": 0.01
+  },
+  "status": "frozen_before_validation"
+}
