@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Fail-closed promotion of the v3 dual-fusion staging package.
+"""Fail-closed promotion of the v3.4 q97 dual-fusion staging package.
 
 Promotion reads no corpus and performs no training or calibration. It accepts
 only the exact committed dual staging package plus a complete sealed
-seed-20260735 evaluator-v3 report. The four JSON assets are rewritten to
+seed-20260736 evaluator-v4 report. The four JSON assets are rewritten to
 ``status: release``; the release binding is then rebuilt against the rewritten
 role/policy byte hashes before the complete directory is installed atomically.
 """
@@ -11,11 +11,15 @@ role/policy byte hashes before the complete directory is installed atomically.
 from __future__ import annotations
 
 import argparse
+import ast
+from bisect import bisect_left
 import copy
 import hashlib
+import importlib.metadata
 import json
 import math
 import os
+import platform
 import re
 import secrets
 import stat
@@ -49,11 +53,11 @@ PACKAGE_SCHEMA_VERSION = 1
 FUSION_SCHEMA = "atomos.v3.time-domain-invariant-fusion.browser-weights"
 OPENSET_SCHEMA = "atomos.v3.time-domain-openset.staged"
 BINDING_SCHEMA = "atomos.v3.time-domain-dual-fusion.binding"
-CANDIDATE_SCHEMA = "time-domain-v3-dual-release-candidate-v1"
 VALIDATION_EVIDENCE_SCHEMA = (
-    "time-domain-v3-decoupled-validation-evidence-v1"
+    "time-domain-v3-decoupled-validation-evidence-v2"
 )
-PREVALIDATION_CONTRACT_SCHEMA = "time-domain-v3-decoupled-candidate-v1"
+CANDIDATE_SCHEMA = "time-domain-v3-dual-release-candidate-v2"
+PREVALIDATION_CONTRACT_SCHEMA = "time-domain-v3-q97-candidate-v1"
 BUNDLE_SCHEMA = "atomos.v3.time-domain-invariant-fusion.runtime-bundle"
 BUNDLE_KIND = "v3-time-domain-centered-invariant-fusion"
 BUNDLE_SCHEMA_VERSION = 1
@@ -62,73 +66,53 @@ REJECTOR_ROLE = "known_unknown_rejector"
 CLASSIFIER_ROLE = "accepted_known_classifier"
 REJECTOR_RESPONSIBILITY = "known_unknown_only"
 CLASSIFIER_RESPONSIBILITY = "accepted_known_label_only"
-CANDIDATE_ID = "v3.3-decoupled-8k-classifier-4k-rejector"
+CANDIDATE_ID = "v3.4-q97-decoupled-8k-classifier-4k-rejector"
 
 STAGING_STATUS = "staging_not_release"
 RELEASE_STATUS = "release"
 MAX_DEPLOYABLE_BYTES = 25 * 1024 * 1024
-RELEASE_SEED = 20260735
+RELEASE_SEED = 20260736
 HISTORICAL_RELAXED_SEED = 20260734
-EVALUATOR_SCHEMA = 3
-EVALUATION_VERSION = "time-domain-v3-release-evaluation-v3-dual-fusion"
+EVALUATOR_SCHEMA = 4
+EVALUATION_VERSION = "time-domain-v3-release-evaluation-v4-q97-dual-fusion"
+DESIGN_NOVELTY_SEED = 20260955
+VALIDATION_NOVELTY_SEEDS = [20260953, 20260954]
+NEXT_CLEAN_NOVELTY_SEED = 20260956
 EXPECTED_RELEASE_ROOT = (
     REPO
     / "training/artifacts/releases"
-    / "invariant_fusion_v3_sealed_seed20260735"
+    / "invariant_fusion_v3_sealed_seed20260736"
 )
 EXPECTED_PROTOCOL_FIXTURE = (
-    REPO / "tools/time-domain-v3-expected-evaluation-protocol-seed20260735.json"
-)
-EXPECTED_PROTOCOL_FIXTURE_SHA256 = (
-    "40ef572beeabd18c38e55fdc5001dbfb0365dcd81dac5ff6ea1b95ceca163f7e"
+    REPO
+    / "tools/time-domain-v3-expected-evaluation-protocol-v4-q97-seed20260736.json"
 )
 EXPECTED_EVALUATOR = (
     REPO
     / "training/zplane_ab/v2_full_variation/v3_scale"
     / "evaluate_v3_release_suite.py"
 )
-EXPECTED_EVALUATOR_SHA256 = (
-    "09b3ccd1fa9030f6dc1720b8faf3b1a60e5a8359bb300445bfa34a745c99351a"
-)
 EXPECTED_V2_EVALUATOR = (
     REPO
     / "training/zplane_ab/v2_full_variation"
     / "evaluate_invariant_release_suite.py"
-)
-EXPECTED_V2_EVALUATOR_SHA256 = (
-    "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541"
 )
 EXPECTED_STAGED_SOURCE = (
     REPO
     / "training/zplane_ab/v2_full_variation/v3_scale"
     / "fit_v3_openset_staged.py"
 )
-EXPECTED_LEDGER_TRANSITION = {
-    "admission": "exact_post_validation_seed_ledger_transition",
-    "validated_sha256": (
-        "6d6d252802029cd57cab1429640d0b285b117caa97a89b994037469e267aa176"
+TRANSITION_EVIDENCE_PATHS = {
+    "predesign_to_postdesign": (
+        "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/"
+        "v3_scale/staged_design_v34_q97_rejector4k_budget001_seed20260955/"
+        "openset_metrics.json"
     ),
-    "current_sha256": (
-        "1ebfecede89eb3d393c8922d0862827efda6356671995656594b536ed19f7514"
+    "validation_to_postvalidation": (
+        "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/"
+        "v3_scale/staged_validate_v34_q97_decoupled_rejector4k_"
+        "classifier8k_budget001_seeds20260953_20260954/openset_metrics.json"
     ),
-    "normalized_ast_sha256": (
-        "86dbb18d8b83845e4f9c067f672b8f69c9fbbe2b9ccf4216755f7eeb8096e967"
-    ),
-    "excluded_top_level_assignments": [
-        "SPENT_NOVELTY_SEEDS",
-        "FIRST_CLEAN_NOVELTY_SEED",
-        "SEED_LEDGER_NOTE",
-    ],
-    "validated_parent_commit": (
-        "6f6e1e05d94d457e16940ad1d2c14c6d95bbc422"
-    ),
-    "ledger_commit": "5ebbd07f763470ff1fc27be04e2e340c6171cc63",
-    "full_index_diff_sha256": (
-        "c071726b44a04d535084b3c10e76eda2c3b61767a542a29173873b95f8466d03"
-    ),
-    "consumed_validation_seeds": [20260950, 20260951],
-    "next_clean_novelty_seed": 20260952,
-    "candidate_inference_behavior_changed": False,
 }
 REQUIRED_CAPTURE_LENGTHS = (4096, 8192, 16384, 32768)
 PHYSICAL_SCALE_FACTORS = (0.5, 0.75, 1.0, 1.5, 2.0)
@@ -170,6 +154,325 @@ EXPECTED_STAGED_ASSETS = frozenset(
         "v3_staged_composite_policy.npz",
     }
 )
+
+FRONTEND_VERSION = "invariant-patch-time-domain-v1"
+STAGE_TWO_POLICY_KIND = "v3_known_only_lof_frequency_dispersion_rank_blend"
+STAGED_POLICY_SCHEMA = 4
+STAGED_POLICY_VERSION = "v3-staged-openset-policy-v4-composite-survivor-q97"
+STAGED_POLICY_KIND = (
+    "v3_staged_noise_prefilter_then_q97_composite_survivor_lof_geometry"
+)
+COMPOSITE_SURVIVOR_SCORE = (
+    "max(stage2_enrollment_rank, stage1_score_enrollment_rank)"
+)
+STAGE_TWO_THRESHOLD_QUANTILE = 0.95
+COMPOSITE_THRESHOLD_QUANTILE = 0.97
+STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET = 0.01
+SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET = (
+    1.0 - COMPOSITE_THRESHOLD_QUANTILE
+)
+NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET = (
+    STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+    + (1.0 - STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET)
+    * SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET
+)
+POLICY_ONLY_CHANGE = (
+    "composite survivor enrollment threshold quantile q99 -> q97"
+)
+FROZEN_GEOMETRY_FEATURE = "across_patch_frequency_dispersion"
+REQUIRED_STAGE_ONE_LENGTHS = (4096, 8192, 16384)
+EXPECTED_FROZEN_ARCHITECTURE = {
+    "frontend": FRONTEND_VERSION,
+    "execution_order": [
+        "stage_one_noise_gate",
+        "rejector_known_unknown",
+        "classifier_known_label",
+    ],
+    "intentional_dual_fusion": True,
+    "known_label_source": "classifier_fusion_8k_regularized",
+    "known_unknown_source": "rejector_fusion_4k_frozen_policy",
+    "stage_one_short_circuit": True,
+    "open_set_decision_changes_closed_label": True,
+    "stage_one_causal_prefix_rule": {
+        "4096": 4096,
+        "8192": 8192,
+        "16384": 16384,
+        "32768": 16384,
+    },
+    "uses_frequency_transform": False,
+}
+EXPECTED_SERIALIZED_POLICY_HYGIENE = {
+    "threshold_population": "enrollment_stage_one_survivors_only",
+    "training_rows_used_for_threshold": 0,
+    "selection_rows_used_for_threshold": 0,
+    "novelty_rows_used_for_threshold": 0,
+    "release_rows_used_for_threshold": 0,
+    "stage_one_known_false_positive_budget": (
+        STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+    ),
+    "survivor_known_false_positive_budget": (
+        SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET
+    ),
+    "nominal_enrollment_false_unknown_budget": (
+        NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET
+    ),
+    "only_policy_change": POLICY_ONLY_CHANGE,
+    "stage_one_changed": False,
+    "rejector_cnn_fusion_changed": False,
+    "classifier_cnn_fusion_changed": False,
+    "gate_contract_changed": False,
+}
+EXPECTED_REPORT_POLICY_HYGIENE = {
+    "threshold_population": (
+        "enrollment stage-1 survivors only (enrollment only, as every rank "
+        "and threshold in this chain)"
+    ),
+    "training_rows_used_for_threshold": 0,
+    "selection_rows_used_for_threshold": 0,
+    "novelty_rows_used_for_threshold": 0,
+    "release_rows_used_for_threshold": 0,
+    "stage_one_known_false_positive_budget": (
+        STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+    ),
+    "survivor_known_false_positive_budget": (
+        SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET
+    ),
+    "nominal_enrollment_false_unknown_budget": (
+        NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET
+    ),
+    "only_policy_change": POLICY_ONLY_CHANGE,
+    "stage_one_changed": False,
+    "rejector_cnn_fusion_changed": False,
+    "classifier_cnn_fusion_changed": False,
+    "gate_floors_and_known_fur_ceiling_unchanged": True,
+}
+
+# Complete local Python source surface reached by evaluator-v4. The evaluator
+# itself is pinned independently because it cannot contain its own digest.
+TRANSITIVE_DEPENDENCY_LABELS = (
+    "training/canonical_probe.py",
+    "training/dataset.py",
+    "training/invariant_patch_preprocess.py",
+    "training/model.py",
+    "training/preprocess.py",
+    "training/rfgen.py",
+    "training/time_domain_geometry.py",
+    "training/time_domain_invariant_patch_preprocess.py",
+    "training/train.py",
+    "training/zplane_ab/common_split.py",
+    "training/zplane_ab/train_common.py",
+    "training/zplane_ab/zplane_backbone.py",
+    "training/zplane_ab/v2_full_variation/assemble_invariant_candidate.py",
+    "training/zplane_ab/v2_full_variation/canonical_probe_net.py",
+    "training/zplane_ab/v2_full_variation/complex_multiscale_backbone.py",
+    "training/zplane_ab/v2_full_variation/denoise_eval.py",
+    "training/zplane_ab/v2_full_variation/equalizer_frontend.py",
+    "training/zplane_ab/v2_full_variation/evaluate_ab_v2.py",
+    "training/zplane_ab/v2_full_variation/evaluate_invariant_release_suite.py",
+    "training/zplane_ab/v2_full_variation/full_split.py",
+    "training/zplane_ab/v2_full_variation/ground_state_data.py",
+    "training/zplane_ab/v2_full_variation/invariant_fusion.py",
+    "training/zplane_ab/v2_full_variation/invariant_patch_cnn.py",
+    "training/zplane_ab/v2_full_variation/invariant_patch_data.py",
+    "training/zplane_ab/v2_full_variation/known_only_patch_openset.py",
+    "training/zplane_ab/v2_full_variation/length_aug.py",
+    "training/zplane_ab/v2_full_variation/multitask_autoencoder.py",
+    "training/zplane_ab/v2_full_variation/native_preprocess.py",
+    "training/zplane_ab/v2_full_variation/openset_eval.py",
+    "training/zplane_ab/v2_full_variation/pool_cache.py",
+    "training/zplane_ab/v2_full_variation/run_bounded_dev.py",
+    "training/zplane_ab/v2_full_variation/run_corrected_unet.py",
+    "training/zplane_ab/v2_full_variation/run_invariant_cnn_dev.py",
+    "training/zplane_ab/v2_full_variation/scalar_transfer.py",
+    "training/zplane_ab/v2_full_variation/train_common_v2.py",
+    "training/zplane_ab/v2_full_variation/train_transfer.py",
+    "training/zplane_ab/v2_full_variation/unet_multitask.py",
+    "training/zplane_ab/v2_full_variation/unet_transfer.py",
+    "training/zplane_ab/v2_full_variation/v3_time_domain_openset.py",
+    "training/zplane_ab/v2_full_variation/vit_backbone.py",
+    "training/zplane_ab/v2_full_variation/v3_scale/assemble_v3_fusion.py",
+    "training/zplane_ab/v2_full_variation/v3_scale/export_v3_openset_browser_assets.py",
+    "training/zplane_ab/v2_full_variation/v3_scale/fit_v3_openset.py",
+    "training/zplane_ab/v2_full_variation/v3_scale/fit_v3_openset_staged.py",
+    "training/zplane_ab/v2_full_variation/v3_scale/measure_pose_degeneracy.py",
+    "training/zplane_ab/v2_full_variation/v3_scale/measure_v3_remaining_gates.py",
+    "training/zplane_ab/v2_full_variation/v3_scale/noise_prefilter.py",
+    "training/zplane_ab/v2_full_variation/v3_scale/pose_degeneracy.py",
+    "training/zplane_ab/v2_full_variation/v3_scale/run_time_domain_dev.py",
+)
+if len(TRANSITIVE_DEPENDENCY_LABELS) != 49:  # pragma: no cover
+    raise RuntimeError("promoter transitive source contract must contain 49 files")
+
+EXPECTED_EVALUATOR_RUNTIME_IDENTITY = {
+    "python": "3.9.6",
+    "numpy": "2.0.2",
+    "torch": "2.8.0",
+    "device": "cpu",
+    "platform": "darwin-arm64",
+}
+
+# Final-byte pins live in one place. Every value below was frozen before this
+# promoter was allowed to rewrite staging status or create a release package.
+FINAL_RELEASE_PINS: dict[str, Any] = {
+    "protocol_fixture_sha256": (
+        "40d29042f844e2169f1025b75d0a63545f669b25ab7d7f9e46ae630599668fdd"
+    ),
+    "evaluator_sha256": (
+        "61b6e65ccbf06a8b67bd6d069dc0b91f2fdc9bc3e03c9305a511d986569a0e28"
+    ),
+    "v2_evaluator_sha256": (
+        "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541"
+    ),
+    "candidate_manifest_sha256": (
+        "7f824eb734466cb697ee28387a470e8e669e19567542d928130a2b4ad9f59053"
+    ),
+    "validation_evidence_sha256": (
+        "355f0a201178431a53b9b38bb184650f764e50651e230a768f620fce7778a3c7"
+    ),
+    "frozen_candidate_contract_sha256": (
+        "0be5ebf35dea6e2ab160353f4f42e95445e8bb30ea4742a8c0ea0b9b0a001c7d"
+    ),
+    "staged_validation_report_sha256": (
+        "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7"
+    ),
+    "staged_artifact_sha256": {
+        "v3_branch_lof_components.npz": (
+            "0a66ca267356bdacf239de5512b9406e010526c990dc38c137cac84342a062a6"
+        ),
+        "v3_open_policy_stage_two.npz": (
+            "9378f6eea893174b4f716f4db5ea6ea2b637d64b04a0e7672bb39b2e50600dd8"
+        ),
+        "v3_staged_composite_policy.npz": (
+            "15554c0fec5f7770c3b0c7a01c5250b61b4ce0b45fed9dfdf7e8785bb328d19e"
+        ),
+    },
+    "browser_asset_sha256": {
+        "classifier": (
+            "55ab6b0374f1c82491b745c2e6bef7614702c4a3a7e9a68b76e8771f3fba501b"
+        ),
+        "rejector": (
+            "588bb7de6c802a8c44c1ba6c01d6693fb3e39926de918274f16042c15f1863a1"
+        ),
+        "openset_policy": (
+            "4110332985ea13e3d93f83e51c027efc63f4c11380bd6020cfef240c590fffbc"
+        ),
+    },
+    "staging_package_manifest_sha256": (
+        "4c27afa382fbdf16da1215d807945710b264d03d876231a2b01af12313f60952"
+    ),
+    "dual_binding_sha256": (
+        "f820d390368266cdf266adbd915559ae3986caad622c67b21352dbbddb7e766f"
+    ),
+    "dependency_source_sha256": {
+        "training/canonical_probe.py": "b51387eabb06c740b6a94cefe720546ee2b5d3cbfabde32a82594bb010095acc",
+        "training/dataset.py": "8561d3397c9e7d71884cdada681f59d46c8ce05cc7fb7f34f93a1f3ea94fe12c",
+        "training/invariant_patch_preprocess.py": "04c66362e6978bc1827791653963d0921bcdde51f93b9dd74e6eb9b4e8217420",
+        "training/model.py": "dbe135b9b69dce088f52917b702c1d41f04e97a60a25b41facbc5f9c29b94801",
+        "training/preprocess.py": "5369ea8277f64fcd6367a8a363bf7a5a28298663c39315126160ded5bcc0091d",
+        "training/rfgen.py": "c5ccb74007328abc3cb43908dd69f032391612feb3f8c848c72e67141e5811ba",
+        "training/time_domain_geometry.py": "a9735473f44105d20cffb9d4888ff8cf8e02503746f70b50e6d5d3737138da33",
+        "training/time_domain_invariant_patch_preprocess.py": "5cd1787aed0e5fd95adc2e4de56db460d753d0557350aa8f3aff0e393c0bb10a",
+        "training/train.py": "0669704ff4933b2ab7f8e35b0b6fb58553a06a8d75c93f54ee928ad33e2e257c",
+        "training/zplane_ab/common_split.py": "9e3170631dfc5d1a1b3f534844a48c67c77b48ba49e5265e504414e69ef485db",
+        "training/zplane_ab/train_common.py": "05251d47665b8b8a68f9008e6d39c6858f81a68a537249e29730b67e595280e9",
+        "training/zplane_ab/zplane_backbone.py": "1c4c840b9f18bc871ca133386a537756ac871cefd71db9e1ee5e8cbfdb8d39bf",
+        "training/zplane_ab/v2_full_variation/assemble_invariant_candidate.py": "de2215ffa73cc046bd5de817ca2516ecf396ff9f1767022bb1d99cccc4fb9f09",
+        "training/zplane_ab/v2_full_variation/canonical_probe_net.py": "c778c908021347084d0e92f5de0fb1b3adb4e39333aad734edee2fa1cae58e79",
+        "training/zplane_ab/v2_full_variation/complex_multiscale_backbone.py": "ff029ff9380a9a6f13d99cf9cdec2cbe0755d175a2ba9f9147c99c8c74cc9350",
+        "training/zplane_ab/v2_full_variation/denoise_eval.py": "262c4d8e5f35296466f4c1dd7cfbbdd139ec1e6457158f0c7a1eff7d2c818ccb",
+        "training/zplane_ab/v2_full_variation/equalizer_frontend.py": "fc495924b9dee934f6fc4e6fcd5acfa3c09ee86381dcfa5c284442b1e50c8381",
+        "training/zplane_ab/v2_full_variation/evaluate_ab_v2.py": "f8ecc75b569cc89fbf91bc94a826b3371cdc97069f02d7f68653f07fd1d5070d",
+        "training/zplane_ab/v2_full_variation/evaluate_invariant_release_suite.py": "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541",
+        "training/zplane_ab/v2_full_variation/full_split.py": "7ecb6bcd73549107fb3f4423b43509f471e7253711dfea12b6e4a578060417ba",
+        "training/zplane_ab/v2_full_variation/ground_state_data.py": "67071dc1690d546830323efde0af0e2285e6efe318eb1aea01241645908081cd",
+        "training/zplane_ab/v2_full_variation/invariant_fusion.py": "22a46a75c95cb4aa452bc44228b156b57474b981da20cf7095fff8a129f1c281",
+        "training/zplane_ab/v2_full_variation/invariant_patch_cnn.py": "b402e8bb75a5809f4a57e8de231268e9ad18afc26b2cfcbf57d2f0b43804ede4",
+        "training/zplane_ab/v2_full_variation/invariant_patch_data.py": "63e6134bddb927149a54c73fb011c580d1423b8b9977bab0e0b88655c3d0a798",
+        "training/zplane_ab/v2_full_variation/known_only_patch_openset.py": "4764a9997331bb657787dcff211ab8d7098f98536208c1c0432af8f373763785",
+        "training/zplane_ab/v2_full_variation/length_aug.py": "e356b73f5bdee5c3ccd24cfd1473e89216b742789183db7bd9b16456fa1ff428",
+        "training/zplane_ab/v2_full_variation/multitask_autoencoder.py": "af4a7b6f44eaaa94a2c312520e0f48ea15f46b115bfb7c95c250c1cf4912f53f",
+        "training/zplane_ab/v2_full_variation/native_preprocess.py": "6752cb2c83f5dc6f4b634017d2c3ab16e4da4e85eea83c777378a37dbb9a4227",
+        "training/zplane_ab/v2_full_variation/openset_eval.py": "1675b9ce60139e58b0d12dd287552b22d8bc47cfcb264a0ec347def251ed3354",
+        "training/zplane_ab/v2_full_variation/pool_cache.py": "59dc10d2ee0c0b6ff1722ab93fa43bda8d0e63257397ae8dca6674d301f40d53",
+        "training/zplane_ab/v2_full_variation/run_bounded_dev.py": "8564e66208a1eb5051df4cbe74f61124c208bd3b6209cb909c33ec56bb7e6869",
+        "training/zplane_ab/v2_full_variation/run_corrected_unet.py": "73482231d2d5eb3ae73221ed702adf9cd2e0709fd3a788b66d8a067e747977ca",
+        "training/zplane_ab/v2_full_variation/run_invariant_cnn_dev.py": "22036917af78e48e00dcfe0922c464d0cab352750c00fcb45d6aece1f4fd9cfb",
+        "training/zplane_ab/v2_full_variation/scalar_transfer.py": "2e5d8380d9663127a89f96cf2bfca8cc6d4d4df3f73b1d804eacfcffafa54848",
+        "training/zplane_ab/v2_full_variation/train_common_v2.py": "9be6b5d08a3fc5c3aff1e3110c8df440aad6bde9d21ad1059d9ba666439cebca",
+        "training/zplane_ab/v2_full_variation/train_transfer.py": "d5e68558657ba96348bef30cf749f199497c7b3c306126f09086b009c51c2592",
+        "training/zplane_ab/v2_full_variation/unet_multitask.py": "23178c9d18b7cc9aed95df5288f0543abd6659961c0f68c8fd417daafbd059af",
+        "training/zplane_ab/v2_full_variation/unet_transfer.py": "3b9f7e0998d11f83328cd9295a46c54ab656630a3f0c4800f3479d0a99da05a1",
+        "training/zplane_ab/v2_full_variation/v3_time_domain_openset.py": "ae1ddb6c14777cd27be591345a23ca567bd1e20accd4b7729804a5453144ea64",
+        "training/zplane_ab/v2_full_variation/vit_backbone.py": "ea0255c82d222b2bd8a3d3bf84d4b2b8dfaa49819950193495fcda824a280f9c",
+        "training/zplane_ab/v2_full_variation/v3_scale/assemble_v3_fusion.py": "961e493697d1d941395dafe32570262dc09996b53fed9b2a0e82525e43560daa",
+        "training/zplane_ab/v2_full_variation/v3_scale/export_v3_openset_browser_assets.py": "13722adf59c49826a7d356d8b3ce538a3da46ef30b0ea6bb0194e53fe40fbdb1",
+        "training/zplane_ab/v2_full_variation/v3_scale/fit_v3_openset.py": "970e536087c0c4660424628a69e8bb08955885b337fd6ac560edf4bfaec1fba9",
+        "training/zplane_ab/v2_full_variation/v3_scale/fit_v3_openset_staged.py": "da79f85b68ffd5ab7b4bdba8f78e336af698bbeef9bfabdf766f0eb96f23ad88",
+        "training/zplane_ab/v2_full_variation/v3_scale/measure_pose_degeneracy.py": "7a532f2420dfd7c77deed1337c2b8d710a8e5546955452b89855aa55ef653565",
+        "training/zplane_ab/v2_full_variation/v3_scale/measure_v3_remaining_gates.py": "fd8765614b9cadbbf852845ef11e26e861ab77d510d2a91c87513eea4e6cb405",
+        "training/zplane_ab/v2_full_variation/v3_scale/noise_prefilter.py": "435495e5b0d11558a2e0edfd7d6e6112e7cebf716460d3d81ae741d97deaa7b4",
+        "training/zplane_ab/v2_full_variation/v3_scale/pose_degeneracy.py": "431499124cd8470276a22356622b54f9c60c63c15e3770f49944bc626091aaf1",
+        "training/zplane_ab/v2_full_variation/v3_scale/run_time_domain_dev.py": "9446a23b8d80c86fd7984307d3a2c04530e12f553df5b778967a4fd54dd193c4",
+    },
+    "ordered_source_transition_contract": {
+        "schema": "time-domain-v3-q97-source-transition-contract-v1",
+        "source": "fit_v3_openset_staged.py",
+        "ordered_phases": [
+            "predesign",
+            "postdesign",
+            "postvalidation",
+        ],
+        "transitions": [
+            {
+                "order": 1,
+                "transition_id": "predesign_to_postdesign",
+                "source": "fit_v3_openset_staged.py",
+                "origin": "the q97 design artifact",
+                "from_phase": "predesign",
+                "to_phase": "postdesign",
+                "from_sha256": "4cca22059959ec472278f28594bd54a72bbbab04fcf9a294baa81d31fea59be9",
+                "to_sha256": "c412a6f9d0ea81ca760bceadcfe4eec6ddcbb43dc5174d6bdb6724395a1f17fa",
+                "normalized_ast_sha256": "4618b54c28da283e7ac74f23bbcb43f2d55de6746eb244f80336af8368d09a20",
+                "from_commit": "80298b80e6f56360325457efb49e58d13aa93d61",
+                "evidence_commit": "825cf3eace2443aa18899dc192911c060045b068",
+                "evidence_report_sha256": "bb749aadd5395a3fc21ff9453621ad8fa7a7512f9b3c21c29cee933b09adfb0f",
+                "to_commit": "4306f67c298376b944bc3be58553983174538bce",
+                "full_index_diff_sha256": "9910df1e63ccfb482820ea83f1bec6475069a3dcbc85d134750ebb35fc769fec",
+                "excluded_top_level_assignments": [
+                    "SPENT_NOVELTY_SEEDS",
+                    "SEED_LEDGER_NOTE",
+                ],
+                "consumed_novelty_seeds": [20260955],
+                "next_clean_novelty_seed": 20260953,
+            },
+            {
+                "order": 2,
+                "transition_id": "validation_to_postvalidation",
+                "source": "fit_v3_openset_staged.py",
+                "origin": "the staged validation artifact",
+                "from_phase": "postdesign",
+                "to_phase": "postvalidation",
+                "from_sha256": "c412a6f9d0ea81ca760bceadcfe4eec6ddcbb43dc5174d6bdb6724395a1f17fa",
+                "to_sha256": "da79f85b68ffd5ab7b4bdba8f78e336af698bbeef9bfabdf766f0eb96f23ad88",
+                "normalized_ast_sha256": "679ada28aadfac0abde474eb9fa5cf152e35bf4478a9c247b17c2873f1be4a60",
+                "from_commit": "58e0737c7df07e83f598ae6a57ec08225cd057c5",
+                "evidence_commit": "b6af6e9274ae3076709a61ec2871a950bf50a605",
+                "evidence_report_sha256": "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7",
+                "to_commit": "4ba2f3cdfa5bb2d94a70ababd149fbe57614f45e",
+                "full_index_diff_sha256": "fe432735ed70040dee37c07d8429d3073a5ab886506dde339c32ca6b189fc526",
+                "excluded_top_level_assignments": [
+                    "SPENT_NOVELTY_SEEDS",
+                    "FIRST_CLEAN_NOVELTY_SEED",
+                    "SEED_LEDGER_NOTE",
+                ],
+                "consumed_novelty_seeds": [20260953, 20260954],
+                "next_clean_novelty_seed": 20260956,
+            },
+        ],
+        "ledger_only": True,
+        "candidate_inference_behavior_changed": False,
+    },
+}
 
 STRICT_V2_GATE_FLOORS = {
     "closed_fine": 0.72,
@@ -254,6 +557,8 @@ CANDIDATE_COMPONENT_KEYS = frozenset(
         "candidate_contract",
         "validation_evidence",
         "frozen_prevalidation_contract",
+        "q97_design_evidence",
+        "ordered_source_transition_evidence",
         "classifier_runtime_bundle",
         "rejector_runtime_bundle",
         "classifier_fusion",
@@ -328,6 +633,158 @@ def _exact_keys(
             f"{label} keys differ: expected {sorted(expected)}, got "
             f"{sorted(value)}"
         )
+
+
+def _require_exact_json(
+    value: Any,
+    expected: Any,
+    label: str,
+    *,
+    allow_integral_float_collapse: bool = False,
+) -> None:
+    """Compare JSON values without accepting scalar aliases.
+
+    The release intent was serialized by JavaScript, which emits an integral
+    Number such as ``1.0`` as the token ``1``.  Only its protocol comparison
+    may admit that exact representation collapse; artifact boundaries remain
+    fully type-exact.
+    """
+    if (
+        allow_integral_float_collapse
+        and type(expected) is float
+        and math.isfinite(expected)
+        and expected.is_integer()
+        and type(value) is int
+        and value == expected
+    ):
+        return
+    if type(value) is not type(expected):
+        raise PromotionError(
+            f"{label} type differs: expected {type(expected).__name__}, "
+            f"got {type(value).__name__}"
+        )
+    if isinstance(expected, dict):
+        _exact_keys(value, set(expected), label)
+        for key, wanted in expected.items():
+            _require_exact_json(
+                value[key],
+                wanted,
+                f"{label}.{key}",
+                allow_integral_float_collapse=(
+                    allow_integral_float_collapse
+                ),
+            )
+        return
+    if isinstance(expected, list):
+        if len(value) != len(expected):
+            raise PromotionError(f"{label} length differs")
+        for index, (found, wanted) in enumerate(zip(value, expected)):
+            _require_exact_json(
+                found,
+                wanted,
+                f"{label}[{index}]",
+                allow_integral_float_collapse=(
+                    allow_integral_float_collapse
+                ),
+            )
+        return
+    if value != expected:
+        raise PromotionError(
+            f"{label} differs: expected {expected!r}, got {value!r}"
+        )
+
+
+def _required_final_sha(name: str) -> str:
+    return _sha(FINAL_RELEASE_PINS.get(name), f"final release pin {name}")
+
+
+def _required_sha_map(name: str, expected_keys: set[str]) -> dict[str, str]:
+    value = _mapping(
+        FINAL_RELEASE_PINS.get(name), f"final release pin {name}"
+    )
+    _exact_keys(value, expected_keys, f"final release pin {name}")
+    return {
+        key: _sha(value[key], f"final release pin {name}.{key}")
+        for key in expected_keys
+    }
+
+
+def _current_runtime_identity() -> dict[str, str]:
+    try:
+        numpy_version = importlib.metadata.version("numpy")
+        torch_version = importlib.metadata.version("torch").split("+", 1)[0]
+    except importlib.metadata.PackageNotFoundError as exc:
+        raise PromotionError(
+            "the pinned evaluator runtime packages are unavailable"
+        ) from exc
+    return {
+        "python": platform.python_version(),
+        "numpy": numpy_version,
+        "torch": torch_version,
+        "device": "cpu",
+        "platform": f"{platform.system().lower()}-{platform.machine().lower()}",
+    }
+
+
+def _numpy_linear_quantile(
+    sorted_values: list[float], quantile: float
+) -> float:
+    if not sorted_values:
+        raise PromotionError("policy calibration cannot be empty")
+    virtual = quantile * (len(sorted_values) - 1)
+    index = math.floor(virtual)
+    fraction = virtual - index
+    if index + 1 >= len(sorted_values):
+        return sorted_values[-1]
+    low = sorted_values[index]
+    high = sorted_values[index + 1]
+    if fraction < 0.5:
+        return low + fraction * (high - low)
+    return high - (high - low) * (1.0 - fraction)
+
+
+def _finite_sorted_float_vector(value: Any, label: str) -> list[float]:
+    if type(value) is not list or not value:
+        raise PromotionError(f"{label} must be a non-empty JSON float vector")
+    result: list[float] = []
+    for index, scalar in enumerate(value):
+        if type(scalar) is not float or not math.isfinite(scalar):
+            raise PromotionError(f"{label}[{index}] must be a finite JSON float")
+        if result and scalar < result[-1]:
+            raise PromotionError(f"{label} must be sorted")
+        result.append(scalar)
+    return result
+
+
+def _verify_frontend(value: Any, label: str) -> dict[str, Any]:
+    frontend = _mapping(value, label)
+    expected_keys = {
+        "version",
+        "patch_length",
+        "patch_count",
+        "target_frac",
+        "packed_length",
+        "uses_frequency_transform",
+    }
+    _exact_keys(frontend, expected_keys, label)
+    patch_length = frontend.get("patch_length")
+    patch_count = frontend.get("patch_count")
+    target_frac = frontend.get("target_frac")
+    if (
+        frontend.get("version") != FRONTEND_VERSION
+        or frontend.get("uses_frequency_transform") is not False
+        or type(patch_length) is not int
+        or patch_length <= 0
+        or type(patch_count) is not int
+        or patch_count <= 0
+        or type(target_frac) is not float
+        or not math.isfinite(target_frac)
+        or not 0.0 < target_frac <= 1.0
+        or type(frontend.get("packed_length")) is not int
+        or frontend.get("packed_length") != patch_length * patch_count
+    ):
+        raise PromotionError(f"{label} is not the frozen no-FFT frontend")
+    return dict(frontend)
 
 
 def _no_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -679,6 +1136,205 @@ def _validate_paths(
     return source, release, normalized
 
 
+def _verify_policy_schema4(policy: Mapping[str, Any]) -> dict[str, Any]:
+    _exact_keys(
+        policy,
+        {
+            "schema",
+            "schema_version",
+            "status",
+            "contract",
+            "frontend",
+            "stage_one",
+            "stage_two",
+            "composite",
+            "provenance",
+        },
+        "open-set policy",
+    )
+    contract = _mapping(policy.get("contract"), "open-set policy contract")
+    _exact_keys(
+        contract,
+        {
+            "additive_only",
+            "changes_closed_label",
+            "gates_before_classification",
+            "architecture_contract_change",
+        },
+        "open-set policy contract",
+    )
+    if (
+        contract.get("additive_only") is not False
+        or contract.get("changes_closed_label") is not True
+        or contract.get("gates_before_classification") is not True
+        or not isinstance(contract.get("architecture_contract_change"), str)
+        or not contract["architecture_contract_change"].strip()
+    ):
+        raise PromotionError("open-set architecture contract differs")
+    frontend = _verify_frontend(
+        policy.get("frontend"), "open-set policy frontend"
+    )
+
+    stage_one = _mapping(policy.get("stage_one"), "open-set stage one")
+    models = _mapping(stage_one.get("models"), "open-set stage one models")
+    _exact_keys(
+        models,
+        {str(length) for length in REQUIRED_STAGE_ONE_LENGTHS},
+        "open-set stage one models",
+    )
+    if (
+        stage_one.get("kind") != "noise-prefilter-v1"
+        or stage_one.get("match_frontend_min_bandwidth") is not True
+    ):
+        raise PromotionError("open-set stage one contract differs")
+    for length in REQUIRED_STAGE_ONE_LENGTHS:
+        model = _mapping(
+            models[str(length)], f"open-set stage one N{length}"
+        )
+        if type(model.get("capture_length")) is not int or model.get(
+            "capture_length"
+        ) != length:
+            raise PromotionError(
+                f"open-set stage one N{length} capture length differs"
+            )
+
+    stage_two = _mapping(policy.get("stage_two"), "open-set stage two")
+    _exact_keys(
+        stage_two,
+        {"kind", "lof_components", "policy"},
+        "open-set stage two",
+    )
+    inner = _mapping(stage_two.get("policy"), "open-set stage two policy")
+    expected_inner_keys = {
+        "branch_lof_rank_weight",
+        "geometry_weight",
+        "threshold_quantile",
+        "threshold",
+        "geometry_feature",
+        "class_geometry_mean",
+        "class_geometry_scale",
+        "geometry_calibration",
+        "combined_calibration",
+    }
+    _exact_keys(inner, expected_inner_keys, "open-set stage two policy")
+    if (
+        stage_two.get("kind") != STAGE_TWO_POLICY_KIND
+        or type(inner.get("branch_lof_rank_weight")) is not float
+        or inner.get("branch_lof_rank_weight") != 0.8
+        or type(inner.get("geometry_weight")) is not float
+        or inner.get("geometry_weight") != 0.2
+        or type(inner.get("threshold_quantile")) is not float
+        or inner.get("threshold_quantile") != STAGE_TWO_THRESHOLD_QUANTILE
+        or inner.get("geometry_feature") != FROZEN_GEOMETRY_FEATURE
+    ):
+        raise PromotionError("open-set stage two is not the frozen q95 policy")
+    combined = _finite_sorted_float_vector(
+        inner.get("combined_calibration"),
+        "open-set stage two combined calibration",
+    )
+    if any(value < 0.0 or value >= 1.0 for value in combined):
+        raise PromotionError("open-set stage two calibration lies outside [0,1)")
+    stage_two_scores = [
+        bisect_left(combined, value) / (len(combined) + 1)
+        for value in combined
+    ]
+    expected_stage_two = _numpy_linear_quantile(
+        stage_two_scores, STAGE_TWO_THRESHOLD_QUANTILE
+    )
+    if (
+        type(inner.get("threshold")) is not float
+        or inner.get("threshold") != expected_stage_two
+    ):
+        raise PromotionError(
+            "open-set stage-two threshold is not q95 of enrollment ranks"
+        )
+
+    composite = _mapping(policy.get("composite"), "open-set composite")
+    _exact_keys(
+        composite,
+        {
+            "schema",
+            "kind",
+            "policy_version",
+            "survivor_score",
+            "threshold_quantile",
+            "threshold",
+            "stage_two_threshold",
+            "stage_one_calibration_raw",
+            "composite_calibration_raw",
+            "enrollment_rows",
+            "enrollment_gated_rows",
+            "enrollment_capture_length",
+            *EXPECTED_SERIALIZED_POLICY_HYGIENE,
+        },
+        "open-set composite",
+    )
+    expected_composite = {
+        "schema": STAGED_POLICY_SCHEMA,
+        "kind": STAGED_POLICY_KIND,
+        "policy_version": STAGED_POLICY_VERSION,
+        "survivor_score": COMPOSITE_SURVIVOR_SCORE,
+        "threshold_quantile": COMPOSITE_THRESHOLD_QUANTILE,
+        "stage_two_threshold": expected_stage_two,
+        **EXPECTED_SERIALIZED_POLICY_HYGIENE,
+    }
+    for name, expected in expected_composite.items():
+        _require_exact_json(
+            composite.get(name), expected, f"open-set composite.{name}"
+        )
+    stage_one_calibration = _finite_sorted_float_vector(
+        composite.get("stage_one_calibration_raw"),
+        "open-set composite stage-one calibration",
+    )
+    composite_calibration = _finite_sorted_float_vector(
+        composite.get("composite_calibration_raw"),
+        "open-set composite calibration",
+    )
+    enrollment_rows = composite.get("enrollment_rows")
+    enrollment_gated = composite.get("enrollment_gated_rows")
+    if (
+        len(stage_one_calibration) != len(composite_calibration)
+        or any(value < 0.0 or value >= 1.0 for value in composite_calibration)
+        or type(enrollment_rows) is not int
+        or type(enrollment_gated) is not int
+        or enrollment_rows != enrollment_gated + len(stage_one_calibration)
+        or type(composite.get("enrollment_capture_length")) is not int
+        or composite.get("enrollment_capture_length") != 16384
+    ):
+        raise PromotionError("open-set composite enrollment accounting differs")
+    expected_threshold = _numpy_linear_quantile(
+        composite_calibration, COMPOSITE_THRESHOLD_QUANTILE
+    )
+    if (
+        type(composite.get("threshold")) is not float
+        or composite.get("threshold") != expected_threshold
+    ):
+        raise PromotionError(
+            "open-set composite threshold is not q97 of stored calibration"
+        )
+
+    provenance = _mapping(
+        policy.get("provenance"), "open-set policy provenance"
+    )
+    for name, expected in {
+        "candidate_id": CANDIDATE_ID,
+        "staged_validation_status": "development_openset_pass",
+        "staged_validation_role": "validate",
+        "staged_validation_all_pass": True,
+        "development_only": True,
+        "release_evidence": False,
+        "sealed_release_data_used": 0,
+        "consumed_test_rows_used": 0,
+        "release_seed_not_spent": RELEASE_SEED,
+    }.items():
+        _require_exact_json(
+            provenance.get(name),
+            expected,
+            f"open-set policy provenance.{name}",
+        )
+    return frontend
+
+
 def _verify_binding(
     binding: Mapping[str, Any],
     asset_records: Mapping[str, Mapping[str, Any]],
@@ -692,6 +1348,20 @@ def _verify_binding(
         or binding.get("candidate_id") != CANDIDATE_ID
     ):
         raise PromotionError("dual binding schema/status/candidate differs")
+    expected_binding_keys = {
+        "schema",
+        "schema_version",
+        "status",
+        "candidate_id",
+        "frontend",
+        "execution_order",
+        "roles",
+        "openset_policy",
+        "validation",
+        "fail_closed",
+    }
+    _exact_keys(binding, expected_binding_keys, "dual binding")
+    _verify_frontend(binding.get("frontend"), "dual binding frontend")
     if binding.get("execution_order") != [
         "stage_one_noise_gate",
         "rejector_known_unknown",
@@ -758,13 +1428,18 @@ def _verify_binding(
     for name, digest in staged.items():
         _sha(digest, f"binding staged artifact {name}")
     validation = _mapping(binding.get("validation"), "binding validation")
-    if dict(validation) != {
-        "report_sha256": report_sha,
-        "role": "validate",
-        "status": "development_openset_pass",
-        "novelty_seeds": [20260950, 20260951],
-    }:
-        raise PromotionError("binding validation record differs")
+    _require_exact_json(
+        dict(validation),
+        {
+            "report_sha256": report_sha,
+            "role": "validate",
+            "status": "development_openset_pass",
+            "design_novelty_seed": DESIGN_NOVELTY_SEED,
+            "novelty_seeds": VALIDATION_NOVELTY_SEEDS,
+            "release_seed_not_spent": RELEASE_SEED,
+        },
+        "binding validation record",
+    )
     expected_flags = {
         "role_assets_bound_by_sha256": True,
         "distinct_role_assets": True,
@@ -772,8 +1447,11 @@ def _verify_binding(
         "classifier_runs_only_after_rejector_acceptance": True,
         "public_known_label_from_classifier_only": True,
     }
-    if binding.get("fail_closed") != expected_flags:
-        raise PromotionError("binding fail_closed flags differ")
+    _require_exact_json(
+        binding.get("fail_closed"),
+        expected_flags,
+        "binding fail_closed flags",
+    )
 
 
 def _verify_staging_package(
@@ -810,23 +1488,26 @@ def _verify_staging_package(
         or manifest.get("candidate_id") != CANDIDATE_ID
     ):
         raise PromotionError("staging package schema/status/candidate differs")
-    if manifest.get("architecture") != {
-        "execution_order": [
-            "stage_one_noise_gate",
-            "rejector_known_unknown",
-            "classifier_known_label",
-        ],
-        "classifier_runs_only_after_rejector_acceptance": True,
-        "public_known_label_from_classifier_only": True,
-    }:
-        raise PromotionError("staging package architecture differs")
+    _require_exact_json(
+        manifest.get("architecture"),
+        {
+            "execution_order": [
+                "stage_one_noise_gate",
+                "rejector_known_unknown",
+                "classifier_known_label",
+            ],
+            "classifier_runs_only_after_rejector_acceptance": True,
+            "public_known_label_from_classifier_only": True,
+        },
+        "staging package architecture",
+    )
 
     assets = _mapping(manifest.get("assets"), "staging package assets")
     _exact_keys(assets, set(ASSET_NAMES), "staging package assets")
     contracts = {
         REJECTOR_WEIGHTS: (FUSION_SCHEMA, 1, REJECTOR_ROLE),
         CLASSIFIER_WEIGHTS: (FUSION_SCHEMA, 1, CLASSIFIER_ROLE),
-        OPENSET_POLICY: (OPENSET_SCHEMA, 2, None),
+        OPENSET_POLICY: (OPENSET_SCHEMA, 4, None),
         DUAL_BINDING: (BINDING_SCHEMA, 1, None),
     }
     asset_bytes: dict[str, bytes] = {}
@@ -874,7 +1555,13 @@ def _verify_staging_package(
         asset_bytes[name] = raw
         payloads[name] = payload
 
+    policy_frontend = _verify_policy_schema4(payloads[OPENSET_POLICY])
     _verify_binding(payloads[DUAL_BINDING], records, status=STAGING_STATUS)
+    binding_frontend = _verify_frontend(
+        payloads[DUAL_BINDING].get("frontend"), "dual binding frontend"
+    )
+    if binding_frontend != policy_frontend:
+        raise PromotionError("dual binding frontend differs from open-set policy")
     roles = _mapping(manifest.get("roles"), "staging package roles")
     _exact_keys(roles, {"rejector", "classifier"}, "staging package roles")
     binding_roles = payloads[DUAL_BINDING]["roles"]
@@ -1020,11 +1707,69 @@ def _verify_staging_package(
             raise PromotionError(f"external evidence {name} status differs")
         if name == "parity" and record.get("packaged") is not False:
             raise PromotionError("parity must remain external")
+        expected_external_contracts = {
+            "rejector_export_manifest": (
+                "atomos.v3.time-domain-invariant-fusion.browser-weights."
+                "export-manifest",
+                2,
+            ),
+            "classifier_export_manifest": (
+                "atomos.v3.time-domain-invariant-fusion.browser-weights."
+                "export-manifest",
+                2,
+            ),
+            "openset_export_manifest": (
+                "time-domain-v3-dual-openset-staging-manifest-v1",
+                1,
+            ),
+            "parity": ("time-domain-openset-parity-v1", 4),
+        }
+        expected_contract = expected_external_contracts.get(name)
+        if expected_contract is not None and (
+            record.get("schema") != expected_contract[0]
+            or type(record.get("schema_version")) is not int
+            or record.get("schema_version") != expected_contract[1]
+        ):
+            raise PromotionError(f"external evidence {name} version differs")
+        if name == "parity":
+            if (
+                payload.get("candidate_id") != CANDIDATE_ID
+                or payload.get("policy_schema") != STAGED_POLICY_SCHEMA
+                or payload.get("policy_version") != STAGED_POLICY_VERSION
+                or payload.get("policy_kind") != STAGED_POLICY_KIND
+                or payload.get("design_novelty_seed") != DESIGN_NOVELTY_SEED
+                or payload.get("validation_novelty_seeds")
+                != VALIDATION_NOVELTY_SEEDS
+                or payload.get("release_seed_not_spent") != RELEASE_SEED
+                or payload.get("frontend") != policy_frontend
+            ):
+                raise PromotionError("external parity q97 contract differs")
     if manifest.get("size_contract") != {
         "maximum_file_bytes_exclusive": MAX_DEPLOYABLE_BYTES,
         "all_deployable_files_below_limit": True,
     }:
         raise PromotionError("package size contract differs")
+
+    manifest_sha256 = _sha256_bytes(manifest_raw)
+    if manifest_sha256 != _required_final_sha(
+        "staging_package_manifest_sha256"
+    ):
+        raise PromotionError("staging package manifest differs from final pin")
+    browser_pins = _required_sha_map(
+        "browser_asset_sha256",
+        {"classifier", "rejector", "openset_policy"},
+    )
+    for label, name in {
+        "classifier": CLASSIFIER_WEIGHTS,
+        "rejector": REJECTOR_WEIGHTS,
+        "openset_policy": OPENSET_POLICY,
+    }.items():
+        if records[name]["sha256"] != browser_pins[label]:
+            raise PromotionError(f"staging browser asset {label} differs from pin")
+    if records[DUAL_BINDING]["sha256"] != _required_final_sha(
+        "dual_binding_sha256"
+    ):
+        raise PromotionError("staging dual binding differs from final pin")
 
     tracked = tuple(sorted(entries, key=str))
     if policy.require_git_tracking:
@@ -1032,7 +1777,7 @@ def _verify_staging_package(
     return VerifiedStaging(
         manifest=manifest,
         manifest_raw=manifest_raw,
-        manifest_sha256=_sha256_bytes(manifest_raw),
+        manifest_sha256=manifest_sha256,
         asset_bytes=asset_bytes,
         asset_payloads=payloads,
         asset_records=records,
@@ -1044,8 +1789,11 @@ def _verify_historical_metadata(
     report: Mapping[str, Any], protocol: Mapping[str, Any]
 ) -> None:
     top = report.get("historical_gate_redeclaration")
-    if top != protocol.get("historical_gate_redeclaration"):
-        raise PromotionError("report and protocol historical metadata differ")
+    _require_exact_json(
+        top,
+        protocol.get("historical_gate_redeclaration"),
+        "report/protocol historical metadata",
+    )
     block = _mapping(top, "historical_gate_redeclaration")
     if (
         block.get("release_seed") != HISTORICAL_RELAXED_SEED
@@ -1062,13 +1810,20 @@ def _verify_historical_metadata(
     _exact_keys(gates, set(expected), "historical gates")
     for name, (v2_level, v3_level) in expected.items():
         value = _mapping(gates[name], f"historical gate {name}")
-        if (
-            value.get("v2_level") != v2_level
-            or value.get("v3_level") != v3_level
-            or not isinstance(value.get("owner_decision"), str)
-            or not value["owner_decision"].strip()
-        ):
+        if not isinstance(value.get("owner_decision"), str) or not value[
+            "owner_decision"
+        ].strip():
             raise PromotionError(f"historical gate {name} differs")
+        _require_exact_json(
+            value.get("v2_level"),
+            v2_level,
+            f"historical gate {name}.v2_level",
+        )
+        _require_exact_json(
+            value.get("v3_level"),
+            v3_level,
+            f"historical gate {name}.v3_level",
+        )
 
 
 def _finite_metric(
@@ -1565,40 +2320,361 @@ def _record_core(record: Mapping[str, Any]) -> dict[str, Any]:
 def _expected_protocol() -> dict[str, Any]:
     raw = _read_file(
         EXPECTED_PROTOCOL_FIXTURE,
-        "seed-20260735 protocol fixture",
+        "seed-20260736 q97 protocol fixture",
     )
-    if _sha256_bytes(raw) != EXPECTED_PROTOCOL_FIXTURE_SHA256:
-        raise PromotionError("seed-20260735 protocol fixture bytes drifted")
-    wrapper = _parse_json(raw, "seed-20260735 protocol fixture")
-    if wrapper.get("release_seed") != RELEASE_SEED:
-        raise PromotionError("seed-20260735 protocol fixture seed differs")
-    return dict(
+    if _sha256_bytes(raw) != _required_final_sha("protocol_fixture_sha256"):
+        raise PromotionError("seed-20260736 q97 protocol fixture bytes drifted")
+    wrapper = _parse_json(raw, "seed-20260736 q97 protocol fixture")
+    _exact_keys(
+        wrapper,
+        {"comment", "release_seed", "evaluation_protocol"},
+        "seed-20260736 q97 protocol fixture",
+    )
+    protocol = dict(
         _mapping(
             wrapper.get("evaluation_protocol"),
-            "seed-20260735 evaluation_protocol",
+            "seed-20260736 q97 evaluation_protocol",
         )
     )
+    if (
+        wrapper.get("release_seed") != RELEASE_SEED
+        or not isinstance(wrapper.get("comment"), list)
+        or not wrapper["comment"]
+        or any(type(line) is not str or not line for line in wrapper["comment"])
+    ):
+        raise PromotionError("seed-20260736 q97 protocol fixture seed differs")
+    if protocol.get("version") != EVALUATION_VERSION:
+        raise PromotionError("seed-20260736 q97 fixture evaluator version differs")
+    return protocol
 
 
 def _verify_evaluator_identity(provenance: Mapping[str, Any]) -> None:
     evaluator_raw = _read_file(EXPECTED_EVALUATOR, "final v3 evaluator")
     v2_raw = _read_file(EXPECTED_V2_EVALUATOR, "frozen v2 evaluator")
+    evaluator_sha = _required_final_sha("evaluator_sha256")
+    v2_sha = _required_final_sha("v2_evaluator_sha256")
     if (
-        _sha256_bytes(evaluator_raw) != EXPECTED_EVALUATOR_SHA256
+        _sha256_bytes(evaluator_raw) != evaluator_sha
         or provenance.get("evaluator_sha256")
-        != EXPECTED_EVALUATOR_SHA256
+        != evaluator_sha
         or provenance.get("evaluator_path") != str(EXPECTED_EVALUATOR)
     ):
         raise PromotionError("release report final evaluator identity differs")
     if (
-        _sha256_bytes(v2_raw) != EXPECTED_V2_EVALUATOR_SHA256
+        _sha256_bytes(v2_raw) != v2_sha
         or provenance.get("v2_evaluator_sha256")
-        != EXPECTED_V2_EVALUATOR_SHA256
+        != v2_sha
     ):
         raise PromotionError("release report v2 evaluator identity differs")
 
 
-def _verify_source_transition(value: Any) -> dict[str, Any]:
+def _ledger_neutral_ast_text_sha256(
+    source: str, excluded_assignments: list[str], *, filename: str
+) -> str:
+    if (
+        not excluded_assignments
+        or len(excluded_assignments) != len(set(excluded_assignments))
+        or any(not isinstance(name, str) or not name for name in excluded_assignments)
+    ):
+        raise PromotionError("ledger transition exclusion names are invalid")
+    try:
+        tree = ast.parse(source, filename=filename)
+    except SyntaxError as exc:
+        raise PromotionError("ledger transition source is not valid Python") from exc
+    excluded = set(excluded_assignments)
+    kept: list[ast.stmt] = []
+    removed: list[str] = []
+    for node in tree.body:
+        targets: tuple[ast.expr, ...] = ()
+        if isinstance(node, ast.Assign):
+            targets = tuple(node.targets)
+        elif isinstance(node, ast.AnnAssign):
+            targets = (node.target,)
+        names = [
+            target.id for target in targets if isinstance(target, ast.Name)
+        ]
+        if names and set(names).issubset(excluded):
+            removed.extend(names)
+        else:
+            kept.append(node)
+    if sorted(removed) != sorted(excluded):
+        raise PromotionError(
+            "ledger source does not contain exactly the excluded assignments"
+        )
+    tree.body = kept
+    return _sha256_bytes(
+        ast.dump(
+            tree, annotate_fields=True, include_attributes=False
+        ).encode("utf-8")
+    )
+
+
+def _git_bytes(repo: Path, arguments: list[str], label: str) -> bytes:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(repo), *arguments],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise PromotionError(f"cannot recompute {label}") from exc
+
+
+def _verify_git_transition(
+    transition: Mapping[str, Any], policy: PromotionPolicy
+) -> None:
+    transition_id = str(transition["transition_id"])
+    source_path = (
+        "training/zplane_ab/v2_full_variation/v3_scale/"
+        "fit_v3_openset_staged.py"
+    )
+    evidence_path = TRANSITION_EVIDENCE_PATHS[transition_id]
+    commits = [
+        transition["from_commit"],
+        transition["evidence_commit"],
+        transition["to_commit"],
+    ]
+    if len(set(commits)) != 3:
+        raise PromotionError(
+            f"q97 transition {transition_id} aliases phase commits"
+        )
+    for earlier, later in zip(commits, commits[1:]):
+        _git_bytes(
+            policy.repo_root,
+            ["merge-base", "--is-ancestor", earlier, later],
+            f"q97 transition {transition_id} commit order",
+        )
+    if _run_git(
+        policy.repo_root,
+        ["cat-file", "-e", f"{commits[0]}:{evidence_path}"],
+    ).returncode == 0:
+        raise PromotionError(
+            f"q97 transition {transition_id} evidence predates its draw"
+        )
+    source_blobs = {
+        "from": _git_bytes(
+            policy.repo_root,
+            ["show", f"{commits[0]}:{source_path}"],
+            f"q97 transition {transition_id} from source",
+        ),
+        "evidence": _git_bytes(
+            policy.repo_root,
+            ["show", f"{commits[1]}:{source_path}"],
+            f"q97 transition {transition_id} evidence source",
+        ),
+        "to": _git_bytes(
+            policy.repo_root,
+            ["show", f"{commits[2]}:{source_path}"],
+            f"q97 transition {transition_id} to source",
+        ),
+    }
+    for endpoint, expected in (
+        ("from", transition["from_sha256"]),
+        ("evidence", transition["from_sha256"]),
+        ("to", transition["to_sha256"]),
+    ):
+        if _sha256_bytes(source_blobs[endpoint]) != expected:
+            raise PromotionError(
+                f"q97 transition {transition_id} {endpoint} source differs"
+            )
+    for commit in commits[1:]:
+        evidence = _git_bytes(
+            policy.repo_root,
+            ["show", f"{commit}:{evidence_path}"],
+            f"q97 transition {transition_id} evidence",
+        )
+        if _sha256_bytes(evidence) != transition["evidence_report_sha256"]:
+            raise PromotionError(
+                f"q97 transition {transition_id} evidence report differs"
+            )
+    diff = _git_bytes(
+        policy.repo_root,
+        ["diff", commits[0], commits[2], "--", source_path],
+        f"q97 transition {transition_id} source diff",
+    )
+    if _sha256_bytes(diff) != transition["full_index_diff_sha256"]:
+        raise PromotionError(
+            f"q97 transition {transition_id} source diff differs"
+        )
+    excluded = transition["excluded_top_level_assignments"]
+    for endpoint, raw in source_blobs.items():
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise PromotionError(
+                f"q97 transition {transition_id} {endpoint} is not UTF-8"
+            ) from exc
+        if (
+            _ledger_neutral_ast_text_sha256(
+                text,
+                excluded,
+                filename=f"{commits[0]}:{source_path}",
+            )
+            != transition["normalized_ast_sha256"]
+        ):
+            raise PromotionError(
+                f"q97 transition {transition_id} {endpoint} AST differs"
+            )
+
+
+def _verify_ordered_transition_evidence(
+    value: Any, policy: PromotionPolicy
+) -> dict[str, Any]:
+    expected = FINAL_RELEASE_PINS.get("ordered_source_transition_contract")
+    if not isinstance(expected, dict):
+        raise PromotionError(
+            "final release pin ordered_source_transition_contract is unbound"
+        )
+    _require_exact_json(value, expected, "ordered q97 source transitions")
+    contract = dict(_mapping(value, "ordered q97 source transitions"))
+    if (
+        contract.get("schema")
+        != "time-domain-v3-q97-source-transition-contract-v1"
+        or contract.get("source") != "fit_v3_openset_staged.py"
+        or contract.get("ordered_phases")
+        != ["predesign", "postdesign", "postvalidation"]
+        or contract.get("ledger_only") is not True
+        or contract.get("candidate_inference_behavior_changed") is not False
+    ):
+        raise PromotionError("ordered q97 source transition header differs")
+    transitions = contract.get("transitions")
+    if type(transitions) is not list or len(transitions) != 2:
+        raise PromotionError("ordered q97 transition chain must have two steps")
+    expected_descriptors = (
+        (
+            1,
+            "predesign_to_postdesign",
+            "predesign",
+            "postdesign",
+            [DESIGN_NOVELTY_SEED],
+            ["SPENT_NOVELTY_SEEDS", "SEED_LEDGER_NOTE"],
+            20260953,
+        ),
+        (
+            2,
+            "validation_to_postvalidation",
+            "postdesign",
+            "postvalidation",
+            VALIDATION_NOVELTY_SEEDS,
+            [
+                "SPENT_NOVELTY_SEEDS",
+                "FIRST_CLEAN_NOVELTY_SEED",
+                "SEED_LEDGER_NOTE",
+            ],
+            NEXT_CLEAN_NOVELTY_SEED,
+        ),
+    )
+    previous_to: str | None = None
+    commit_re = re.compile(r"[0-9a-f]{40}")
+    for transition, descriptor in zip(transitions, expected_descriptors):
+        (
+            order,
+            transition_id,
+            from_phase,
+            to_phase,
+            seeds,
+            excluded,
+            next_clean,
+        ) = descriptor
+        for field in (
+            "from_sha256",
+            "to_sha256",
+            "normalized_ast_sha256",
+            "evidence_report_sha256",
+            "full_index_diff_sha256",
+        ):
+            _sha(transition.get(field), f"{transition_id}.{field}")
+        for field in ("from_commit", "evidence_commit", "to_commit"):
+            if (
+                not isinstance(transition.get(field), str)
+                or commit_re.fullmatch(transition[field]) is None
+            ):
+                raise PromotionError(
+                    f"{transition_id}.{field} must be a Git commit"
+                )
+        if (
+            type(transition.get("order")) is not int
+            or transition.get("order") != order
+            or transition.get("transition_id") != transition_id
+            or transition.get("source") != "fit_v3_openset_staged.py"
+            or transition.get("from_phase") != from_phase
+            or transition.get("to_phase") != to_phase
+            or transition.get("consumed_novelty_seeds") != seeds
+            or any(type(seed) is not int for seed in seeds)
+            or transition.get("excluded_top_level_assignments") != excluded
+            or type(transition.get("next_clean_novelty_seed")) is not int
+            or transition.get("next_clean_novelty_seed") != next_clean
+        ):
+            raise PromotionError(
+                f"ordered q97 transition {transition_id} descriptor differs"
+            )
+        if previous_to is not None and transition["from_sha256"] != previous_to:
+            raise PromotionError("ordered q97 source transitions are not contiguous")
+        if transition["from_sha256"] == transition["to_sha256"]:
+            raise PromotionError(
+                f"ordered q97 transition {transition_id} changes no bytes"
+            )
+        if policy.require_git_tracking:
+            _verify_git_transition(transition, policy)
+        previous_to = transition["to_sha256"]
+    current_source = (
+        policy.repo_root / EXPECTED_STAGED_SOURCE.relative_to(REPO)
+    )
+    current_raw = _read_file(current_source, "current staged source")
+    if _sha256_bytes(current_raw) != transitions[-1]["to_sha256"]:
+        raise PromotionError("current staged source differs from q97 transition")
+    try:
+        current_text = current_raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise PromotionError("current staged source is not UTF-8") from exc
+    if (
+        _ledger_neutral_ast_text_sha256(
+            current_text,
+            transitions[-1]["excluded_top_level_assignments"],
+            filename=str(current_source),
+        )
+        != transitions[-1]["normalized_ast_sha256"]
+    ):
+        raise PromotionError("current staged source changes executable behavior")
+    return copy.deepcopy(contract)
+
+
+def _verify_transitive_execution_contract(
+    value: Any, policy: PromotionPolicy
+) -> dict[str, Any]:
+    contract = _mapping(value, "transitive execution contract")
+    expected_hashes = _required_sha_map(
+        "dependency_source_sha256", set(TRANSITIVE_DEPENDENCY_LABELS)
+    )
+    expected = {
+        "schema": "time-domain-v3-transitive-execution-contract-v1",
+        "canonical_enforced": True,
+        "dependency_file_count": 49,
+        "dependency_source_sha256": expected_hashes,
+        "runtime_identity": EXPECTED_EVALUATOR_RUNTIME_IDENTITY,
+        "passes": True,
+    }
+    _require_exact_json(
+        dict(contract), expected, "transitive execution contract"
+    )
+    _require_exact_json(
+        _current_runtime_identity(),
+        EXPECTED_EVALUATOR_RUNTIME_IDENTITY,
+        "promoter evaluator runtime",
+    )
+    for label, digest in expected_hashes.items():
+        path = policy.repo_root / label
+        if _sha256_bytes(_read_file(path, f"dependency {label}")) != digest:
+            raise PromotionError(f"transitive dependency differs: {label}")
+    return copy.deepcopy(expected)
+
+
+def _verify_source_transition(
+    value: Any,
+    ordered: Mapping[str, Any],
+    policy: PromotionPolicy,
+) -> dict[str, Any]:
     source_report = _mapping(value, "candidate source_sha256")
     _exact_keys(
         source_report,
@@ -1607,33 +2683,630 @@ def _verify_source_transition(value: Any) -> dict[str, Any]:
             "recorded_only",
             "post_validation_ledger_transitions",
             "evaluator_chain",
+            "transitive_execution_contract",
         },
         "candidate source_sha256",
     )
-    current_source = _sha256_bytes(
-        _read_file(EXPECTED_STAGED_SOURCE, "current staged source")
-    )
-    if current_source != EXPECTED_LEDGER_TRANSITION["current_sha256"]:
-        raise PromotionError("current staged source differs from ledger pin")
+    transitions = ordered["transitions"]
+    final = transitions[-1]
     enforced = _mapping(
         source_report.get("enforced"), "candidate enforced source hashes"
     )
-    if (
-        enforced.get("fit_v3_openset_staged.py")
-        != EXPECTED_LEDGER_TRANSITION["current_sha256"]
-    ):
+    if enforced.get("fit_v3_openset_staged.py") != final["to_sha256"]:
         raise PromotionError("candidate staged source enforcement differs")
-    transitions = _mapping(
+    admitted_map = _mapping(
         source_report.get("post_validation_ledger_transitions"),
         "post-validation ledger transitions",
     )
-    if dict(transitions) != {
-        "fit_v3_openset_staged.py": EXPECTED_LEDGER_TRANSITION
-    }:
-        raise PromotionError(
-            "post-validation ledger transition record differs"
+    _exact_keys(
+        admitted_map,
+        {"fit_v3_openset_staged.py"},
+        "post-validation ledger transitions",
+    )
+    admitted = _mapping(
+        admitted_map["fit_v3_openset_staged.py"],
+        "admitted staged source transition",
+    )
+    ids = admitted.get("ordered_transition_ids")
+    if (
+        admitted.get("admission")
+        != "exact_ordered_q97_seed_ledger_transition_chain"
+        or type(ids) is not list
+        or ids not in (
+            ["predesign_to_postdesign", "validation_to_postvalidation"],
+            ["validation_to_postvalidation"],
         )
-    return copy.deepcopy(EXPECTED_LEDGER_TRANSITION)
+        or admitted.get("current_sha256") != final["to_sha256"]
+        or admitted.get("normalized_ast_sha256")
+        != final["normalized_ast_sha256"]
+        or admitted.get("next_clean_novelty_seed")
+        != NEXT_CLEAN_NOVELTY_SEED
+        or admitted.get("candidate_inference_behavior_changed") is not False
+    ):
+        raise PromotionError("admitted q97 source transition summary differs")
+    selected_ids = set(ids)
+    selected = [
+        transition
+        for transition in transitions
+        if transition["transition_id"] in selected_ids
+    ]
+    last_selected_index = max(
+        index
+        for index, transition in enumerate(transitions)
+        if transition["transition_id"] in selected_ids
+    )
+    expected_consumed = [
+        seed
+        for transition in transitions[: last_selected_index + 1]
+        for seed in transition["consumed_novelty_seeds"]
+    ]
+    expected_bindings = [
+        {
+            key: transition[key]
+            for key in (
+                "order",
+                "transition_id",
+                "from_phase",
+                "to_phase",
+                "from_sha256",
+                "to_sha256",
+                "from_commit",
+                "evidence_commit",
+                "evidence_report_sha256",
+                "to_commit",
+                "full_index_diff_sha256",
+            )
+        }
+        for transition in selected
+    ]
+    if (
+        admitted.get("origin") != selected[0]["origin"]
+        or admitted.get("from_sha256") != selected[0]["from_sha256"]
+        or admitted.get("excluded_top_level_assignments")
+        != final["excluded_top_level_assignments"]
+        or admitted.get("transition_bindings") != expected_bindings
+        or admitted.get("consumed_novelty_seeds") != expected_consumed
+    ):
+        raise PromotionError("admitted q97 transition bindings differ")
+    execution = _verify_transitive_execution_contract(
+        source_report.get("transitive_execution_contract"), policy
+    )
+    dependency_hashes = execution["dependency_source_sha256"]
+    evaluator_chain = _mapping(
+        source_report.get("evaluator_chain"), "candidate evaluator chain"
+    )
+    expected_chain_labels = {
+        "evaluate_invariant_release_suite.py": (
+            "training/zplane_ab/v2_full_variation/"
+            "evaluate_invariant_release_suite.py"
+        ),
+        "export_v3_openset_browser_assets.py": (
+            "training/zplane_ab/v2_full_variation/v3_scale/"
+            "export_v3_openset_browser_assets.py"
+        ),
+        "measure_v3_remaining_gates.py": (
+            "training/zplane_ab/v2_full_variation/v3_scale/"
+            "measure_v3_remaining_gates.py"
+        ),
+        "preprocess.py": "training/preprocess.py",
+        "invariant_patch_preprocess.py": (
+            "training/invariant_patch_preprocess.py"
+        ),
+        "run_invariant_cnn_dev.py": (
+            "training/zplane_ab/v2_full_variation/"
+            "run_invariant_cnn_dev.py"
+        ),
+    }
+    expected_chain = {
+        name: dependency_hashes[label]
+        for name, label in expected_chain_labels.items()
+    }
+    _require_exact_json(
+        dict(evaluator_chain), expected_chain, "candidate evaluator chain"
+    )
+    return {
+        "ordered_source_transition_contract": copy.deepcopy(dict(ordered)),
+        "admitted_transition": copy.deepcopy(dict(admitted)),
+        "transitive_execution_contract": execution,
+    }
+
+
+def _q97_policy_contract() -> dict[str, Any]:
+    return {
+        "schema": STAGED_POLICY_SCHEMA,
+        "version": STAGED_POLICY_VERSION,
+        "kind": STAGED_POLICY_KIND,
+        "survivor_score": COMPOSITE_SURVIVOR_SCORE,
+        "threshold_quantile": COMPOSITE_THRESHOLD_QUANTILE,
+        "only_policy_change": POLICY_ONLY_CHANGE,
+        "calibration_hygiene": copy.deepcopy(
+            EXPECTED_SERIALIZED_POLICY_HYGIENE
+        ),
+        "design_novelty_seed": DESIGN_NOVELTY_SEED,
+        "validation_novelty_seeds": list(VALIDATION_NOVELTY_SEEDS),
+        "release_seed_never_spent_in_development": RELEASE_SEED,
+    }
+
+
+def _source_transition_intent() -> dict[str, Any]:
+    return {
+        "schema": "time-domain-v3-q97-source-transition-intent-v1",
+        "source": "fit_v3_openset_staged.py",
+        "ordered_phases": ["predesign", "postdesign", "postvalidation"],
+        "transitions": [
+            {
+                "order": 1,
+                "transition_id": "predesign_to_postdesign",
+                "from_phase": "predesign",
+                "to_phase": "postdesign",
+                "consumed_novelty_seeds": [DESIGN_NOVELTY_SEED],
+                "excluded_top_level_assignments": [
+                    "SPENT_NOVELTY_SEEDS",
+                    "SEED_LEDGER_NOTE",
+                ],
+            },
+            {
+                "order": 2,
+                "transition_id": "validation_to_postvalidation",
+                "from_phase": "postdesign",
+                "to_phase": "postvalidation",
+                "consumed_novelty_seeds": list(VALIDATION_NOVELTY_SEEDS),
+                "excluded_top_level_assignments": [
+                    "SPENT_NOVELTY_SEEDS",
+                    "FIRST_CLEAN_NOVELTY_SEED",
+                    "SEED_LEDGER_NOTE",
+                ],
+            },
+        ],
+        "ledger_only": True,
+        "candidate_inference_behavior_changed": False,
+    }
+
+
+def _verify_q97_evidence_chain(
+    *,
+    validation: Mapping[str, Any],
+    frozen: Mapping[str, Any],
+    components: Mapping[str, Any],
+    ordered: Mapping[str, Any],
+    policy: PromotionPolicy,
+) -> dict[str, Any]:
+    _exact_keys(
+        frozen,
+        {
+            "schema",
+            "status",
+            "candidate_id",
+            "architecture",
+            "q97_policy",
+            "q97_design_evidence",
+            "source_transition_intent",
+            "classifier_fusion_8k_regularized",
+            "rejector_fusion_4k",
+            "stage_one_noise_prefilter",
+        },
+        "frozen q97 contract",
+    )
+    _require_exact_json(
+        frozen.get("architecture"),
+        EXPECTED_FROZEN_ARCHITECTURE,
+        "frozen q97 architecture",
+    )
+    _require_exact_json(
+        frozen.get("q97_policy"),
+        _q97_policy_contract(),
+        "frozen q97 policy",
+    )
+    _require_exact_json(
+        frozen.get("source_transition_intent"),
+        _source_transition_intent(),
+        "frozen q97 transition intent",
+    )
+    _exact_keys(
+        validation,
+        {
+            "schema",
+            "status",
+            "candidate_id",
+            "candidate_contract",
+            "validation",
+            "validated_rejector",
+            "validation_locked_policy_artifacts",
+            "candidate_contract_clarification",
+            "source_transition_evidence",
+        },
+        "q97 validation evidence",
+    )
+    if validation.get("candidate_id") != CANDIDATE_ID:
+        raise PromotionError("q97 validation evidence candidate differs")
+    _require_exact_json(
+        validation.get("source_transition_evidence"),
+        dict(ordered),
+        "validation ordered q97 transitions",
+    )
+    _require_exact_json(
+        components.get("ordered_source_transition_evidence"),
+        validation.get("source_transition_evidence"),
+        "report/validation ordered q97 transitions",
+    )
+    design_record = _mapping(
+        frozen.get("q97_design_evidence"), "q97 design evidence"
+    )
+    _exact_keys(
+        design_record,
+        {
+            "path",
+            "sha256",
+            "role",
+            "status",
+            "novelty_seed",
+            "source_sha256",
+            "commit",
+        },
+        "q97 design evidence",
+    )
+    first = ordered["transitions"][0]
+    design_path = _resolve_path(
+        design_record.get("path"), policy.repo_root, "q97 design evidence.path"
+    )
+    design_raw = _read_file(design_path, "q97 design evidence")
+    if (
+        _sha256_bytes(design_raw) != design_record.get("sha256")
+        or design_record.get("sha256") != first["evidence_report_sha256"]
+        or design_record.get("role") != "design"
+        or design_record.get("status") != "design_selection_pass"
+        or type(design_record.get("novelty_seed")) is not int
+        or design_record.get("novelty_seed") != DESIGN_NOVELTY_SEED
+        or design_record.get("source_sha256") != first["from_sha256"]
+        or design_record.get("commit") != first["evidence_commit"]
+    ):
+        raise PromotionError("q97 design evidence binding differs")
+    _require_exact_json(
+        components.get("q97_design_evidence"),
+        dict(design_record),
+        "report q97 design evidence",
+    )
+    design_report = _parse_json(design_raw, "q97 design report")
+    design_seeds = _mapping(design_report.get("seeds"), "q97 design seeds")
+    design_architecture = _mapping(
+        design_report.get("architecture"), "q97 design architecture"
+    )
+    design_composite = _mapping(
+        design_report.get("composite"), "q97 design composite"
+    )
+    if (
+        design_report.get("role") != "design"
+        or design_report.get("status") != "design_selection_pass"
+        or design_report.get("gates_are_evidence") is not False
+        or design_report.get("all_pass") is not True
+        or design_report.get("release_seed_20260736_used") is not False
+        or design_report.get("source_sha256", {}).get(
+            "fit_v3_openset_staged.py"
+        )
+        != first["from_sha256"]
+        or design_seeds.get("novelty_seeds") != [DESIGN_NOVELTY_SEED]
+        or design_seeds.get("design_novelty_seed") != DESIGN_NOVELTY_SEED
+        or design_seeds.get("release_seed_not_spent") != RELEASE_SEED
+        or design_architecture.get("schema") != STAGED_POLICY_SCHEMA
+        or design_architecture.get("kind") != STAGED_POLICY_KIND
+        or design_architecture.get("staged_policy_version")
+        != STAGED_POLICY_VERSION
+    ):
+        raise PromotionError("q97 design report semantics differ")
+    for name, expected in {
+        "schema": STAGED_POLICY_SCHEMA,
+        "kind": STAGED_POLICY_KIND,
+        "policy_version": STAGED_POLICY_VERSION,
+        "threshold_quantile": COMPOSITE_THRESHOLD_QUANTILE,
+        **EXPECTED_REPORT_POLICY_HYGIENE,
+    }.items():
+        _require_exact_json(
+            design_composite.get(name),
+            expected,
+            f"q97 design composite.{name}",
+        )
+
+    validation_body = _mapping(
+        validation.get("validation"), "q97 validation body"
+    )
+    _exact_keys(
+        validation_body,
+        {
+            "role",
+            "novelty_seeds_consumed_once",
+            "report",
+            "report_sha256",
+            "gates_are_evidence",
+            "all_pass",
+            "sealed_release_data_used",
+            "consumed_test_rows_used",
+            "release_seed_20260736_used",
+        },
+        "q97 validation body",
+    )
+    for name, expected in {
+        "role": "validate",
+        "gates_are_evidence": True,
+        "all_pass": True,
+        "sealed_release_data_used": 0,
+        "consumed_test_rows_used": 0,
+        "release_seed_20260736_used": False,
+        "novelty_seeds_consumed_once": list(VALIDATION_NOVELTY_SEEDS),
+    }.items():
+        _require_exact_json(
+            validation_body.get(name),
+            expected,
+            f"q97 validation.{name}",
+        )
+    report_path = _resolve_path(
+        validation_body.get("report"),
+        policy.repo_root,
+        "q97 validation report",
+    )
+    report_sha = _sha(
+        validation_body.get("report_sha256"),
+        "q97 validation report SHA",
+    )
+    if (
+        _sha256_bytes(_read_file(report_path, "q97 validation report"))
+        != report_sha
+        or report_sha != _required_final_sha(
+            "staged_validation_report_sha256"
+        )
+    ):
+        raise PromotionError("q97 validation report differs from final pin")
+    locked = _mapping(
+        validation.get("validation_locked_policy_artifacts"),
+        "q97 locked validation artifacts",
+    )
+    _exact_keys(
+        locked,
+        {
+            "directory",
+            *EXPECTED_STAGED_ASSETS,
+            "novelty_rows_used_to_fit_rank_or_threshold",
+        },
+        "q97 locked validation artifacts",
+    )
+    locked_dir = _resolve_path(
+        locked.get("directory"),
+        policy.repo_root,
+        "q97 locked validation directory",
+    )
+    if locked_dir != report_path.parent:
+        raise PromotionError("q97 locked validation directory differs")
+    staged_pins = _required_sha_map(
+        "staged_artifact_sha256", set(EXPECTED_STAGED_ASSETS)
+    )
+    for name, digest in staged_pins.items():
+        if (
+            locked.get(name) != digest
+            or _sha256_bytes(
+                _read_file(locked_dir / name, f"q97 staged artifact {name}")
+            )
+            != digest
+        ):
+            raise PromotionError(f"q97 staged artifact differs: {name}")
+    if locked.get("novelty_rows_used_to_fit_rank_or_threshold") != 0:
+        raise PromotionError("validation novelty was used to fit q97 policy")
+
+    validated_rejector = _mapping(
+        validation.get("validated_rejector"), "q97 validated rejector"
+    )
+    _exact_keys(
+        validated_rejector,
+        {
+            "fusion_directory_sha256",
+            "canonical_prefilter_set_sha256",
+            "prefilter_bundle_sha256",
+        },
+        "q97 validated rejector",
+    )
+    rejector_component = _mapping(
+        components.get("rejector_fusion"), "report rejector fusion"
+    )
+    prefilter_component = _mapping(
+        components.get("stage_one_prefilter"), "report stage-one prefilter"
+    )
+    if (
+        validated_rejector.get("fusion_directory_sha256")
+        != rejector_component.get("directory_sha256")
+        or validated_rejector.get("canonical_prefilter_set_sha256")
+        != prefilter_component.get("set_sha256")
+        or validated_rejector.get("prefilter_bundle_sha256")
+        != prefilter_component.get("bundle_sha256")
+    ):
+        raise PromotionError("q97 validated rejector binding differs")
+
+    frozen_classifier = _mapping(
+        frozen.get("classifier_fusion_8k_regularized"),
+        "frozen classifier fusion",
+    )
+    frozen_rejector = _mapping(
+        frozen.get("rejector_fusion_4k"), "frozen rejector fusion"
+    )
+    _exact_keys(
+        frozen_classifier,
+        {
+            "directory",
+            "directory_sha256",
+            "file_sha256",
+            "development_remaining_gates",
+            "training_reproduction",
+        },
+        "frozen classifier fusion",
+    )
+    _exact_keys(
+        frozen_rejector,
+        {"directory", "directory_sha256", "file_sha256"},
+        "frozen rejector fusion",
+    )
+    for label, frozen_role, component in (
+        (
+            "classifier",
+            frozen_classifier,
+            _mapping(
+                components.get("classifier_fusion"),
+                "report classifier fusion",
+            ),
+        ),
+        ("rejector", frozen_rejector, rejector_component),
+    ):
+        for field in ("directory", "directory_sha256", "file_sha256"):
+            comparison_label = f"frozen/report {label} fusion.{field}"
+            if field == "directory":
+                frozen_directory = _resolve_path(
+                    frozen_role.get(field),
+                    policy.repo_root,
+                    f"frozen {label} fusion directory",
+                )
+                report_directory = _resolve_path(
+                    component.get(field),
+                    policy.repo_root,
+                    f"report {label} fusion directory",
+                )
+                if frozen_directory != report_directory:
+                    raise PromotionError(f"{comparison_label} differs")
+            else:
+                _require_exact_json(
+                    frozen_role.get(field),
+                    component.get(field),
+                    comparison_label,
+                )
+    development = _mapping(
+        frozen_classifier.get("development_remaining_gates"),
+        "frozen classifier development evidence",
+    )
+    _exact_keys(
+        development,
+        {
+            "five_shot_delta_over_fresh_same_data_4k_incumbent",
+            "five_shot_worst_length_balanced_enrollment_support",
+            "fresh_same_data_4k_incumbent",
+            "n4096_clean_balanced_accuracy",
+            "note",
+            "record",
+            "record_sha256",
+        },
+        "frozen classifier development evidence",
+    )
+    development_path = _resolve_path(
+        development.get("record"),
+        policy.repo_root,
+        "frozen classifier development record",
+    )
+    if (
+        not isinstance(development.get("note"), str)
+        or not development["note"].strip()
+        or any(
+            not _is_finite_number(development.get(name))
+            for name in (
+                "five_shot_delta_over_fresh_same_data_4k_incumbent",
+                "five_shot_worst_length_balanced_enrollment_support",
+                "fresh_same_data_4k_incumbent",
+                "n4096_clean_balanced_accuracy",
+            )
+        )
+        or _sha256_bytes(
+            _read_file(
+                development_path,
+                "frozen classifier development record",
+            )
+        )
+        != _sha(
+            development.get("record_sha256"),
+            "frozen classifier development record SHA",
+        )
+    ):
+        raise PromotionError("frozen classifier development evidence differs")
+    reproduction = _mapping(
+        frozen_classifier.get("training_reproduction"),
+        "frozen classifier training reproduction",
+    )
+    _exact_keys(
+        reproduction,
+        {"bit_exact", "record", "record_sha256"},
+        "frozen classifier training reproduction",
+    )
+    reproduction_path = _resolve_path(
+        reproduction.get("record"),
+        policy.repo_root,
+        "frozen classifier training reproduction record",
+    )
+    if (
+        reproduction.get("bit_exact") is not True
+        or _sha256_bytes(
+            _read_file(
+                reproduction_path,
+                "frozen classifier training reproduction record",
+            )
+        )
+        != _sha(
+            reproduction.get("record_sha256"),
+            "frozen classifier training reproduction record SHA",
+        )
+    ):
+        raise PromotionError("frozen classifier training reproduction differs")
+
+    frozen_prefilter = _mapping(
+        frozen.get("stage_one_noise_prefilter"),
+        "frozen stage-one prefilter",
+    )
+    _exact_keys(
+        frozen_prefilter,
+        {
+            "directory",
+            "directory_sha256",
+            "fit_seed",
+            "inference_uses_frequency_transform",
+            "known_false_positive_budget",
+        },
+        "frozen stage-one prefilter",
+    )
+    if (
+        _resolve_path(
+            frozen_prefilter.get("directory"),
+            policy.repo_root,
+            "frozen stage-one prefilter directory",
+        )
+        != _resolve_path(
+            prefilter_component.get("directory"),
+            policy.repo_root,
+            "report stage-one prefilter directory",
+        )
+        or frozen_prefilter.get("fit_seed") != 20261001
+        or frozen_prefilter.get("inference_uses_frequency_transform")
+        is not False
+        or frozen_prefilter.get("known_false_positive_budget")
+        != STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+    ):
+        raise PromotionError("frozen stage-one prefilter contract differs")
+    clarification = _mapping(
+        validation.get("candidate_contract_clarification"),
+        "q97 candidate contract clarification",
+    )
+    _exact_keys(
+        clarification,
+        {
+            "recorded_value",
+            "canonical_behavioral_hash",
+            "changes_candidate_behavior",
+        },
+        "q97 candidate contract clarification",
+    )
+    if (
+        clarification.get("recorded_value")
+        != frozen_prefilter.get("directory_sha256")
+        or clarification.get("canonical_behavioral_hash")
+        != prefilter_component.get("set_sha256")
+        or clarification.get("changes_candidate_behavior") is not False
+    ):
+        raise PromotionError("q97 prefilter hash clarification differs")
+    return {
+        "design_report_sha256": design_record["sha256"],
+        "validation_report_sha256": report_sha,
+        "staged_artifacts_sha256": staged_pins,
+    }
 
 
 def _verify_evaluation_report(
@@ -1651,7 +3324,7 @@ def _verify_evaluation_report(
         or report.get("evaluation_version") != EVALUATION_VERSION
         or report.get("all_release_gates_pass") is not True
     ):
-        raise PromotionError("release report is not a complete evaluator-v3 pass")
+        raise PromotionError("release report is not a complete evaluator-v4 pass")
     for field in (
         "development_data_loaded",
         "retraining_performed",
@@ -1667,10 +3340,16 @@ def _verify_evaluation_report(
     protocol = _mapping(
         provenance.get("evaluation_protocol"), "release evaluation protocol"
     )
-    if dict(protocol) != _expected_protocol():
-        raise PromotionError(
-            "embedded protocol is not the exact seed-20260735 fixture"
+    try:
+        _require_exact_json(
+            dict(protocol),
+            _expected_protocol(),
+            "embedded seed-20260736 q97 protocol",
         )
+    except PromotionError as exc:
+        raise PromotionError(
+            "embedded protocol is not the exact seed-20260736 q97 fixture"
+        ) from exc
     open_protocol = _mapping(protocol.get("open_set"), "protocol open_set")
     if (
         open_protocol.get("intentional_dual_fusion") is not True
@@ -1689,10 +3368,30 @@ def _verify_evaluation_report(
         ("known_unknown_source", "rejector_fusion_4k_frozen_policy"),
         ("closed_gate_source", "classifier_fusion_8k_regularized"),
         ("open_gate_source", "rejector_fusion_4k_frozen_policy"),
+        ("additive_only", False),
+        ("changes_closed_label", True),
+        ("open_set_decision_changes_closed_label", True),
         ("gates_before_classification", True),
+        ("staged_policy_kind", STAGED_POLICY_KIND),
+        ("staged_policy_schema", STAGED_POLICY_SCHEMA),
+        ("staged_policy_version", STAGED_POLICY_VERSION),
+        ("composite_threshold_quantile", COMPOSITE_THRESHOLD_QUANTILE),
+        ("survivor_score", COMPOSITE_SURVIVOR_SCORE),
     ):
-        if architecture.get(field) != expected:
+        if (
+            type(architecture.get(field)) is not type(expected)
+            or architecture.get(field) != expected
+        ):
             raise PromotionError(f"release architecture {field} differs")
+    _require_exact_json(
+        architecture.get("policy_hygiene"),
+        EXPECTED_REPORT_POLICY_HYGIENE,
+        "release architecture policy_hygiene",
+    )
+    if architecture.get("stage_one_capture_lengths") != list(
+        REQUIRED_STAGE_ONE_LENGTHS
+    ):
+        raise PromotionError("release architecture stage-one lengths differ")
 
     candidate = _mapping(report.get("candidate"), "release candidate")
     candidate_sha = _sha(candidate.get("sha256"), "candidate.sha256")
@@ -1708,6 +3407,8 @@ def _verify_evaluation_report(
     candidate_raw = _read_file(candidate_path, "candidate manifest")
     if _sha256_bytes(candidate_raw) != candidate_sha:
         raise PromotionError("candidate manifest SHA differs from report")
+    if candidate_sha != _required_final_sha("candidate_manifest_sha256"):
+        raise PromotionError("candidate manifest differs from final release pin")
     candidate_manifest = _parse_json(candidate_raw, "candidate manifest")
     expected_candidate_keys = {
         "schema",
@@ -1750,8 +3451,11 @@ def _verify_evaluation_report(
 
     components = _mapping(candidate.get("components"), "candidate components")
     _exact_keys(components, CANDIDATE_COMPONENT_KEYS, "candidate components")
+    ordered_transition = _verify_ordered_transition_evidence(
+        components.get("ordered_source_transition_evidence"), policy
+    )
     source_transition = _verify_source_transition(
-        components.get("source_sha256")
+        components.get("source_sha256"), ordered_transition, policy
     )
     contract = _mapping(
         components.get("candidate_contract"), "candidate_contract"
@@ -1776,6 +3480,8 @@ def _verify_evaluation_report(
         schema=VALIDATION_EVIDENCE_SCHEMA,
         status="development_openset_pass",
     )
+    if validation_sha != _required_final_sha("validation_evidence_sha256"):
+        raise PromotionError("validation evidence differs from final release pin")
     candidate_validation = _mapping(
         candidate_manifest.get("validation_evidence"),
         "manifest validation_evidence",
@@ -1801,10 +3507,23 @@ def _verify_evaluation_report(
         schema=PREVALIDATION_CONTRACT_SCHEMA,
         status="frozen_before_validation",
     )
-    if frozen_payload.get("candidate_id") != CANDIDATE_ID:
+    if (
+        frozen_sha != _required_final_sha("frozen_candidate_contract_sha256")
+        or frozen_payload.get("candidate_id") != CANDIDATE_ID
+    ):
         raise PromotionError("prevalidation contract candidate_id differs")
     validation_contract = _mapping(
         validation.get("candidate_contract"),
+        "validation evidence candidate_contract",
+    )
+    _exact_keys(
+        validation_contract,
+        {
+            "path",
+            "sha256",
+            "committed_before_validation",
+            "commit",
+        },
         "validation evidence candidate_contract",
     )
     if (
@@ -1815,8 +3534,23 @@ def _verify_evaluation_report(
         )
         != frozen_path
         or validation_contract.get("sha256") != frozen_sha
+        or validation_contract.get("committed_before_validation") is not True
+        or not isinstance(validation_contract.get("commit"), str)
+        or re.fullmatch(
+            r"[0-9a-f]{40}", validation_contract["commit"]
+        )
+        is None
+        or validation_contract.get("commit")
+        != ordered_transition["transitions"][1]["from_commit"]
     ):
         raise PromotionError("validation evidence does not bind frozen contract")
+    q97_evidence = _verify_q97_evidence_chain(
+        validation=validation,
+        frozen=frozen_payload,
+        components=components,
+        ordered=ordered_transition,
+        policy=policy,
+    )
 
     binding = staging.asset_payloads[DUAL_BINDING]
     binding_roles = binding["roles"]
@@ -1958,15 +3692,50 @@ def _verify_evaluation_report(
     staged = _mapping(
         components.get("staged_validation"), "staged_validation"
     )
+    staged_composite = _mapping(
+        staged.get("composite"), "staged validation composite"
+    )
+    packaged_policy = staging.asset_payloads[OPENSET_POLICY]
+    packaged_stage_two = _mapping(
+        packaged_policy.get("stage_two"), "packaged stage two"
+    )
+    packaged_inner = _mapping(
+        packaged_stage_two.get("policy"), "packaged stage-two policy"
+    )
+    packaged_composite = _mapping(
+        packaged_policy.get("composite"), "packaged composite"
+    )
     if (
         staged.get("status") != "development_openset_pass"
-        or staged.get("novelty_seeds") != [20260950, 20260951]
+        or staged.get("novelty_seeds") != VALIDATION_NOVELTY_SEEDS
+        or staged.get("policy_version") != STAGED_POLICY_VERSION
+        or type(staged.get("staged_threshold")) is not float
+        or staged.get("staged_threshold")
+        != packaged_composite.get("threshold")
+        or type(staged.get("stage_two_threshold")) is not float
+        or staged.get("stage_two_threshold")
+        != packaged_inner.get("threshold")
         or staged.get("report_sha256")
         != binding["openset_policy"]["staged_validation_report_sha256"]
         or staged.get("artifact_sha256")
         != binding["openset_policy"]["staged_artifacts_sha256"]
     ):
         raise PromotionError("staged validation evidence differs from binding")
+    for name, expected in {
+        "policy_version": STAGED_POLICY_VERSION,
+        "schema": STAGED_POLICY_SCHEMA,
+        "kind": STAGED_POLICY_KIND,
+        "survivor_score": COMPOSITE_SURVIVOR_SCORE,
+        "threshold": staged["staged_threshold"],
+        "threshold_quantile": COMPOSITE_THRESHOLD_QUANTILE,
+        "stage_two_threshold_unchanged": staged["stage_two_threshold"],
+        **EXPECTED_REPORT_POLICY_HYGIENE,
+    }.items():
+        _require_exact_json(
+            staged_composite.get(name),
+            expected,
+            f"staged validation composite.{name}",
+        )
     staged_dir = _resolve_path(
         staged.get("directory"), policy.repo_root, "staged directory"
     )
@@ -2015,6 +3784,8 @@ def _verify_evaluation_report(
     prefilter = _mapping(
         components.get("stage_one_prefilter"), "stage_one_prefilter"
     )
+    if prefilter.get("capture_lengths") != list(REQUIRED_STAGE_ONE_LENGTHS):
+        raise PromotionError("stage-one prefilter capture lengths differ")
     prefilter_sha = _sha(prefilter.get("set_sha256"), "prefilter set SHA")
     bundle_hashes = _mapping(
         prefilter.get("bundle_sha256"), "prefilter bundle hashes"
@@ -2236,10 +4007,20 @@ def _verify_evaluation_report(
         or intent.get("candidate_sha256") != candidate_sha
         or release_manifest.get("candidate_sha256") != candidate_sha
         or release_manifest.get("release_intent_sha256") != intent_sha
-        or intent.get("evaluation_protocol") != protocol
-        or release_manifest.get("evaluation_protocol") != protocol
     ):
         raise PromotionError("release intent/manifest candidate chain differs")
+    _require_exact_json(
+        intent.get("evaluation_protocol"),
+        dict(protocol),
+        "release intent evaluation protocol",
+        allow_integral_float_collapse=True,
+    )
+    _require_exact_json(
+        release_manifest.get("evaluation_protocol"),
+        dict(protocol),
+        "release manifest evaluation protocol",
+        allow_integral_float_collapse=True,
+    )
 
     artifacts = {
         "candidate_manifest_sha256": candidate_sha,
@@ -2254,7 +4035,8 @@ def _verify_evaluation_report(
         "browser_assets_sha256": browser_hashes,
         "staging_package_manifest_sha256": package_sha,
         "staging_dual_binding_sha256": binding_sha,
-        "post_validation_ledger_transition": source_transition,
+        "q97_evidence_chain": q97_evidence,
+        "ordered_q97_source_transition": source_transition,
     }
     return VerifiedEvaluation(
         report_sha256=_sha256_bytes(raw),
@@ -2731,7 +4513,7 @@ def parser() -> argparse.ArgumentParser:
         "--evaluation-report",
         type=Path,
         required=True,
-        help="completed sealed seed-20260735 RELEASE_EVALUATION.json",
+        help="completed sealed seed-20260736 RELEASE_EVALUATION.json",
     )
     result.add_argument(
         "--staging-package",

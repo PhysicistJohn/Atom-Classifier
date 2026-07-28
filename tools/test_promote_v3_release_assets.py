@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from contextlib import ExitStack
 import hashlib
 import importlib.util
 import json
@@ -64,10 +65,8 @@ def file_record(path: Path) -> dict[str, Any]:
     return {"bytes": len(raw), "sha256": digest_bytes(raw)}
 
 
-def historical_metadata() -> dict[str, Any]:
-    return copy.deepcopy(
-        promoter._expected_protocol()["historical_gate_redeclaration"]
-    )
+def historical_metadata(protocol: dict[str, Any]) -> dict[str, Any]:
+    return copy.deepcopy(protocol["historical_gate_redeclaration"])
 
 
 def release_gates(candidate_sha256: str) -> dict[str, dict[str, Any]]:
@@ -101,6 +100,13 @@ class SyntheticPromotion:
         self.release = self.root / "assets-v3-release"
         self.live_v2 = self.root / "assets-v2-live"
         self.legacy_staging = self.root / "assets-v3-staging"
+        self.evaluator = self.root / "evaluate-v4.py"
+        self.v2_evaluator = self.root / "evaluate-v2.py"
+        self.evaluator.write_bytes(b"# synthetic evaluator-v4\n")
+        self.v2_evaluator.write_bytes(b"# synthetic evaluator-v2\n")
+        self.runtime_identity = promoter._current_runtime_identity()
+        self._build_source_surface()
+
         self.prefilter = self.root / "prefilter"
         self.prefilter.mkdir()
         self.prefilter_bundles = self._build_prefilter()
@@ -154,32 +160,35 @@ class SyntheticPromotion:
         self.binding_payload = read_json(self.staging_binding)
 
         self.staged = self._build_staged_validation()
+        self.design_report = self.root / "q97-design-report.json"
+        self._write_design_report()
+        self.transition_contract = self._build_transition_contract()
+        self.development_record = self.root / "classifier-development.json"
+        self.reproduction_record = self.root / "training-reproduction.json"
+        write_json(self.development_record, {"synthetic": "development"})
+        write_json(self.reproduction_record, {"synthetic": "reproduction"})
+
         self.frozen_contract = self.root / "frozen-prevalidation.json"
-        write_json(
-            self.frozen_contract,
-            {
-                "schema": promoter.PREVALIDATION_CONTRACT_SCHEMA,
-                "status": "frozen_before_validation",
-                "candidate_id": promoter.CANDIDATE_ID,
-            },
-        )
+        self._write_frozen_contract()
         self.validation_evidence = self.root / "validation-evidence.json"
-        write_json(
-            self.validation_evidence,
-            {
-                "schema": promoter.VALIDATION_EVIDENCE_SCHEMA,
-                "status": "development_openset_pass",
-                "candidate_id": promoter.CANDIDATE_ID,
-                "candidate_contract": {
-                    "path": str(self.frozen_contract),
-                    "sha256": digest_bytes(self.frozen_contract.read_bytes()),
-                },
-            },
-        )
+        self._write_validation_evidence()
         self.candidate = self.root / "release-candidate.json"
         self._write_candidate()
         self.candidate_sha = digest_bytes(self.candidate.read_bytes())
-        self.protocol = self._protocol()
+        canonical_wrapper = read_json(promoter.EXPECTED_PROTOCOL_FIXTURE)
+        self.protocol = copy.deepcopy(
+            canonical_wrapper["evaluation_protocol"]
+        )
+        self.protocol_fixture = self.root / "q97-protocol.json"
+        write_json(
+            self.protocol_fixture,
+            {
+                "comment": ["synthetic frozen q97 protocol"],
+                "release_seed": promoter.RELEASE_SEED,
+                "evaluation_protocol": copy.deepcopy(self.protocol),
+            },
+        )
+        self.pins = self._build_final_pins()
         self.release_root = (
             self.root
             / promoter.EXPECTED_RELEASE_ROOT.relative_to(promoter.REPO)
@@ -195,6 +204,331 @@ class SyntheticPromotion:
             legacy_v3_staging=self.legacy_staging,
             require_git_tracking=False,
         )
+
+    def _build_source_surface(self) -> None:
+        self.staged_source = (
+            self.root / promoter.EXPECTED_STAGED_SOURCE.relative_to(promoter.REPO)
+        )
+        self.staged_source.parent.mkdir(parents=True, exist_ok=True)
+        self.staged_source.write_text(
+            "SPENT_NOVELTY_SEEDS = (20260953, 20260954, 20260955)\n"
+            "FIRST_CLEAN_NOVELTY_SEED = 20260956\n"
+            "SEED_LEDGER_NOTE = 'synthetic q97 ledger'\n\n"
+            "def frozen_inference(value):\n"
+            "    return value\n",
+            encoding="utf-8",
+        )
+        self.source_hashes: dict[str, str] = {}
+        for label in promoter.TRANSITIVE_DEPENDENCY_LABELS:
+            path = self.root / label
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists():
+                path.write_text(
+                    f"# synthetic transitive dependency: {label}\n",
+                    encoding="utf-8",
+                )
+            self.source_hashes[label] = digest_bytes(path.read_bytes())
+
+    def _write_design_report(self) -> None:
+        predesign_sha = digest("synthetic q97 predesign source")
+        write_json(
+            self.design_report,
+            {
+                "role": "design",
+                "status": "design_selection_pass",
+                "gates_are_evidence": False,
+                "all_pass": True,
+                "release_seed_20260736_used": False,
+                "source_sha256": {
+                    "fit_v3_openset_staged.py": predesign_sha,
+                },
+                "seeds": {
+                    "novelty_seeds": [promoter.DESIGN_NOVELTY_SEED],
+                    "design_novelty_seed": promoter.DESIGN_NOVELTY_SEED,
+                    "release_seed_not_spent": promoter.RELEASE_SEED,
+                },
+                "architecture": {
+                    "schema": promoter.STAGED_POLICY_SCHEMA,
+                    "kind": promoter.STAGED_POLICY_KIND,
+                    "staged_policy_version": promoter.STAGED_POLICY_VERSION,
+                },
+                "composite": {
+                    "schema": promoter.STAGED_POLICY_SCHEMA,
+                    "kind": promoter.STAGED_POLICY_KIND,
+                    "policy_version": promoter.STAGED_POLICY_VERSION,
+                    "threshold_quantile": (
+                        promoter.COMPOSITE_THRESHOLD_QUANTILE
+                    ),
+                    **copy.deepcopy(
+                        promoter.EXPECTED_REPORT_POLICY_HYGIENE
+                    ),
+                },
+            },
+        )
+
+    def _build_transition_contract(self) -> dict[str, Any]:
+        source_raw = self.staged_source.read_bytes()
+        source_text = source_raw.decode("utf-8")
+        predesign_sha = digest("synthetic q97 predesign source")
+        postdesign_sha = digest("synthetic q97 postdesign source")
+        final_sha = digest_bytes(source_raw)
+        first_excluded = ["SPENT_NOVELTY_SEEDS", "SEED_LEDGER_NOTE"]
+        second_excluded = [
+            "SPENT_NOVELTY_SEEDS",
+            "FIRST_CLEAN_NOVELTY_SEED",
+            "SEED_LEDGER_NOTE",
+        ]
+
+        def commit(label: str) -> str:
+            return digest(label)[:40]
+
+        return {
+            "schema": "time-domain-v3-q97-source-transition-contract-v1",
+            "source": "fit_v3_openset_staged.py",
+            "ordered_phases": [
+                "predesign",
+                "postdesign",
+                "postvalidation",
+            ],
+            "transitions": [
+                {
+                    "order": 1,
+                    "transition_id": "predesign_to_postdesign",
+                    "source": "fit_v3_openset_staged.py",
+                    "origin": "the q97 design artifact",
+                    "from_phase": "predesign",
+                    "to_phase": "postdesign",
+                    "from_sha256": predesign_sha,
+                    "to_sha256": postdesign_sha,
+                    "normalized_ast_sha256": (
+                        promoter._ledger_neutral_ast_text_sha256(
+                            source_text,
+                            first_excluded,
+                            filename=str(self.staged_source),
+                        )
+                    ),
+                    "from_commit": commit("predesign from"),
+                    "evidence_commit": commit("predesign evidence"),
+                    "evidence_report_sha256": digest_bytes(
+                        self.design_report.read_bytes()
+                    ),
+                    "to_commit": commit("predesign to"),
+                    "full_index_diff_sha256": digest("predesign full diff"),
+                    "excluded_top_level_assignments": first_excluded,
+                    "consumed_novelty_seeds": [
+                        promoter.DESIGN_NOVELTY_SEED
+                    ],
+                    "next_clean_novelty_seed": 20260953,
+                },
+                {
+                    "order": 2,
+                    "transition_id": "validation_to_postvalidation",
+                    "source": "fit_v3_openset_staged.py",
+                    "origin": "the staged validation artifact",
+                    "from_phase": "postdesign",
+                    "to_phase": "postvalidation",
+                    "from_sha256": postdesign_sha,
+                    "to_sha256": final_sha,
+                    "normalized_ast_sha256": (
+                        promoter._ledger_neutral_ast_text_sha256(
+                            source_text,
+                            second_excluded,
+                            filename=str(self.staged_source),
+                        )
+                    ),
+                    "from_commit": commit("validation from"),
+                    "evidence_commit": commit("validation evidence"),
+                    "evidence_report_sha256": self.staged[
+                        "report_sha256"
+                    ],
+                    "to_commit": commit("validation to"),
+                    "full_index_diff_sha256": digest(
+                        "validation full diff"
+                    ),
+                    "excluded_top_level_assignments": second_excluded,
+                    "consumed_novelty_seeds": list(
+                        promoter.VALIDATION_NOVELTY_SEEDS
+                    ),
+                    "next_clean_novelty_seed": (
+                        promoter.NEXT_CLEAN_NOVELTY_SEED
+                    ),
+                },
+            ],
+            "ledger_only": True,
+            "candidate_inference_behavior_changed": False,
+        }
+
+    def _write_frozen_contract(self) -> None:
+        classifier = {
+            "directory": str(self.classifier_fusion),
+            "directory_sha256": self.classifier_fusion_sha,
+            "file_sha256": copy.deepcopy(self.classifier_fusion_files),
+            "development_remaining_gates": {
+                "five_shot_delta_over_fresh_same_data_4k_incumbent": 0.01,
+                "five_shot_worst_length_balanced_enrollment_support": 0.77,
+                "fresh_same_data_4k_incumbent": 0.76,
+                "n4096_clean_balanced_accuracy": 0.93,
+                "note": "synthetic development-only evidence",
+                "record": str(self.development_record),
+                "record_sha256": digest_bytes(
+                    self.development_record.read_bytes()
+                ),
+            },
+            "training_reproduction": {
+                "bit_exact": True,
+                "record": str(self.reproduction_record),
+                "record_sha256": digest_bytes(
+                    self.reproduction_record.read_bytes()
+                ),
+            },
+        }
+        rejector = {
+            "directory": self.rejector_fusion.relative_to(
+                self.root
+            ).as_posix(),
+            "directory_sha256": self.rejector_fusion_sha,
+            "file_sha256": copy.deepcopy(self.rejector_fusion_files),
+        }
+        classifier["directory"] = self.classifier_fusion.relative_to(
+            self.root
+        ).as_posix()
+        self.prefilter_recorded_sha = digest(
+            "synthetic prefilter directory listing"
+        )
+        write_json(
+            self.frozen_contract,
+            {
+                "schema": promoter.PREVALIDATION_CONTRACT_SCHEMA,
+                "status": "frozen_before_validation",
+                "candidate_id": promoter.CANDIDATE_ID,
+                "architecture": copy.deepcopy(
+                    promoter.EXPECTED_FROZEN_ARCHITECTURE
+                ),
+                "q97_policy": promoter._q97_policy_contract(),
+                "q97_design_evidence": {
+                    "path": str(self.design_report),
+                    "sha256": digest_bytes(self.design_report.read_bytes()),
+                    "role": "design",
+                    "status": "design_selection_pass",
+                    "novelty_seed": promoter.DESIGN_NOVELTY_SEED,
+                    "source_sha256": self.transition_contract[
+                        "transitions"
+                    ][0]["from_sha256"],
+                    "commit": self.transition_contract["transitions"][0][
+                        "evidence_commit"
+                    ],
+                },
+                "source_transition_intent": (
+                    promoter._source_transition_intent()
+                ),
+                "classifier_fusion_8k_regularized": classifier,
+                "rejector_fusion_4k": rejector,
+                "stage_one_noise_prefilter": {
+                    "directory": str(self.prefilter),
+                    "directory_sha256": self.prefilter_recorded_sha,
+                    "fit_seed": 20261001,
+                    "inference_uses_frequency_transform": False,
+                    "known_false_positive_budget": (
+                        promoter.STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+                    ),
+                },
+            },
+        )
+
+    def _write_validation_evidence(self) -> None:
+        write_json(
+            self.validation_evidence,
+            {
+                "schema": promoter.VALIDATION_EVIDENCE_SCHEMA,
+                "status": "development_openset_pass",
+                "candidate_id": promoter.CANDIDATE_ID,
+                "candidate_contract": {
+                    "path": str(self.frozen_contract),
+                    "sha256": digest_bytes(
+                        self.frozen_contract.read_bytes()
+                    ),
+                    "committed_before_validation": True,
+                    "commit": self.transition_contract["transitions"][1][
+                        "from_commit"
+                    ],
+                },
+                "validation": {
+                    "role": "validate",
+                    "novelty_seeds_consumed_once": list(
+                        promoter.VALIDATION_NOVELTY_SEEDS
+                    ),
+                    "report": str(self.staged["report_path"]),
+                    "report_sha256": self.staged["report_sha256"],
+                    "gates_are_evidence": True,
+                    "all_pass": True,
+                    "sealed_release_data_used": 0,
+                    "consumed_test_rows_used": 0,
+                    "release_seed_20260736_used": False,
+                },
+                "validated_rejector": {
+                    "fusion_directory_sha256": self.rejector_fusion_sha,
+                    "canonical_prefilter_set_sha256": self.prefilter_sha,
+                    "prefilter_bundle_sha256": copy.deepcopy(
+                        self.prefilter_bundles
+                    ),
+                },
+                "validation_locked_policy_artifacts": {
+                    "directory": str(self.staged["directory"]),
+                    **copy.deepcopy(self.staged["artifact_sha256"]),
+                    "novelty_rows_used_to_fit_rank_or_threshold": 0,
+                },
+                "candidate_contract_clarification": {
+                    "recorded_value": self.prefilter_recorded_sha,
+                    "canonical_behavioral_hash": self.prefilter_sha,
+                    "changes_candidate_behavior": False,
+                },
+                "source_transition_evidence": copy.deepcopy(
+                    self.transition_contract
+                ),
+            },
+        )
+
+    def _build_final_pins(self) -> dict[str, Any]:
+        assets = self.package_payload["assets"]
+        return {
+            "protocol_fixture_sha256": digest_bytes(
+                self.protocol_fixture.read_bytes()
+            ),
+            "evaluator_sha256": digest_bytes(self.evaluator.read_bytes()),
+            "v2_evaluator_sha256": digest_bytes(
+                self.v2_evaluator.read_bytes()
+            ),
+            "candidate_manifest_sha256": self.candidate_sha,
+            "validation_evidence_sha256": digest_bytes(
+                self.validation_evidence.read_bytes()
+            ),
+            "frozen_candidate_contract_sha256": digest_bytes(
+                self.frozen_contract.read_bytes()
+            ),
+            "staged_validation_report_sha256": self.staged[
+                "report_sha256"
+            ],
+            "staged_artifact_sha256": copy.deepcopy(
+                self.staged["artifact_sha256"]
+            ),
+            "browser_asset_sha256": {
+                "classifier": assets[promoter.CLASSIFIER_WEIGHTS][
+                    "sha256"
+                ],
+                "rejector": assets[promoter.REJECTOR_WEIGHTS]["sha256"],
+                "openset_policy": assets[promoter.OPENSET_POLICY]["sha256"],
+            },
+            "staging_package_manifest_sha256": digest_bytes(
+                self.staging_manifest.read_bytes()
+            ),
+            "dual_binding_sha256": digest_bytes(
+                self.staging_binding.read_bytes()
+            ),
+            "dependency_source_sha256": copy.deepcopy(self.source_hashes),
+            "ordered_source_transition_contract": copy.deepcopy(
+                self.transition_contract
+            ),
+        }
 
     def _build_prefilter(self) -> dict[str, str]:
         hashes: dict[str, str] = {}
@@ -268,7 +602,7 @@ class SyntheticPromotion:
         weights["provenance"]["source_bundle_manifest_sha256"] = bundle_sha
         weights["development_only"] = True
         weights["release_evidence"] = False
-        weights["release_blockers"] = ["sealed seed-20260735 evaluation"]
+        weights["release_blockers"] = ["sealed seed-20260736 evaluation"]
         write_json(weights_path, weights)
         manifest_path = directory / package_tests.packager.FUSION_MANIFEST
         manifest = read_json(manifest_path)
@@ -313,6 +647,12 @@ class SyntheticPromotion:
             policy_path.read_bytes()
         )
         write_json(binding_path, binding)
+        parity_path = (
+            self.inputs.openset / package_tests.packager.OPENSET_PARITY
+        )
+        parity = read_json(parity_path)
+        parity["provenance"] = copy.deepcopy(policy["provenance"])
+        write_json(parity_path, parity)
         self.inputs.refresh_openset_manifest()
 
     def _build_staged_validation(self) -> dict[str, Any]:
@@ -490,6 +830,62 @@ class SyntheticPromotion:
         candidate = read_json(self.candidate)
         validation_sha = digest_bytes(self.validation_evidence.read_bytes())
         frozen_sha = digest_bytes(self.frozen_contract.read_bytes())
+        frozen = read_json(self.frozen_contract)
+        policy = read_json(self.staging / promoter.OPENSET_POLICY)
+        transitions = self.transition_contract["transitions"]
+        bindings = [
+            {
+                key: transition[key]
+                for key in (
+                    "order",
+                    "transition_id",
+                    "from_phase",
+                    "to_phase",
+                    "from_sha256",
+                    "to_sha256",
+                    "from_commit",
+                    "evidence_commit",
+                    "evidence_report_sha256",
+                    "to_commit",
+                    "full_index_diff_sha256",
+                )
+            }
+            for transition in transitions
+        ]
+        chain_labels = {
+            "evaluate_invariant_release_suite.py": (
+                "training/zplane_ab/v2_full_variation/"
+                "evaluate_invariant_release_suite.py"
+            ),
+            "export_v3_openset_browser_assets.py": (
+                "training/zplane_ab/v2_full_variation/v3_scale/"
+                "export_v3_openset_browser_assets.py"
+            ),
+            "measure_v3_remaining_gates.py": (
+                "training/zplane_ab/v2_full_variation/v3_scale/"
+                "measure_v3_remaining_gates.py"
+            ),
+            "preprocess.py": "training/preprocess.py",
+            "invariant_patch_preprocess.py": (
+                "training/invariant_patch_preprocess.py"
+            ),
+            "run_invariant_cnn_dev.py": (
+                "training/zplane_ab/v2_full_variation/"
+                "run_invariant_cnn_dev.py"
+            ),
+        }
+        staged_composite = {
+            "policy_version": promoter.STAGED_POLICY_VERSION,
+            "schema": promoter.STAGED_POLICY_SCHEMA,
+            "kind": promoter.STAGED_POLICY_KIND,
+            "survivor_score": promoter.COMPOSITE_SURVIVOR_SCORE,
+            "threshold": policy["composite"]["threshold"],
+            "threshold_quantile": promoter.COMPOSITE_THRESHOLD_QUANTILE,
+            "stage_two_threshold_unchanged": policy["stage_two"]["policy"][
+                "threshold"
+            ],
+            **copy.deepcopy(promoter.EXPECTED_REPORT_POLICY_HYGIENE),
+        }
         return {
             "candidate_contract": {
                 "path": str(self.candidate),
@@ -510,6 +906,12 @@ class SyntheticPromotion:
                 "schema": promoter.PREVALIDATION_CONTRACT_SCHEMA,
                 "status": "frozen_before_validation",
             },
+            "q97_design_evidence": copy.deepcopy(
+                frozen["q97_design_evidence"]
+            ),
+            "ordered_source_transition_evidence": copy.deepcopy(
+                self.transition_contract
+            ),
             "classifier_runtime_bundle": self._bundle_component(
                 self.classifier_bundle
             ),
@@ -537,15 +939,26 @@ class SyntheticPromotion:
                 "report_path": str(self.staged["report_path"]),
                 "report_sha256": self.staged["report_sha256"],
                 "status": "development_openset_pass",
-                "novelty_seeds": [20260950, 20260951],
+                "novelty_seeds": list(
+                    promoter.VALIDATION_NOVELTY_SEEDS
+                ),
                 "artifact_sha256": copy.deepcopy(
                     self.staged["artifact_sha256"]
                 ),
+                "policy_version": promoter.STAGED_POLICY_VERSION,
+                "staged_threshold": policy["composite"]["threshold"],
+                "stage_two_threshold": policy["stage_two"]["policy"][
+                    "threshold"
+                ],
+                "composite": staged_composite,
             },
             "stage_one_prefilter": {
                 "directory": str(self.prefilter),
                 "set_sha256": self.prefilter_sha,
                 "bundle_sha256": copy.deepcopy(self.prefilter_bundles),
+                "capture_lengths": list(
+                    promoter.REQUIRED_STAGE_ONE_LENGTHS
+                ),
             },
             "browser_assets": copy.deepcopy(candidate["browser_assets"]),
             "staging_package_manifest": copy.deepcopy(
@@ -555,19 +968,60 @@ class SyntheticPromotion:
             "dual_binding_sha256": candidate["dual_binding"]["sha256"],
             "source_sha256": {
                 "enforced": {
-                    "fit_v3_openset_staged.py": (
-                        promoter.EXPECTED_LEDGER_TRANSITION[
-                            "current_sha256"
-                        ]
-                    ),
+                    "fit_v3_openset_staged.py": transitions[-1][
+                        "to_sha256"
+                    ],
                 },
                 "recorded_only": {},
                 "post_validation_ledger_transitions": {
-                    "fit_v3_openset_staged.py": copy.deepcopy(
-                        promoter.EXPECTED_LEDGER_TRANSITION
-                    ),
+                    "fit_v3_openset_staged.py": {
+                        "admission": (
+                            "exact_ordered_q97_seed_ledger_transition_chain"
+                        ),
+                        "origin": transitions[0]["origin"],
+                        "from_sha256": transitions[0]["from_sha256"],
+                        "current_sha256": transitions[-1]["to_sha256"],
+                        "normalized_ast_sha256": transitions[-1][
+                            "normalized_ast_sha256"
+                        ],
+                        "excluded_top_level_assignments": copy.deepcopy(
+                            transitions[-1][
+                                "excluded_top_level_assignments"
+                            ]
+                        ),
+                        "ordered_transition_ids": [
+                            transition["transition_id"]
+                            for transition in transitions
+                        ],
+                        "transition_bindings": bindings,
+                        "consumed_novelty_seeds": [
+                            promoter.DESIGN_NOVELTY_SEED,
+                            *promoter.VALIDATION_NOVELTY_SEEDS,
+                        ],
+                        "next_clean_novelty_seed": (
+                            promoter.NEXT_CLEAN_NOVELTY_SEED
+                        ),
+                        "candidate_inference_behavior_changed": False,
+                    },
                 },
-                "evaluator_chain": {},
+                "evaluator_chain": {
+                    name: self.source_hashes[label]
+                    for name, label in chain_labels.items()
+                },
+                "transitive_execution_contract": {
+                    "schema": (
+                        "time-domain-v3-transitive-execution-contract-v1"
+                    ),
+                    "canonical_enforced": True,
+                    "dependency_file_count": 49,
+                    "dependency_source_sha256": copy.deepcopy(
+                        self.source_hashes
+                    ),
+                    "runtime_identity": copy.deepcopy(
+                        self.runtime_identity
+                    ),
+                    "passes": True,
+                },
             },
         }
 
@@ -710,7 +1164,23 @@ class SyntheticPromotion:
                 "open_gate_source": (
                     "rejector_fusion_4k_frozen_policy"
                 ),
+                "additive_only": False,
+                "changes_closed_label": True,
+                "open_set_decision_changes_closed_label": True,
                 "gates_before_classification": True,
+                "staged_policy_kind": promoter.STAGED_POLICY_KIND,
+                "staged_policy_schema": promoter.STAGED_POLICY_SCHEMA,
+                "staged_policy_version": promoter.STAGED_POLICY_VERSION,
+                "composite_threshold_quantile": (
+                    promoter.COMPOSITE_THRESHOLD_QUANTILE
+                ),
+                "survivor_score": promoter.COMPOSITE_SURVIVOR_SCORE,
+                "policy_hygiene": copy.deepcopy(
+                    promoter.EXPECTED_REPORT_POLICY_HYGIENE
+                ),
+                "stage_one_capture_lengths": list(
+                    promoter.REQUIRED_STAGE_ONE_LENGTHS
+                ),
             },
             "candidate": {
                 "path": str(self.candidate),
@@ -723,7 +1193,9 @@ class SyntheticPromotion:
             },
             **metrics,
             "gates": release_gates(self.candidate_sha),
-            "historical_gate_redeclaration": historical_metadata(),
+            "historical_gate_redeclaration": historical_metadata(
+                self.protocol
+            ),
             "all_release_gates_pass": True,
             "provenance": {
                 "release_root": str(self.release_root),
@@ -746,11 +1218,11 @@ class SyntheticPromotion:
                     "scored": False,
                     "passes": True,
                 },
-                "evaluator_path": str(promoter.EXPECTED_EVALUATOR),
-                "evaluator_sha256": promoter.EXPECTED_EVALUATOR_SHA256,
-                "v2_evaluator_sha256": (
-                    promoter.EXPECTED_V2_EVALUATOR_SHA256
-                ),
+                "evaluator_path": str(self.evaluator),
+                "evaluator_sha256": self.pins["evaluator_sha256"],
+                "v2_evaluator_sha256": self.pins[
+                    "v2_evaluator_sha256"
+                ],
             },
         }
         self.report_payload = report
@@ -763,17 +1235,76 @@ class SyntheticPromotion:
         self,
         *,
         destination: Path | None = None,
+        evaluation_report: Path | None = None,
         policy: Any | None = None,
     ) -> dict[str, Any]:
-        return promoter.promote(
-            self.staging,
-            self.report,
-            destination or self.release,
-            policy=policy or self.policy,
-        )
+        with ExitStack() as patches:
+            patches.enter_context(
+                mock.patch.object(
+                    promoter,
+                    "FINAL_RELEASE_PINS",
+                    copy.deepcopy(self.pins),
+                )
+            )
+            patches.enter_context(
+                mock.patch.object(
+                    promoter,
+                    "EXPECTED_PROTOCOL_FIXTURE",
+                    self.protocol_fixture,
+                )
+            )
+            patches.enter_context(
+                mock.patch.object(
+                    promoter, "EXPECTED_EVALUATOR", self.evaluator
+                )
+            )
+            patches.enter_context(
+                mock.patch.object(
+                    promoter, "EXPECTED_V2_EVALUATOR", self.v2_evaluator
+                )
+            )
+            patches.enter_context(
+                mock.patch.object(
+                    promoter,
+                    "EXPECTED_EVALUATOR_RUNTIME_IDENTITY",
+                    copy.deepcopy(self.runtime_identity),
+                )
+            )
+            return promoter.promote(
+                self.staging,
+                evaluation_report or self.report,
+                destination or self.release,
+                policy=policy or self.policy,
+            )
 
 
 class PromotionTests(unittest.TestCase):
+    def test_protocol_comparison_only_admits_javascript_integral_float_collapse(
+        self,
+    ) -> None:
+        with self.assertRaises(promoter.PromotionError):
+            promoter._require_exact_json(1, 1.0, "protocol.factor")
+        promoter._require_exact_json(
+            {"physical_scale_factors": [0.5, 0.75, 1, 1.5, 2]},
+            {"physical_scale_factors": [0.5, 0.75, 1.0, 1.5, 2.0]},
+            "protocol",
+            allow_integral_float_collapse=True,
+        )
+        for found, expected in (
+            (True, 1.0),
+            (1.0, 1),
+            (1, 1.5),
+            (2, 1.0),
+        ):
+            with self.subTest(found=found, expected=expected):
+                with self.assertRaises(promoter.PromotionError):
+                    promoter._require_exact_json(
+                        found,
+                        expected,
+                        "protocol.factor",
+                        allow_integral_float_collapse=True,
+                    )
+
     def test_promotes_exact_dual_package_and_rebinds_release_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = SyntheticPromotion(Path(temporary) / "fixture")
@@ -820,6 +1351,26 @@ class PromotionTests(unittest.TestCase):
 
             binding = read_json(fixture.release / promoter.DUAL_BINDING)
             policy = read_json(fixture.release / promoter.OPENSET_POLICY)
+            staged_policy = json.loads(
+                source[promoter.OPENSET_POLICY].decode("utf-8")
+            )
+            staged_binding = json.loads(
+                source[promoter.DUAL_BINDING].decode("utf-8")
+            )
+            for field in (
+                "contract",
+                "frontend",
+                "stage_one",
+                "stage_two",
+                "composite",
+            ):
+                self.assertEqual(policy[field], staged_policy[field])
+            self.assertEqual(
+                binding["frontend"], staged_binding["frontend"]
+            )
+            self.assertEqual(
+                binding["validation"], staged_binding["validation"]
+            )
             role_files = {
                 "rejector": promoter.REJECTOR_WEIGHTS,
                 "classifier": promoter.CLASSIFIER_WEIGHTS,
@@ -856,9 +1407,15 @@ class PromotionTests(unittest.TestCase):
             )
             self.assertEqual(
                 promotion["candidate_artifacts"][
-                    "post_validation_ledger_transition"
+                    "ordered_q97_source_transition"
+                ]["ordered_source_transition_contract"],
+                fixture.transition_contract,
+            )
+            self.assertEqual(
+                promotion["candidate_artifacts"]["q97_evidence_chain"][
+                    "staged_artifacts_sha256"
                 ],
-                promoter.EXPECTED_LEDGER_TRANSITION,
+                fixture.staged["artifact_sha256"],
             )
             self.assertEqual(fixture.release.stat().st_mode & 0o777, 0o755)
             for name in promoter.STAGING_FILE_NAMES:
@@ -896,9 +1453,9 @@ class PromotionTests(unittest.TestCase):
     def test_wrong_release_seed_is_refused_without_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = SyntheticPromotion(Path(temporary) / "fixture")
-            fixture.report_payload["provenance"]["release_seed"] = 20260736
+            fixture.report_payload["provenance"]["release_seed"] = 20260735
             fixture.rewrite_report()
-            with self.assertRaisesRegex(promoter.PromotionError, "20260735"):
+            with self.assertRaisesRegex(promoter.PromotionError, "20260736"):
                 fixture.promote()
             self.assertFalse(fixture.release.exists())
 
@@ -954,7 +1511,7 @@ class PromotionTests(unittest.TestCase):
             ] = 79
             fixture.rewrite_report()
             with self.assertRaisesRegex(
-                promoter.PromotionError, "exact seed-20260735 fixture"
+                promoter.PromotionError, "exact seed-20260736 q97 fixture"
             ):
                 fixture.promote()
 
@@ -981,9 +1538,170 @@ class PromotionTests(unittest.TestCase):
             transition["next_clean_novelty_seed"] = 20260953
             fixture.rewrite_report()
             with self.assertRaisesRegex(
-                promoter.PromotionError, "ledger transition record differs"
+                promoter.PromotionError,
+                "admitted q97 source transition summary differs",
             ):
                 fixture.promote()
+
+    def test_post_validation_suffix_records_all_preceding_consumed_seeds(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            transitions = fixture.report_payload["candidate"]["components"][
+                "ordered_source_transition_evidence"
+            ]["transitions"]
+            transition = fixture.report_payload["candidate"]["components"][
+                "source_sha256"
+            ]["post_validation_ledger_transitions"][
+                "fit_v3_openset_staged.py"
+            ]
+            final = transitions[-1]
+            transition["ordered_transition_ids"] = [
+                final["transition_id"]
+            ]
+            transition["origin"] = final["origin"]
+            transition["from_sha256"] = final["from_sha256"]
+            transition["transition_bindings"] = [
+                {
+                    key: final[key]
+                    for key in (
+                        "order",
+                        "transition_id",
+                        "from_phase",
+                        "to_phase",
+                        "from_sha256",
+                        "to_sha256",
+                        "from_commit",
+                        "evidence_commit",
+                        "evidence_report_sha256",
+                        "to_commit",
+                        "full_index_diff_sha256",
+                    )
+                }
+            ]
+            fixture.rewrite_report()
+
+            manifest = fixture.promote()
+
+            self.assertEqual(manifest["status"], promoter.RELEASE_STATUS)
+
+    def test_q97_policy_refuses_legacy_quantiles_and_fft_frontend(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            canonical = read_json(
+                fixture.staging / promoter.OPENSET_POLICY
+            )
+            mutations = (
+                (
+                    "legacy composite schema",
+                    lambda value: value["composite"].__setitem__(
+                        "schema", 2
+                    ),
+                    "composite.schema",
+                ),
+                (
+                    "q99 survivor threshold",
+                    lambda value: value["composite"].__setitem__(
+                        "threshold_quantile", 0.99
+                    ),
+                    "composite.threshold_quantile",
+                ),
+                (
+                    "non-q95 inner threshold",
+                    lambda value: value["stage_two"]["policy"].__setitem__(
+                        "threshold", 0.123
+                    ),
+                    "q95",
+                ),
+                (
+                    "FFT frontend",
+                    lambda value: value["frontend"].__setitem__(
+                        "uses_frequency_transform", True
+                    ),
+                    "no-FFT frontend",
+                ),
+            )
+            for label, mutate, message in mutations:
+                with self.subTest(label=label):
+                    payload = copy.deepcopy(canonical)
+                    mutate(payload)
+                    with self.assertRaisesRegex(
+                        promoter.PromotionError, message
+                    ):
+                        promoter._verify_policy_schema4(payload)
+
+    def test_ordered_transition_contract_tamper_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            ordered = fixture.report_payload["candidate"]["components"][
+                "ordered_source_transition_evidence"
+            ]
+            ordered["transitions"][0]["to_sha256"] = digest(
+                "non-contiguous transition"
+            )
+            fixture.rewrite_report()
+            with self.assertRaisesRegex(
+                promoter.PromotionError,
+                "ordered q97 source transitions",
+            ):
+                fixture.promote()
+            self.assertFalse(fixture.release.exists())
+
+    def test_transitive_runtime_alias_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            runtime = fixture.report_payload["candidate"]["components"][
+                "source_sha256"
+            ]["transitive_execution_contract"]["runtime_identity"]
+            runtime["device"] = "mps"
+            fixture.rewrite_report()
+            with self.assertRaisesRegex(
+                promoter.PromotionError,
+                "transitive execution contract",
+            ):
+                fixture.promote()
+            self.assertFalse(fixture.release.exists())
+
+    def test_transitive_dependency_bytes_are_recomputed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            path = fixture.root / promoter.TRANSITIVE_DEPENDENCY_LABELS[0]
+            path.write_bytes(path.read_bytes() + b"tampered")
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "transitive dependency differs"
+            ):
+                fixture.promote()
+            self.assertFalse(fixture.release.exists())
+
+    def test_unbound_final_pin_is_a_hard_refusal(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            fixture.pins["candidate_manifest_sha256"] = None
+            with self.assertRaisesRegex(
+                promoter.PromotionError,
+                "final release pin candidate_manifest_sha256",
+            ):
+                fixture.promote()
+            self.assertFalse(fixture.release.exists())
+
+    def test_validation_seed_alias_is_refused_by_binding_contract(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SyntheticPromotion(Path(temporary) / "fixture")
+            binding = copy.deepcopy(fixture.binding_payload)
+            binding["validation"]["novelty_seeds"] = [20260950, 20260951]
+            with self.assertRaisesRegex(
+                promoter.PromotionError, "binding validation record"
+            ):
+                promoter._verify_binding(
+                    binding,
+                    fixture.package_payload["assets"],
+                    status=promoter.STAGING_STATUS,
+                )
 
     def test_report_must_be_the_release_root_evaluation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -993,10 +1711,8 @@ class PromotionTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 promoter.PromotionError, "release_root"
             ):
-                promoter.promote(
-                    fixture.staging,
-                    displaced,
-                    fixture.release,
+                fixture.promote(
+                    evaluation_report=displaced,
                     policy=fixture.policy,
                 )
 
@@ -1201,7 +1917,8 @@ class PromotionTests(unittest.TestCase):
             ] = digest_bytes(manifest_path.read_bytes())
             fixture.rewrite_report()
             with self.assertRaisesRegex(
-                promoter.PromotionError, "candidate chain"
+                promoter.PromotionError,
+                "release intent evaluation protocol",
             ):
                 fixture.promote()
 
