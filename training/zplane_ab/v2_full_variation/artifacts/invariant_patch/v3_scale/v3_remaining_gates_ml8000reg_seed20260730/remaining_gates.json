@@ -1,0 +1,970 @@
+{
+  "all_measured_gates_pass": false,
+  "closed_clean_per_length": {
+    "16384": {
+      "accuracy": 0.8914127423822714,
+      "balanced_accuracy": 0.8937874296920523,
+      "clean_accuracy": 0.9736147757255936,
+      "clean_balanced_accuracy": 0.9692078297008343,
+      "clean_definition": "manifest impaired == false on the observed stream; identical to evaluate_invariant_release_suite._closed_report, and not the corpus clean_path companion stream",
+      "clean_subset": {
+        "accuracy": 0.9736147757255936,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9692078297008343,
+        "class_counts": {
+          "am": 73,
+          "bluetooth": 30,
+          "cw": 79,
+          "dsss": 37,
+          "fm": 67,
+          "gsm": 38,
+          "ofdm": 55
+        },
+        "n": 379,
+        "per_class_recall": {
+          "am": 1.0,
+          "bluetooth": 0.9666666666666667,
+          "cw": 0.9493670886075949,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.868421052631579,
+          "ofdm": 1.0
+        }
+      },
+      "impaired_accuracy": 0.8695652173913043,
+      "impaired_balanced_accuracy": 0.871678584489584,
+      "impaired_subset": {
+        "accuracy": 0.8695652173913043,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.871678584489584,
+        "class_counts": {
+          "am": 222,
+          "bluetooth": 203,
+          "cw": 224,
+          "dsss": 140,
+          "fm": 237,
+          "gsm": 232,
+          "ofdm": 168
+        },
+        "n": 1426,
+        "per_class_recall": {
+          "am": 0.8468468468468469,
+          "bluetooth": 0.916256157635468,
+          "cw": 0.8035714285714286,
+          "dsss": 0.9,
+          "fm": 0.9324894514767933,
+          "gsm": 0.8275862068965517,
+          "ofdm": 0.875
+        }
+      },
+      "n": 1805,
+      "per_class_recall": {
+        "am": 0.8847457627118644,
+        "bluetooth": 0.9227467811158798,
+        "cw": 0.8415841584158416,
+        "dsss": 0.9209039548022598,
+        "fm": 0.9473684210526315,
+        "gsm": 0.8333333333333334,
+        "ofdm": 0.905829596412556
+      }
+    },
+    "4096": {
+      "accuracy": 0.7878116343490305,
+      "balanced_accuracy": 0.7805966969795569,
+      "clean_accuracy": 0.9313984168865436,
+      "clean_balanced_accuracy": 0.921307197087727,
+      "clean_definition": "manifest impaired == false on the observed stream; identical to evaluate_invariant_release_suite._closed_report, and not the corpus clean_path companion stream",
+      "clean_subset": {
+        "accuracy": 0.9313984168865436,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.921307197087727,
+        "class_counts": {
+          "am": 73,
+          "bluetooth": 30,
+          "cw": 79,
+          "dsss": 37,
+          "fm": 67,
+          "gsm": 38,
+          "ofdm": 55
+        },
+        "n": 379,
+        "per_class_recall": {
+          "am": 0.9863013698630136,
+          "bluetooth": 0.9,
+          "cw": 0.8987341772151899,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.7368421052631579,
+          "ofdm": 0.9272727272727272
+        }
+      },
+      "impaired_accuracy": 0.7496493688639552,
+      "impaired_balanced_accuracy": 0.7460202713336094,
+      "impaired_subset": {
+        "accuracy": 0.7496493688639552,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.7460202713336094,
+        "class_counts": {
+          "am": 222,
+          "bluetooth": 203,
+          "cw": 224,
+          "dsss": 140,
+          "fm": 237,
+          "gsm": 232,
+          "ofdm": 168
+        },
+        "n": 1426,
+        "per_class_recall": {
+          "am": 0.8108108108108109,
+          "bluetooth": 0.6157635467980296,
+          "cw": 0.8214285714285714,
+          "dsss": 0.6928571428571428,
+          "fm": 0.8818565400843882,
+          "gsm": 0.6077586206896551,
+          "ofdm": 0.7916666666666666
+        }
+      },
+      "n": 1805,
+      "per_class_recall": {
+        "am": 0.8542372881355932,
+        "bluetooth": 0.6523605150214592,
+        "cw": 0.8415841584158416,
+        "dsss": 0.7570621468926554,
+        "fm": 0.9078947368421053,
+        "gsm": 0.6259259259259259,
+        "ofdm": 0.8251121076233184
+      }
+    },
+    "8192": {
+      "accuracy": 0.8282548476454293,
+      "balanced_accuracy": 0.8239190158090687,
+      "clean_accuracy": 0.9577836411609498,
+      "clean_balanced_accuracy": 0.9499240044876288,
+      "clean_definition": "manifest impaired == false on the observed stream; identical to evaluate_invariant_release_suite._closed_report, and not the corpus clean_path companion stream",
+      "clean_subset": {
+        "accuracy": 0.9577836411609498,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9499240044876288,
+        "class_counts": {
+          "am": 73,
+          "bluetooth": 30,
+          "cw": 79,
+          "dsss": 37,
+          "fm": 67,
+          "gsm": 38,
+          "ofdm": 55
+        },
+        "n": 379,
+        "per_class_recall": {
+          "am": 1.0,
+          "bluetooth": 0.9333333333333333,
+          "cw": 0.9367088607594937,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.8157894736842105,
+          "ofdm": 0.9636363636363636
+        }
+      },
+      "impaired_accuracy": 0.7938288920056101,
+      "impaired_balanced_accuracy": 0.7927143409477232,
+      "impaired_subset": {
+        "accuracy": 0.7938288920056101,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.7927143409477232,
+        "class_counts": {
+          "am": 222,
+          "bluetooth": 203,
+          "cw": 224,
+          "dsss": 140,
+          "fm": 237,
+          "gsm": 232,
+          "ofdm": 168
+        },
+        "n": 1426,
+        "per_class_recall": {
+          "am": 0.8198198198198198,
+          "bluetooth": 0.7142857142857143,
+          "cw": 0.84375,
+          "dsss": 0.7714285714285715,
+          "fm": 0.919831223628692,
+          "gsm": 0.646551724137931,
+          "ofdm": 0.8333333333333334
+        }
+      },
+      "n": 1805,
+      "per_class_recall": {
+        "am": 0.864406779661017,
+        "bluetooth": 0.7424892703862661,
+        "cw": 0.8679867986798679,
+        "dsss": 0.8192090395480226,
+        "fm": 0.9375,
+        "gsm": 0.6703703703703704,
+        "ofdm": 0.8654708520179372
+      }
+    }
+  },
+  "consumed_test_rows_used": 0,
+  "data_audit": {
+    "class_counts": {
+      "enroll": {
+        "am": 615,
+        "bluetooth": 498,
+        "cw": 596,
+        "dsss": 382,
+        "fm": 597,
+        "gsm": 611,
+        "ofdm": 441
+      },
+      "selection": {
+        "am": 295,
+        "bluetooth": 273,
+        "cw": 303,
+        "dsss": 197,
+        "fm": 304,
+        "gsm": 308,
+        "ofdm": 228
+      },
+      "train": {
+        "am": 795,
+        "bluetooth": 696,
+        "cw": 796,
+        "dsss": 617,
+        "fm": 794,
+        "gsm": 769,
+        "ofdm": 582
+      }
+    },
+    "consumed_test_rows_exposed": 0,
+    "counts": {
+      "consumed_test_held_out": 1915,
+      "consumed_test_rows_exposed": 0,
+      "edge_safe_validation": 3823,
+      "edge_unsafe_excluded": {
+        "en": 457,
+        "tr": 551,
+        "va": 374
+      },
+      "exposed": {
+        "enroll": 3740,
+        "selection": 1908,
+        "train": 5049
+      },
+      "raw_corpus": 13994,
+      "selection": 1908,
+      "v2_before_edge_filter": {
+        "en": 4197,
+        "tr": 5600,
+        "va": 4197
+      }
+    },
+    "edge_rule": "abs(centreOffsetFrac) + bandwidthHz/sampleRateHz/2 < 0.5",
+    "existing_split_index_witnesses_validated": [
+      "native_tr_idx.npy",
+      "resampled__9333475629177c55_tr_idx.npy",
+      "resampled__db607416e0c908a1_tr_idx.npy",
+      "resampled_tr_idx.npy",
+      "native_en_idx.npy",
+      "resampled__9333475629177c55_en_idx.npy",
+      "resampled__db607416e0c908a1_en_idx.npy",
+      "resampled_en_idx.npy",
+      "native_va_idx.npy",
+      "resampled__9333475629177c55_va_idx.npy",
+      "resampled__db607416e0c908a1_va_idx.npy",
+      "resampled_va_idx.npy"
+    ],
+    "ground_selection_rng_seed": 20260728,
+    "ground_split_seed": 20260727,
+    "impairment_counts": {
+      "enroll": {
+        "clean": 954,
+        "impaired": 2786
+      },
+      "selection": {
+        "clean": 482,
+        "impaired": 1426
+      },
+      "train": {
+        "clean": 1274,
+        "impaired": 3775
+      }
+    },
+    "model_seed": 20260730,
+    "split_policy_version": "v2-30-30-40-edge-safe-ground-half-v1",
+    "v2_split_seed": 20260721
+  },
+  "development_only": true,
+  "device": "cpu",
+  "five_shot_per_variant": {
+    "enrollment_support": {
+      "per_length": {
+        "16384": {
+          "accuracy": 0.8930747922437673,
+          "balanced_accuracy": 0.8950401184165518,
+          "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+          "k": 5,
+          "per_class_recall": {
+            "am": 0.8610169491525423,
+            "bluetooth": 0.9055793991416309,
+            "cw": 0.8712871287128713,
+            "dsss": 0.943502824858757,
+            "fm": 0.9605263157894737,
+            "gsm": 0.8444444444444444,
+            "ofdm": 0.8789237668161435
+          },
+          "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+          "query_rows": 1805,
+          "support_rows": 35
+        },
+        "4096": {
+          "accuracy": 0.7789473684210526,
+          "balanced_accuracy": 0.7706529687252136,
+          "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+          "k": 5,
+          "per_class_recall": {
+            "am": 0.8,
+            "bluetooth": 0.5793991416309013,
+            "cw": 0.9108910891089109,
+            "dsss": 0.7796610169491526,
+            "fm": 0.9078947368421053,
+            "gsm": 0.6185185185185185,
+            "ofdm": 0.7982062780269058
+          },
+          "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+          "query_rows": 1805,
+          "support_rows": 35
+        },
+        "8192": {
+          "accuracy": 0.8188365650969529,
+          "balanced_accuracy": 0.812471072530671,
+          "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+          "k": 5,
+          "per_class_recall": {
+            "am": 0.823728813559322,
+            "bluetooth": 0.6566523605150214,
+            "cw": 0.9108910891089109,
+            "dsss": 0.8248587570621468,
+            "fm": 0.9407894736842105,
+            "gsm": 0.6962962962962963,
+            "ofdm": 0.8340807174887892
+          },
+          "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+          "query_rows": 1805,
+          "support_rows": 35
+        }
+      },
+      "query_population": "selection",
+      "query_rows": 1805,
+      "role": "primary; evidence-rule compliant. Support is enrollment, query is the whole eligible selection population, disjoint by population separation rather than by exclusion.",
+      "split": {
+        "absent_release_identity_fields": [
+          "impairmentSeed"
+        ],
+        "identity_fields": [
+          "cls",
+          "profile",
+          "sampleRateHz",
+          "bandwidthHz",
+          "impaired",
+          "startSampleIndex",
+          "centerHz",
+          "snrDb",
+          "rxPowerDbm",
+          "noiseFigureDb",
+          "centreOffsetFrac",
+          "adcBits",
+          "clockErrorPpm",
+          "multipathTaps"
+        ],
+        "k_per_class": 5,
+        "salt": "atomos-invariant-release-five-shot-v1",
+        "split_seed": 20260730,
+        "support_digest_by_class": {
+          "am": [
+            "0008606af003eb132af69f62359ab40cc6b651be30cd79771a303b379131a1ba",
+            "01c5fdcfa6e11d948f0d815294c5d3d754e2bf122ce9eaa0c1d7d2a94efb4677",
+            "02788fe0df004bed8e410bb9f2fe518056e89048fa04380ae817de9ed48d2b6e",
+            "032abba135db5711eb73006c87736ed39250da3983de9bbe6774d0bc0afd9da0",
+            "0350c442f396de352616e4cb2b02ad547b66a3ef41db274b7f537f88da427a3e"
+          ],
+          "bluetooth": [
+            "00351261a51afde40e63d78964401bc729fc9ff8dfc25b28a99097ebc7125b98",
+            "00a352f53edf550b44796b0e2dcbbc92cae56ee9604945323420a267a45d1ca4",
+            "0113bf597f3bb80dbc298a9e689b87ea3d471a50fef0832336ca5667c08d66cf",
+            "013ed1b532d4480e410922aff62475f8414b014dcb60ef54f340332dfd13dffb",
+            "014ae71d7f75b15f5b8cce0f0434b8e4412ed1b5f22feaf622457e67db15b98d"
+          ],
+          "cw": [
+            "0033d18f887d89eb95a0e4f1a11a6b5eb81a7a20a6f58d8e40b0765f8cafa286",
+            "0074ac82b5e9dbc44e156841d4c69670cb7da4b23dc74fc89dacc94b5cda02f5",
+            "00ed64cab3cae4ae1cf1fb75050cf5b2fbd52b821b6c4b2e2a28f3580e7ab771",
+            "0264c8ab396916f9b62060257cd617e6b61b8bb18f6714b8860589bb0a690aed",
+            "02b4294d5a4de42a3feca883104f9d92b896de6aeddd693f8619ba64e44e2323"
+          ],
+          "dsss": [
+            "0070db5c9f6a691d7dea4daa5deb2dabb6ceb0f1e708908fd249b434358f0a9b",
+            "0132b95fb88a6ea42e6fc6080856d4e2dc0f0dc8c78a30d5fb132d966729d376",
+            "0184ad6e3a528f4c974b9c28db557295aa598086d05af7c04d19ad907d9c90f5",
+            "0193556529de342a376f0c127a966105ff9b10facac9d6f5e16ea96384e8337f",
+            "019817b0f429a88ea60b351cf2c5ceaeec6b6470ba5f2d09966564a6728ed549"
+          ],
+          "fm": [
+            "005524d80168768826bec5061ac0937c62191d47de9df93a8b2e94918d1a2d3c",
+            "00df6b358a6632e161025663bcd385347a7bfc2b8789c13ea2c7c5a00b2e9980",
+            "0201efa3f8ae6e247dd7dc2b885f7dfdd6691c90f0f629b60e6d15091cd8193f",
+            "027101df15b0cd2f8ec07c0953a0e71c2ca28054663aaa8bd07af40f72667dfc",
+            "0327eeb0b2aacbdf6bf860ecb729bf94067b52367426016cb83b522c09d21f1e"
+          ],
+          "gsm": [
+            "0038ce9f3cbe02c3ba6ffd5f0eb2c0ad37a6ce17e9292bf8c3fca9f796db165e",
+            "00fd5188c1b6c4477461c9c44bdb8a86a7048bbe7e557d564d25ae590b03cd2c",
+            "01d38e081acf2e7854bc89c4f1fd67a2ec4fd993edecc8ce836485b6c145a793",
+            "040dbd1986c63cc469b40866f6391e6354351543a0f48a200d6aab25f5a1b2be",
+            "04891c83b7d4b309c9e7a52627f457cbf9360adc6c12717ea7d3cda7dc2a4206"
+          ],
+          "ofdm": [
+            "00043e8f4e728188a573530203594c6b9af43ab121aaeb2301f6d08a3b4ef13e",
+            "004ff975fe8908e96556c12241c602c1acc354868c04b32a5ee7dd9f8ca4e9ff",
+            "006767ffd8f0225a9eab16a84b3603e988f1aa4647d12fe4ee8edcd641e8bcd4",
+            "006fd177b821e8cfb396bcffb83ce2dc4ad563dc878d7a40e5e1565ba6134e99",
+            "01027fd4a23b5b600155b964a78802e7b97c78727ea9923ba45d1831e0abd41d"
+          ]
+        },
+        "support_positions_by_class": {
+          "am": [
+            315,
+            834,
+            2951,
+            2356,
+            246
+          ],
+          "bluetooth": [
+            1210,
+            53,
+            2760,
+            1905,
+            1339
+          ],
+          "cw": [
+            2505,
+            846,
+            1001,
+            1252,
+            2896
+          ],
+          "dsss": [
+            986,
+            3200,
+            3140,
+            695,
+            2944
+          ],
+          "fm": [
+            1617,
+            605,
+            1006,
+            934,
+            1330
+          ],
+          "gsm": [
+            738,
+            1481,
+            1013,
+            2551,
+            794
+          ],
+          "ofdm": [
+            2039,
+            991,
+            1200,
+            2880,
+            872
+          ]
+        },
+        "support_positions_sha256": "c0151efa446b497d84832b482a4e3e20b27a02ab16777ca32ca08cf706199546",
+        "version": "sha256-lowest-per-class-v1"
+      },
+      "support_population": "enrollment",
+      "support_rows": 35,
+      "worst_length_accuracy": 0.7789473684210526,
+      "worst_length_balanced_accuracy": 0.7706529687252136
+    },
+    "selection_support": {
+      "per_length": {
+        "16384": {
+          "accuracy": 0.8892655367231639,
+          "balanced_accuracy": 0.8924446077864168,
+          "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+          "k": 5,
+          "per_class_recall": {
+            "am": 0.8413793103448276,
+            "bluetooth": 0.9210526315789473,
+            "cw": 0.8791946308724832,
+            "dsss": 0.9418604651162791,
+            "fm": 0.9464882943143813,
+            "gsm": 0.8226415094339623,
+            "ofdm": 0.8944954128440367
+          },
+          "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+          "query_rows": 1770,
+          "support_rows": 35
+        },
+        "4096": {
+          "accuracy": 0.7745762711864407,
+          "balanced_accuracy": 0.7726674153208418,
+          "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+          "k": 5,
+          "per_class_recall": {
+            "am": 0.803448275862069,
+            "bluetooth": 0.8596491228070176,
+            "cw": 0.8523489932885906,
+            "dsss": 0.7674418604651163,
+            "fm": 0.9130434782608695,
+            "gsm": 0.39622641509433965,
+            "ofdm": 0.8165137614678899
+          },
+          "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+          "query_rows": 1770,
+          "support_rows": 35
+        },
+        "8192": {
+          "accuracy": 0.8197740112994351,
+          "balanced_accuracy": 0.8182958280137129,
+          "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+          "k": 5,
+          "per_class_recall": {
+            "am": 0.8241379310344827,
+            "bluetooth": 0.881578947368421,
+            "cw": 0.8859060402684564,
+            "dsss": 0.8197674418604651,
+            "fm": 0.9464882943143813,
+            "gsm": 0.5169811320754717,
+            "ofdm": 0.8532110091743119
+          },
+          "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+          "query_rows": 1770,
+          "support_rows": 35
+        }
+      },
+      "query_population": "selection minus support",
+      "query_rows": 1770,
+      "role": "diagnostic only; structural mirror of the sealed within-corpus partition. This variant fits 35 prototypes on selection rows and must not be used to select or tune anything.",
+      "split": {
+        "absent_release_identity_fields": [
+          "impairmentSeed"
+        ],
+        "identity_fields": [
+          "cls",
+          "profile",
+          "sampleRateHz",
+          "bandwidthHz",
+          "impaired",
+          "startSampleIndex",
+          "centerHz",
+          "snrDb",
+          "rxPowerDbm",
+          "noiseFigureDb",
+          "centreOffsetFrac",
+          "adcBits",
+          "clockErrorPpm",
+          "multipathTaps"
+        ],
+        "k_per_class": 5,
+        "salt": "atomos-invariant-release-five-shot-v1",
+        "split_seed": 20260730,
+        "support_digest_by_class": {
+          "am": [
+            "00c1a4932790d294fba421ba92533a390a58b484efd156c170eb88ce83ac52aa",
+            "01e16b81406f7ef11b5b6b736e3ed0e974ea7ab80d09a7b2d2612196408c2ccb",
+            "02f4d887cb59d5a5f925991e61ad03ab4068fca1da8081e48b4fc350c7fda513",
+            "034654fd6a992bee1702a53f10735ff9e0d7085fecea542f23f48f7838f94c76",
+            "034e75b8e42f4347c92b96a2a35a4efcec5e0674fa9839ef999e56be15ccb9e3"
+          ],
+          "bluetooth": [
+            "003353085933f281aab4df9785e578657c31bbe850ead40879111ded39038e92",
+            "004be11be47f64f8b701f72b209bf8a33fa83a1a73ea5d401e494673ee7f244f",
+            "00b062a09bfe3034497f85a543f8f5ca565113ec5da012979d6d7222ff08eb14",
+            "01f8530b8052d90f89f28cd419f8ba96aa1038cb27364f80e0b8ab89585c3d1f",
+            "02324e093c56fa28e570590cb0d8e79e7418f209f91de13b189e0119ccbe04a1"
+          ],
+          "cw": [
+            "00937c87bd104d5a169667e13b6609b34ccd629f8226f9c82e72bc923859b347",
+            "0134f0f71c9b963e0c67d5da92b769209086407066b0ff4ad8d8022a0d7e5a62",
+            "0167d871c622a2e6f8e96a005e9e8151d2486a9393bb074dfe6c41860e70c59a",
+            "021c6d633066eb5194917e874557f9302439ec85b422b0ceafa866f7d10f226d",
+            "02402beb3d822064b82f80d915f93beb85ef621729fc11c2e75548cabf34e7a3"
+          ],
+          "dsss": [
+            "00908b22d6f73b0eb31a866dcae12ea24eb1601d8b21cf1a41923b644dedbf5a",
+            "07000db0de92993c22efa6f27b62e2c91364cb965a2cb066b3799efe874eb002",
+            "0821b625ef3d34435c60e179c68d1cbcbc11bbfc4aab36f5628cf6548062c72e",
+            "082b0a1342f479264a54915886827f7fdb059a171e5fafdd969626f69bdac898",
+            "08981f354b4a7060ffe4a532d1c93f55e4b5ff254a1d987c970d79ba95798e86"
+          ],
+          "fm": [
+            "0028bf2d2f1819942505cf344f1472f7e1d137f83bc6a6e762142211b1014c56",
+            "003d8e3e41a11902745fb3eb2f471a81ed4b449125c77e5453ba044f1bb939d5",
+            "00ef06589c499cdc2fd694856757f6d4377e8cb17bbcea1bb027f7f639b1fcfe",
+            "020fc78d703725acc6c6818951d9bd14202f7d22cbb5e591f712edc4bfc45a62",
+            "026829214810128046c806278c2f833eb37b117e74176f50d0bad3ebb6f9ba1b"
+          ],
+          "gsm": [
+            "011b69ded3ff09187c81260dc68f6392ce5f5f3f4b7ae95fafbbd224a769b186",
+            "028ac27ea4fd0854af4a7c583d281c81ed3d5b65c3145f9a4b8294c783cfd7c2",
+            "03142c8d1034fde201cfc17d3745369a6692b85f4587d69b211c7bf22c356e74",
+            "06e5bfc214196dd217c89ecc914cb19a005aa8fc8e9d9f5ec03116c42998577a",
+            "0786f119e437552339c7133b525228fbf463da41746418212a80c0a128e7c370"
+          ],
+          "ofdm": [
+            "00506d17e0805e691a94f2b4d5f48859ba3f1b675f3bc8d8b0936b58c400037b",
+            "01294d1c0540c018d4f22d7e0acee72979996aeed15116fc79a734460362314c",
+            "02930e2e44582a37952ddf64d9ef7cbcbdc7a74892fb3609c72f922dbbe4f096",
+            "04466a26133acba15f1bf0f27ea5c1ba23eec68e19b0d2c92913a092d1cbcedd",
+            "05305d3b78d10da7a7826cf5efb0de033da147adc82b8c0b30b7eb5d56e60d89"
+          ]
+        },
+        "support_positions_by_class": {
+          "am": [
+            291,
+            97,
+            567,
+            172,
+            1191
+          ],
+          "bluetooth": [
+            553,
+            680,
+            1311,
+            1766,
+            81
+          ],
+          "cw": [
+            913,
+            457,
+            628,
+            1674,
+            404
+          ],
+          "dsss": [
+            576,
+            1030,
+            1794,
+            818,
+            1608
+          ],
+          "fm": [
+            1167,
+            314,
+            494,
+            237,
+            1185
+          ],
+          "gsm": [
+            765,
+            1236,
+            587,
+            998,
+            131
+          ],
+          "ofdm": [
+            264,
+            1027,
+            227,
+            164,
+            307
+          ]
+        },
+        "support_positions_sha256": "8f830493e88d55aace75b2ee20f583d9cf00b813b65280b0cc46a4fa59c8a7d6",
+        "version": "sha256-lowest-per-class-v1"
+      },
+      "support_population": "selection",
+      "support_rows": 35,
+      "worst_length_accuracy": 0.7745762711864407,
+      "worst_length_balanced_accuracy": 0.7726674153208418
+    }
+  },
+  "frontend": {
+    "geometry": {
+      "base_lags": [
+        1,
+        2,
+        4,
+        8,
+        16
+      ],
+      "full_bandwidth": 0.95,
+      "learned_calibration": false,
+      "max_unambiguous_lag_arc": 0.45,
+      "maximum_lag": 32,
+      "method": "multiscale non-zero-lag autocorrelation quotient",
+      "min_lag_signal_to_sampling_noise": 4.0,
+      "minimum_bandwidth": 0.001953125,
+      "uses_frequency_transform": false,
+      "version": "time-correlation-v1"
+    },
+    "patch_count": 16,
+    "patch_length": 64,
+    "target_frac": 0.5,
+    "uses_frequency_transform": false,
+    "version": "invariant-patch-time-domain-v1"
+  },
+  "frozen_assets_used": [
+    "fusion state dict (both branches, centers, alphas, weight, eps)",
+    "fused prototypes",
+    "feature mean/std"
+  ],
+  "fusion_artifact": {
+    "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_ml8000reg_seed20260730",
+    "encoder": "fusion",
+    "parameter_count": 108832,
+    "recorded_closed_selection_balanced_accuracy": 0.8793255539420995,
+    "recorded_closed_selection_clean_accuracy": 0.9024896265560166,
+    "seed": 20260730,
+    "sha256": {
+      "complex_center.npy": "f2d00e61dccad4790d3b2da00b6a677be2dba2daa1aa42894cc5ccf514985f6b",
+      "dev_metrics.json": "a962c94dab4dd3c39f45fce54f3af8235fa681857e7829080929fcc31350bea3",
+      "feature_mean.npy": "29883542bd57f812b74050d2814497ec169cac240ed1fd6d136d7887fdbf8b64",
+      "feature_std.npy": "28f9f430d40603fab7ba3f6f49951a2b18033b91425363ae36e679850d1635fe",
+      "fusion_prototypes.npy": "fade48b8975c94b0fb202d3b83a79353f5dc8876d79e7e7e5953124cbc45df85",
+      "fusion_state_dict.pt": "c85238f97741049f7e19c6e1ef5b81209ece1b9caf5b5702899ce05a96bd111d",
+      "real_center.npy": "5892bc6858c6358a4876804c53c147717034b9f0944f230b55d95d94c0c695cc"
+    },
+    "weight_real": 0.5
+  },
+  "gates": {
+    "closed_clean_n4096": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.85,
+      "value": 0.9313984168865436
+    },
+    "closed_clean_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.85,
+      "value": 0.9313984168865436
+    },
+    "five_shot_worst_length_balanced_conservative": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.85,
+      "value": 0.7706529687252136
+    },
+    "five_shot_worst_length_balanced_enrollment_support": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.85,
+      "value": 0.7706529687252136
+    },
+    "five_shot_worst_length_balanced_primary": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.85,
+      "value": 0.7706529687252136
+    },
+    "five_shot_worst_length_balanced_selection_support": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.85,
+      "value": 0.7726674153208418
+    }
+  },
+  "measurement": "v3-remaining-closed-gates-v1",
+  "population": {
+    "enrollment": {
+      "corpus_rows": 3740,
+      "eligible_by_class": {
+        "am": 615,
+        "bluetooth": 443,
+        "cw": 596,
+        "dsss": 360,
+        "fm": 597,
+        "gsm": 541,
+        "ofdm": 435
+      },
+      "eligible_indices_sha256": "1ed3a3dde90334f070f01f09bef184ff3fb60b3cf43cdb2ee5db1a28565fc1e2",
+      "eligible_rows": 3587,
+      "excluded_all_zero_n4096_prefix_by_class": {
+        "am": 0,
+        "bluetooth": 55,
+        "cw": 0,
+        "dsss": 22,
+        "fm": 0,
+        "gsm": 70,
+        "ofdm": 6
+      },
+      "role": "supplies the primary five-shot support draw only"
+    },
+    "selection": {
+      "clean_rows": 379,
+      "corpus_rows": 1908,
+      "eligible_by_class": {
+        "am": 295,
+        "bluetooth": 233,
+        "cw": 303,
+        "dsss": 177,
+        "fm": 304,
+        "gsm": 270,
+        "ofdm": 223
+      },
+      "eligible_indices_sha256": "c3e8d6c0af9403acfb3cd1e56f6a535b48be003c3ca3994e0ea428122b0efac2",
+      "eligible_rows": 1805,
+      "excluded_all_zero_n4096_prefix_by_class": {
+        "am": 0,
+        "bluetooth": 40,
+        "cw": 0,
+        "dsss": 20,
+        "fm": 0,
+        "gsm": 38,
+        "ofdm": 5
+      },
+      "impaired_rows": 1426,
+      "role": "scored for both gates; never fit"
+    },
+    "training": {
+      "role": "not loaded here; feature standardization and branch centers are read verbatim from the frozen fusion artifact",
+      "rows_scored": 0
+    }
+  },
+  "protocol": {
+    "deviations_from_sealed_protocol": [
+      "n32768 is unmeasurable: the historical development corpus stores sampleCount=16384 and a longer observation may not be synthesized; worst-over-length covers 3 of the 4 sealed lengths",
+      "rows whose N4096 prefix is exactly all-zero are excluded by the run_time_domain_dev pre-inference rule; the sealed generator's predeclared start probe makes such rows impossible there",
+      "the development populations are not class-balanced, while the sealed corpus holds exactly MIN_TARGET_PER_CLASS rows per class; clean_accuracy is population-weighted in both",
+      "the primary five-shot variant draws support from enrollment rather than from the scored population, because five-shot support is a prototype fit and the selection population is scored, never fit; the selection_support variant mirrors the sealed within-corpus partition and is diagnostic only",
+      "the digest split hashes 14 of the 15 release row-identity fields; impairmentSeed is absent from the development manifest",
+      "the split payload binds a development seed, not a release seed"
+    ],
+    "evaluation_version": "invariant-release-evaluation-v1",
+    "five_shot": {
+      "hash_payload": "utf8(split_salt + NUL + release_seed_decimal + NUL + canonical_row_identity_json)",
+      "k": 5,
+      "prototype_source": "support rows embedded at matched_capture_length; one fixed five-shot prototype set reused at every capture length",
+      "query_rule": "all remaining rows; identical row indices at every matched capture length",
+      "split_salt": "atomos-invariant-release-five-shot-v1",
+      "split_version": "sha256-lowest-per-class-v1",
+      "support_rule": "lowest five lowercase SHA-256 digests per class; ties by corpus row index"
+    },
+    "imported_from_evaluator": [
+      "FIVE_SHOT_K",
+      "SPLIT_SALT",
+      "SPLIT_VERSION",
+      "MATCHED_CAPTURE_LENGTH",
+      "ROW_IDENTITY_FIELDS",
+      "GATE_FLOORS",
+      "_nearest",
+      "_classification_subset",
+      "_five_shot_report",
+      "_gate"
+    ],
+    "matched_capture_length": 16384,
+    "measured_capture_lengths": [
+      4096,
+      8192,
+      16384
+    ],
+    "mirrors": "evaluate_invariant_release_suite.py",
+    "release_required_capture_lengths": [
+      4096,
+      8192,
+      16384,
+      32768
+    ],
+    "split_seed": 20260730,
+    "split_seed_source": "explicit --split-seed",
+    "unmeasurable_release_capture_lengths": [
+      32768
+    ]
+  },
+  "recalibration_performed": false,
+  "release_evidence": false,
+  "reproduction_check": {
+    "absolute_deltas_by_length": {
+      "16384": {
+        "accuracy": 0.0,
+        "balanced_accuracy": 0.0
+      },
+      "4096": {
+        "accuracy": 0.0,
+        "balanced_accuracy": 0.0
+      },
+      "8192": {
+        "accuracy": 0.0,
+        "balanced_accuracy": 0.0
+      }
+    },
+    "eligible_indices_sha256": "c3e8d6c0af9403acfb3cd1e56f6a535b48be003c3ca3994e0ea428122b0efac2",
+    "matches_artifact_population": true,
+    "role": "confirms the frozen assets, population, and frontend reproduce the artifact's own recorded closed numbers before any new gate is read",
+    "tolerance": 0.002,
+    "worst_absolute_delta": 0.0
+  },
+  "retraining_performed": false,
+  "sealed_release_data_used": 0,
+  "seed": 20260730,
+  "source_index_contract": {
+    "contract": {
+      "config": {
+        "patch_count": 16,
+        "patch_length": 64,
+        "target_frac": 0.5
+      },
+      "corpus": {
+        "corpus_f32": {
+          "mtime_ns": 1784934723216460520,
+          "size": 1834221568
+        },
+        "manifest_sha256": "956bec65c285eef73be5e6beb46b366af6f414e445cc4a4c2e8fbfb7d9a042a2"
+      },
+      "frontend": "invariant-patch-v1",
+      "id": "387ce172c114d671",
+      "schema": 1,
+      "source_sha256": {
+        "training/invariant_patch_preprocess.py": "04c66362e6978bc1827791653963d0921bcdde51f93b9dd74e6eb9b4e8217420",
+        "training/preprocess.py": "5369ea8277f64fcd6367a8a363bf7a5a28298663c39315126160ded5bcc0091d",
+        "training/zplane_ab/v2_full_variation/invariant_patch_data.py": "63e6134bddb927149a54c73fb011c580d1423b8b9977bab0e0b88655c3d0a798"
+      },
+      "split_policy": {
+        "edge_rule": "abs(centreOffsetFrac) + bandwidthHz/sampleRateHz/2 < 0.5",
+        "feature_standardization": {
+          "epsilon": 1e-06,
+          "fit": "edge-safe training raw features only"
+        },
+        "ground_selection_rng_seed": 20260728,
+        "ground_selection_rule": "per-stratum permutation; first floor(n/2) to selection; remainder held out and never serialized",
+        "ground_split_seed": 20260727,
+        "ground_strata": [
+          "class",
+          "impaired"
+        ],
+        "v2_carve": {
+          "enroll": "first floor(0.30*n)",
+          "populations": "clean and impaired independently",
+          "train": "remainder",
+          "validation": "next floor(0.30*n)"
+        },
+        "v2_rng": "numpy.default_rng",
+        "v2_rng_order": [
+          "permutation(clean corpus indices)",
+          "permutation(impaired corpus indices)"
+        ],
+        "v2_split_seed": 20260721,
+        "version": "v2-30-30-40-edge-safe-ground-half-v1"
+      }
+    },
+    "role": "identifies the raw corpus and exposed train/enroll/selection indices only; every tensor scored here was rebuilt with the time-domain v3 frontend"
+  },
+  "source_sha256": {
+    "assemble_v3_fusion.py": "961e493697d1d941395dafe32570262dc09996b53fed9b2a0e82525e43560daa",
+    "evaluate_invariant_release_suite.py": "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541",
+    "invariant_fusion.py": "22a46a75c95cb4aa452bc44228b156b57474b981da20cf7095fff8a129f1c281",
+    "invariant_patch_cnn.py": "b402e8bb75a5809f4a57e8de231268e9ad18afc26b2cfcbf57d2f0b43804ede4",
+    "invariant_patch_data.py": "63e6134bddb927149a54c73fb011c580d1423b8b9977bab0e0b88655c3d0a798",
+    "measure_v3_remaining_gates.py": "fd8765614b9cadbbf852845ef11e26e861ab77d510d2a91c87513eea4e6cb405",
+    "run_time_domain_dev.py": "d63b5c1cc4b0cb4dcec6c770d8ca1fc95515b4a0e00075cadca4845b729f25f7",
+    "time_domain_geometry.py": "a9735473f44105d20cffb9d4888ff8cf8e02503746f70b50e6d5d3737138da33",
+    "time_domain_invariant_patch_preprocess.py": "5cd1787aed0e5fd95adc2e4de56db460d753d0557350aa8f3aff0e393c0bb10a",
+    "train.py": "0669704ff4933b2ab7f8e35b0b6fb58553a06a8d75c93f54ee928ad33e2e257c"
+  },
+  "status": "complete",
+  "wall_clock_s": 31.566072459
+}
