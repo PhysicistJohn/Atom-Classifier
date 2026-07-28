@@ -356,18 +356,21 @@ class SeedLedgerTests(unittest.TestCase):
                 20260943,
                 20260944,
                 20260945,
+                20260946,
+                20260947,
+                20260948,
             ],
         )
-        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260946)
-        self.assertEqual(subject.PROPOSED_DESIGN_NOVELTY_SEED, 20260946)
+        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260949)
+        self.assertEqual(subject.PROPOSED_DESIGN_NOVELTY_SEED, 20260949)
         self.assertEqual(
-            subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, (20260947, 20260948)
+            subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, (20260950, 20260951)
         )
         self.assertEqual(
             sorted(subject.CONSUMED_SEALED_RELEASE_SEEDS),
-            [20260729, 20260731],
+            [20260729, 20260731, 20260733, 20260734],
         )
-        self.assertEqual(subject.RELEASE_SEED_NEVER_SPENT_HERE, 20260733)
+        self.assertEqual(subject.RELEASE_SEED_NEVER_SPENT_HERE, 20260735)
 
     def test_the_ledger_extends_the_prefilter_modules_frozen_one(self) -> None:
         """The prefilter module's ledger froze with the fitted bundles; the
@@ -395,10 +398,39 @@ class SeedLedgerTests(unittest.TestCase):
     def test_every_spent_seed_is_refused_as_a_design_seed(self) -> None:
         for seed in subject.SPENT_NOVELTY_SEEDS:
             with self.assertRaisesRegex(ValueError, "SPENT"):
-                subject.validate_seed_plan("validate", seed, [VALIDATION_SEED])
+                subject.validate_seed_plan("design", seed, [seed])
+
+    def test_validation_may_reference_frozen_design_without_redrawing_it(self):
+        with mock.patch.dict(
+            subject.SPENT_NOVELTY_SEEDS,
+            {DESIGN_SEED: "froze the selected design"},
+        ):
+            role, design, seeds = subject.validate_seed_plan(
+                "validate",
+                DESIGN_SEED,
+                subject.DEFAULT_VALIDATION_NOVELTY_SEEDS,
+            )
+            self.assertEqual(
+                (role, design, seeds),
+                (
+                    "validate",
+                    DESIGN_SEED,
+                    subject.DEFAULT_VALIDATION_NOVELTY_SEEDS,
+                ),
+            )
+            with self.assertRaisesRegex(ValueError, "SPENT"):
+                subject.validate_novelty_seeds([DESIGN_SEED])
+
+    def test_validation_cannot_reference_an_unrelated_spent_seed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "design seed is reserved"):
+            subject.validate_seed_plan(
+                "validate",
+                20260946,
+                subject.DEFAULT_VALIDATION_NOVELTY_SEEDS,
+            )
 
     def test_the_sealed_and_release_seeds_are_refused(self) -> None:
-        for seed in (20260729, 20260731, 20260733):
+        for seed in (20260729, 20260731, 20260733, 20260734, 20260735):
             with self.assertRaises(ValueError):
                 subject.validate_novelty_seeds([seed])
             with self.assertRaises(ValueError):
@@ -407,8 +439,10 @@ class SeedLedgerTests(unittest.TestCase):
     def test_the_consumed_sealed_v3_seed_names_its_consumption(self) -> None:
         with self.assertRaisesRegex(ValueError, "consumed sealed"):
             subject.validate_novelty_seeds([20260731])
+        with self.assertRaisesRegex(ValueError, "consumed sealed"):
+            subject.validate_novelty_seeds([20260734])
         with self.assertRaisesRegex(ValueError, "unspent release seed"):
-            subject.validate_novelty_seeds([20260733])
+            subject.validate_novelty_seeds([20260735])
 
     def test_a_clean_seed_is_accepted(self) -> None:
         self.assertEqual(
@@ -435,8 +469,8 @@ class SeedLedgerTests(unittest.TestCase):
         self.assertEqual(seeds, subject.DEFAULT_VALIDATION_NOVELTY_SEEDS)
 
     def test_a_default_validation_seed_may_not_be_the_design_seed(self) -> None:
-        with self.assertRaisesRegex(ValueError, "evidence rule 4"):
-            subject.validate_seed_plan("validate", VALIDATION_SEED, [20260949])
+        with self.assertRaisesRegex(ValueError, "design seed is reserved"):
+            subject.validate_seed_plan("design", VALIDATION_SEED, [VALIDATION_SEED])
 
     def test_design_refuses_the_reserved_validation_seeds(self) -> None:
         with self.assertRaisesRegex(ValueError, "stay untouched"):
@@ -446,7 +480,7 @@ class SeedLedgerTests(unittest.TestCase):
 
     def test_design_must_draw_its_own_declared_seed(self) -> None:
         with self.assertRaisesRegex(ValueError, "must draw novelty"):
-            subject.validate_seed_plan("design", DESIGN_SEED, [20260949])
+            subject.validate_seed_plan("design", DESIGN_SEED, [20260952])
         self.assertEqual(
             subject.validate_seed_plan("design", DESIGN_SEED, [DESIGN_SEED]),
             ("design", DESIGN_SEED, (DESIGN_SEED,)),
@@ -1703,10 +1737,10 @@ class EndToEndRunTests(unittest.TestCase):
         self.assertEqual(report["sealed_release_data_used"], 0)
         self.assertEqual(report["consumed_test_rows_used"], 0)
         self.assertEqual(report["sealed_release_paths_read"], 0)
-        self.assertFalse(report["release_seed_20260733_used"])
+        self.assertFalse(report["release_seed_20260735_used"])
         self.assertEqual(
             report["consumed_sealed_release_seeds_excluded"],
-            [20260729, 20260731],
+            [20260729, 20260731, 20260733, 20260734],
         )
         self.assertTrue(report["development_only"])
         self.assertFalse(report["release_evidence"])
@@ -2084,7 +2118,7 @@ class EndToEndRunTests(unittest.TestCase):
     def test_the_release_seed_stops_the_run(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaisesRegex(ValueError, "unspent release seed"):
-                self._run(Path(root), novelty_seeds=[20260733])
+                self._run(Path(root), novelty_seeds=[20260735])
 
     def test_a_consumed_sealed_seed_stops_the_run(self) -> None:
         with tempfile.TemporaryDirectory() as root:

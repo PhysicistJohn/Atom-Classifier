@@ -7,15 +7,11 @@ did not change, and states precisely where the staged rejector forced a change:
 * Every gate name, floor, comparison and the gate assembler itself are
   **imported** from the v2 evaluator (``GATE_FLOORS``, ``_gate``,
   ``_assemble_release_gates``, ``_five_shot_report``, ``_auroc``,
-  ``_closed_report``, ...).  No gate is added or removed here.  EXACTLY TWO
-  gate levels are re-declared for the v3 architecture by the owner
-  (``V3_GATE_REDECLARATION``: known-FUR ceiling 0.10 -> 0.12, five-shot floor
-  0.85 -> 0.84, HANDOFF 27 option B / HANDOFF 28), applied on top of the
-  imported v2 floors AFTER the v2 assembler runs, carried as
-  ``gates_redeclared`` in the protocol and the emitted evidence, and required
-  verbatim in the release intent so the declaration is provably
-  pre-generation.  Every other threshold is the imported v2 object, never
-  re-typed.
+  ``_closed_report``, ...).  No gate is added, removed or re-levelled for the
+  next candidate: five-shot remains >= 0.85 and known FUR remains <= 0.10.
+  Seed 20260734's predeclared 0.84/0.12 redeclaration is retained verbatim as
+  labelled historical metadata only.  It is inactive for this protocol and
+  cannot affect a gate object or pass/fail decision.
 * The suite-side verification (intent/manifest binding, corpus byte hashes,
   bit-exact prefix nesting, prefix-derivation records, unscored start probe,
   dependency provenance, predeclared five-shot split) is the v2 machinery,
@@ -156,8 +152,8 @@ from v3_time_domain_openset import (  # noqa: E402
 # identity with the v2 evaluator: imported objects, never re-typed values
 # ---------------------------------------------------------------------------
 
-EVALUATOR_SCHEMA = 1
-EVALUATION_VERSION = "time-domain-v3-release-evaluation-v1"
+EVALUATOR_SCHEMA = 2
+EVALUATION_VERSION = "time-domain-v3-release-evaluation-v2"
 RELEASE_PROTOCOL = release.RELEASE_PROTOCOL
 
 GATE_FLOORS = release.GATE_FLOORS
@@ -236,6 +232,11 @@ CONSUMED_RELEASE_SEEDS = {
         "gates, known FUR 0.1108 and five-shot 0.8449 failures frozen; "
         "evidence rules 2 and 4)"
     ),
+    20260734: (
+        "consumed sealed v3.2 release suite under its predeclared historical "
+        "gate redeclaration (22/23 gates, five-shot 0.8228 failure frozen; "
+        "evidence rules 2 and 4)"
+    ),
     20260730: (
         "development model/fusion seed; reusing it as a release seed would "
         "collide the model and release namespaces (HANDOFF 25 note)"
@@ -250,15 +251,11 @@ REFUSED_RELEASE_SEED_BANDS = (
     (20261000, 20261999, "noise-prefilter fit-only seed band"),
 )
 
-#: OWNER GATE REDECLARATION FOR THE v3 ARCHITECTURE (HANDOFF 27, option B;
-#: HANDOFF 28 records the decision).  Exactly TWO gate levels are re-declared,
-#: BEFORE release seed 20260734 was generated, and applied ON TOP of the
-#: imported v2 ``GATE_FLOORS`` when the release gates are assembled -- the
-#: import stays, so every other floor still cannot drift.  The evaluator
-#: refuses a release root whose intent does not embed the matching
-#: ``gates_redeclared`` block, which is what makes the declaration provably
-#: pre-generation.
-V3_GATE_REDECLARATION_RATIONALE = (
+#: Historical metadata copied from the consumed seed-20260734 protocol.  It
+#: remains here so a future release cannot hide that the prior attempt used
+#: relaxed levels.  It is deliberately never applied to current gates.
+HISTORICAL_GATE_REDECLARATION_RELEASE_SEED = 20260734
+HISTORICAL_V3_GATE_REDECLARATION_RATIONALE = (
     "The 0.10 known-FUR ceiling and 0.85 five-shot floor were declared "
     "against the v2 architecture. Two consumed sealed runs (seeds 20260731, "
     "20260733) establish this candidate's true sealed rates at FUR 0.10-0.11 "
@@ -268,85 +265,53 @@ V3_GATE_REDECLARATION_RATIONALE = (
     "BEFORE release seed 20260734 was generated. Any release claim must "
     "state these two levels alongside the v2 levels they replace."
 )
-V3_GATE_REDECLARATION = {
+HISTORICAL_V3_GATE_REDECLARATION = {
     "open_known_false_unknown_worst_length": {
         "v2_level": 0.10,
         "v3_level": 0.12,
         "floor_key": "open_known_false_unknown_max",
         "comparison": "max",
-        "owner_decision": V3_GATE_REDECLARATION_RATIONALE,
+        "owner_decision": HISTORICAL_V3_GATE_REDECLARATION_RATIONALE,
     },
     "five_shot_worst_length_balanced": {
         "v2_level": 0.85,
         "v3_level": 0.84,
         "floor_key": "five_shot",
         "comparison": "min",
-        "owner_decision": V3_GATE_REDECLARATION_RATIONALE,
+        "owner_decision": HISTORICAL_V3_GATE_REDECLARATION_RATIONALE,
     },
 }
 
 
-def gates_redeclared_block() -> dict[str, Any]:
-    """The exact ``gates_redeclared`` object every intent/protocol must carry.
+def historical_gate_redeclaration_block() -> dict[str, Any]:
+    """Return seed 20260734's exact, explicitly inactive redeclaration record.
 
-    Each entry is cross-checked against the imported v2 floor it replaces, so
-    a drifted v2 import (or a silently edited redeclaration) fails loudly
-    before any protocol object is built.
+    Each entry is cross-checked against the imported v2 floor it replaced.
+    The wrapper makes its historical scope and inactive status machine
+    readable; current gates always use :data:`GATE_FLOORS` unchanged.
     """
-    block: dict[str, Any] = {}
-    for gate_name, record in V3_GATE_REDECLARATION.items():
+    gates: dict[str, Any] = {}
+    for gate_name, record in HISTORICAL_V3_GATE_REDECLARATION.items():
         v2_floor = float(GATE_FLOORS[record["floor_key"]])
         if v2_floor != float(record["v2_level"]):
             raise ValueError(
-                f"gate redeclaration for {gate_name!r} records v2_level "
+                f"historical gate redeclaration for {gate_name!r} records "
+                "v2_level "
                 f"{record['v2_level']}, but the imported v2 floor "
                 f"{record['floor_key']!r} is {v2_floor}; the redeclaration no "
                 "longer describes the levels it replaces"
             )
-        block[gate_name] = {
+        gates[gate_name] = {
             "v2_level": float(record["v2_level"]),
             "v3_level": float(record["v3_level"]),
             "owner_decision": record["owner_decision"],
         }
-    return block
-
-
-def _apply_gate_redeclaration(
-    gates: Mapping[str, Mapping[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    """Re-level exactly the two owner-redeclared gates.
-
-    The input is the v2 assembler's output, built from the imported
-    ``GATE_FLOORS``.  Every other gate object is returned byte-identical; the
-    two redeclared gates keep their measured value and comparison, take the
-    owner's v3 level, and carry the redeclaration record so the emitted
-    evidence states both levels."""
-    updated = {name: dict(gate) for name, gate in gates.items()}
-    for gate_name, record in V3_GATE_REDECLARATION.items():
-        v2_gate = gates[gate_name]
-        if float(v2_gate["threshold"]) != float(record["v2_level"]):
-            raise ValueError(
-                f"gate {gate_name!r} arrived with threshold "
-                f"{v2_gate['threshold']}, not the v2 level "
-                f"{record['v2_level']} the redeclaration replaces"
-            )
-        if v2_gate["comparison"] != record["comparison"]:
-            raise ValueError(
-                f"gate {gate_name!r} comparison {v2_gate['comparison']!r} "
-                f"differs from the redeclared {record['comparison']!r}"
-            )
-        relevelled = _gate(
-            float(v2_gate["value"]),
-            float(record["v3_level"]),
-            comparison=record["comparison"],
-        )
-        relevelled["redeclaration"] = {
-            "v2_level": float(record["v2_level"]),
-            "v3_level": float(record["v3_level"]),
-            "owner_decision": record["owner_decision"],
-        }
-        updated[gate_name] = relevelled
-    return updated
+    return {
+        "release_seed": HISTORICAL_GATE_REDECLARATION_RELEASE_SEED,
+        "active_for_current_protocol": False,
+        "current_protocol_gate_source": "imported_v2_gate_floors_unchanged",
+        "gates_redeclared": gates,
+    }
 
 #: Single source of truth for the causal-prefix rule text: the staged module.
 STAGE_ONE_PREFIX_RULE = staged.STAGE_ONE_PREFIX_RULE
@@ -490,11 +455,10 @@ def expected_evaluation_protocol(
 
     Built from the v2 protocol object so every unchanged rule is byte-identical
     to v2's, then updated only where the v3 candidate changed the semantics.
-    ``gates`` starts as the imported v2 ``GATE_FLOORS`` dict, so no floor can
-    drift between the intent, the launcher, and this evaluator; the ONLY
-    departures are the two owner-redeclared v3 levels
-    (``V3_GATE_REDECLARATION``), applied on top and stated, with the v2 levels
-    they replace and the owner rationale, in ``gates_redeclared``.
+    ``gates`` is the imported v2 ``GATE_FLOORS`` dict unchanged, so no floor
+    can drift between the intent, launcher and evaluator.  The consumed
+    seed-20260734 redeclaration travels separately as explicitly inactive
+    historical metadata.
     """
     seed = validate_release_seed(release_seed)
     domain = tuple(sorted(int(length) for length in stage_one_lengths))
@@ -569,14 +533,13 @@ def expected_evaluation_protocol(
         "known_false_unknown_accounting": KNOWN_FUR_ACCOUNTING,
         "score_axis": staged.STAGED_SCORE_NOTE,
     }
-    # The imported v2 floors, with EXACTLY the two owner-redeclared v3 levels
-    # applied on top; ``gates_redeclared`` states both levels and the owner
-    # rationale so the intent pre-declares the change before generation.
+    # The strict imported v2 floors are the current acceptance contract.
+    # Seed 20260734's relaxed levels remain visible only as explicitly
+    # inactive historical metadata and never mutate this object.
     protocol["gates"] = dict(GATE_FLOORS)
-    redeclared = gates_redeclared_block()
-    for gate_name, record in V3_GATE_REDECLARATION.items():
-        protocol["gates"][record["floor_key"]] = float(record["v3_level"])
-    protocol["gates_redeclared"] = redeclared
+    protocol["historical_gate_redeclaration"] = (
+        historical_gate_redeclaration_block()
+    )
     return protocol
 
 
@@ -1098,23 +1061,21 @@ def load_v3_release_suite(
     expected_protocol = expected_evaluation_protocol(
         release_seed, candidate.stage_one_lengths
     )
-    expected_redeclared = expected_protocol["gates_redeclared"]
+    expected_historical = expected_protocol["historical_gate_redeclaration"]
     for name, holder in (("intent", intent), ("manifest", release_manifest)):
         embedded = holder.get("evaluation_protocol")
-        embedded_redeclared = (
-            embedded.get("gates_redeclared")
+        embedded_historical = (
+            embedded.get("historical_gate_redeclaration")
             if isinstance(embedded, Mapping)
             else None
         )
-        if embedded_redeclared != expected_redeclared:
+        if embedded_historical != expected_historical:
             raise ValueError(
                 f"release {name} evaluation_protocol carries no matching "
-                "gates_redeclared block: the two owner-redeclared v3 gate "
-                "levels (open_known_false_unknown_worst_length 0.10 -> 0.12, "
-                "five_shot_worst_length_balanced 0.85 -> 0.84) must be "
-                "declared, with the owner rationale, in the release intent "
-                "BEFORE the suite is generated; a suite generated without the "
-                "declaration may not be evaluated under the redeclared levels"
+                "historical_gate_redeclaration block. The consumed "
+                "seed-20260734 0.12/0.84 levels must remain visible as "
+                "inactive history, while the current suite is evaluated only "
+                "against the strict imported 0.10/0.85 levels"
             )
         if embedded != expected_protocol:
             raise ValueError(
@@ -2144,10 +2105,9 @@ def evaluate_release(
         length_sweep=length_sweep,
         scale_sweep=scale_sweep,
     )
-    # The v2 assembler ran against the imported v2 floors verbatim; the two
-    # owner-redeclared v3 levels are applied on top, and only now, so every
-    # other gate object is bit-identical to the v2 assembly.
-    gates = _apply_gate_redeclaration(gates)
+    # This is the v2 assembler's strict output verbatim.  In particular,
+    # five-shot stays at 0.85 and known FUR stays at 0.10; the historical
+    # seed-20260734 redeclaration is metadata only.
     all_pass = all(bool(value["passes"]) for value in gates.values())
 
     max_fitted = int(max(candidate.stage_one_lengths))
@@ -2270,7 +2230,9 @@ def evaluate_release(
         "matched_length_sweep": length_sweep,
         "physical_scale_sweep": scale_sweep,
         "gates": gates,
-        "gates_redeclared": gates_redeclared_block(),
+        "historical_gate_redeclaration": (
+            historical_gate_redeclaration_block()
+        ),
         "all_release_gates_pass": all_pass,
         "provenance": {
             "release_root": str(suite.root),

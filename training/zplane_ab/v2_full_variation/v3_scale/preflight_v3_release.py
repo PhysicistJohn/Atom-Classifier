@@ -1,4 +1,4 @@
-"""Preflight for the one-shot v3 sealed release run on seed 20260734.
+"""Preflight for the next one-shot v3 sealed release run on seed 20260735.
 
 This script runs WITHOUT any release suite and consumes nothing: no corpus is
 read, no seed is drawn, no novelty realization is generated, and nothing is
@@ -6,30 +6,23 @@ written under ``training/artifacts/releases``.  It exists so the orchestrator
 can prove, immediately before spending the unspent release seed, that every
 frozen input of the one-shot run is exactly what the evidence trail says it is.
 
-Seed 20260731 was spent on 2026-07-27 (HANDOFF 25: 22/23 gates passed, the
-``open_known_false_unknown_worst_length`` failure at N32768 frozen) and seed
-20260733 on 2026-07-28 (HANDOFF 27: 21/23, the same FUR gate plus the
-five-shot floor, both failures frozen).  This preflight now guards the THIRD
-sealed attempt, seed 20260734, with the candidate UNCHANGED from sealed run
-#2 and exactly TWO gate levels re-declared for the v3 architecture by the
-owner (HANDOFF 27 option B, HANDOFF 28), BEFORE this seed is generated:
-``open_known_false_unknown_worst_length`` 0.10 -> 0.12 and
-``five_shot_worst_length_balanced`` 0.85 -> 0.84.  The redeclaration lives in
-``evaluate_v3_release_suite.V3_GATE_REDECLARATION``, is applied ON TOP of the
-imported v2 floors, and must be predeclared as a ``gates_redeclared`` block
-in the launcher fixture (and hence the release intent) or the sealed
-evaluator refuses the suite.  What this preflight pins, per that record:
+Release seeds 20260729, 20260731, 20260733 and 20260734 are consumed and
+immutable negative evidence.  The seed-20260734 protocol used predeclared
+0.12 known-FUR and 0.84 five-shot levels; this fact remains visible as
+explicitly inactive historical metadata.  Seed 20260735 restores the original
+strict imported gates: known FUR <= 0.10 and five-shot >= 0.85.
 
 * the stage-1 prefilter set is the TIGHTENED 0.01 enrollment-budget refit
   (``noise_prefilter_fit20261001_budget001``): coefficients bit-identical to
   the 0.02 set, threshold only;
-* the staged artifact must validate the COMPOSITE survivor-score policy
+* the next staged artifact must validate the COMPOSITE survivor-score policy
   (stage-2 rank maxed with the stage-1 score's enrollment-survivor rank,
   unknown threshold re-fit at q95 of the composite on enrollment survivors)
-  under an explicit policy version, on the fresh validation novelty seeds
-  20260947/20260948 with design seed 20260946;
-* the launcher's pinned v3 protocol fixture must predeclare seed 20260734
-  AND carry the matching ``gates_redeclared`` block with the owner rationale.
+  under an explicit policy version, on reserved validation novelty seeds
+  20260950/20260951 with design seed 20260949;
+* the launcher's pinned v3 protocol fixture must predeclare seed 20260735,
+  carry the strict imported gate levels, and preserve the seed-20260734
+  redeclaration only in an inactive historical block.
 
 What it verifies, each as an itemised PASS/FAIL check:
 
@@ -55,10 +48,8 @@ What it verifies, each as an itemised PASS/FAIL check:
 * evaluator sources: the v2 release evaluator still matches its recorded
   release SHA, the v3 release evaluator exists and byte-compiles, and every
   dependency source file hashes cleanly (all recorded in the report);
-* the on-disk seed ledger: no release root exists for seed 20260734 and all
-  three consumed sealed roots -- v2 seed 20260729 (HANDOFF section 7), v3
-  seed 20260731 (HANDOFF section 25) and v3 seed 20260733 (HANDOFF section
-  27) -- are intact, preserved as negative evidence;
+* the on-disk seed ledger: no release root exists for seed 20260735 and all
+  four consumed sealed roots are intact, preserved as negative evidence;
 * the isolated generation source root from HANDOFF section 6: SignalLab and
   Atom-DSP source-tree digests (same walk as the launcher: skip
   ``node_modules``, ``dist`` and ``RELEASE_SOURCE_PROVENANCE.json``, refuse
@@ -66,16 +57,15 @@ What it verifies, each as an itemised PASS/FAIL check:
   ``dist/index.d.ts`` hashes, and the ``@atomos/dsp`` symlink resolution;
 * the launcher / corpus generator / prefix deriver hashes, the Node, npm,
   npx and tsx pins, and the launcher's pinned v3 protocol fixture for seed
-  20260734 (present, hash-pinned, predeclaring the right seed, carrying the
-  owner's ``gates_redeclared`` block with every other floor at its imported
-  v2 level, and actually referenced by the launcher source).
+  20260735 (present, hash-pinned, strict, historically transparent, and
+  actually referenced by the launcher source).
 
 At the end it prints every check itemised and then a single GO / NO-GO line.
 Exit status 0 means GO, 1 means NO-GO, 2 means the preflight itself was
 invoked unusably (for example an output path that already exists).
 
 It also RECONSTRUCTS, and never runs, the exact generation command the
-orchestrator should use for seed 20260734; the command is printed and stored
+orchestrator should use for seed 20260735; the command is printed and stored
 in the report so the one-shot run cannot be improvised.
 
 The Apple Accelerate spurious-IEEE-flag pattern applies here exactly as in
@@ -122,12 +112,11 @@ REPORT_SCHEMA = "v3-release-preflight-v1"
 # ---------------------------------------------------------------------------
 
 DEFAULT_PINS: dict[str, Any] = {
-    "release_seed": 20260734,
+    "release_seed": 20260735,
     "sealed_seed": 20260729,
-    # Every release seed already consumed by a sealed run.  20260733 joined
-    # after sealed run #2 (HANDOFF 27); the launcher and the v3 evaluator
-    # must both refuse all of these.
-    "consumed_release_seeds": (20260729, 20260731, 20260733),
+    # Every release seed already consumed by a sealed run.  The launcher and
+    # v3 evaluator must both refuse every entry.
+    "consumed_release_seeds": (20260729, 20260731, 20260733, 20260734),
     # 20260732 is deliberately skipped: it is already a development MODEL
     # seed (HANDOFF 25 records the namespace hazard explicitly).
     "skipped_model_seed": 20260732,
@@ -136,45 +125,33 @@ DEFAULT_PINS: dict[str, Any] = {
     "v2_evaluator_sha256": (
         "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541"
     ),
-    # The v3 sealed evaluator carrying the owner's V3_GATE_REDECLARATION
-    # constant (HANDOFF 27 option B / HANDOFF 28): the exact bytes that will
-    # score sealed run #3.  Pinned so the redeclaration provably predates the
-    # seed-20260734 generation; any later evaluator edit is a NO-GO until the
-    # pin is deliberately advanced.
+    # Exact evaluator bytes for the seed-20260735 protocol.  This evaluator
+    # restores the strict v2 floors and preserves the prior redeclaration only
+    # as inactive history.
     "v3_evaluator_sha256": (
-        "dd59c4b09cbb4dde81710ad01eff4318f1bb4ec1e9b7c340453ef197a50bab5b"
+        "427cf4422987bcce940f840f9bae3ce0e9e990609d45acba38aadf9d75d9cb27"
     ),
-    # The owner's redeclaration, restated here as an independent pin: the
-    # launcher fixture's gates_redeclared block must carry exactly these two
-    # entries and levels, with the owner rationale on each.
-    "gates_redeclared": {
-        "open_known_false_unknown_worst_length": {
-            "v2_level": 0.10,
-            "v3_level": 0.12,
-            "v2_floor_key": "open_known_false_unknown_max",
-        },
-        "five_shot_worst_length_balanced": {
-            "v2_level": 0.85,
-            "v3_level": 0.84,
-            "v2_floor_key": "five_shot",
+    # Independent pin for the transparent but inactive seed-20260734 record.
+    "historical_gate_redeclaration": {
+        "release_seed": 20260734,
+        "gates": {
+            "open_known_false_unknown_worst_length": {
+                "v2_level": 0.10,
+                "v3_level": 0.12,
+                "v2_floor_key": "open_known_false_unknown_max",
+            },
+            "five_shot_worst_length_balanced": {
+                "v2_level": 0.85,
+                "v3_level": 0.84,
+                "v2_floor_key": "five_shot",
+            },
         },
     },
-    # HANDOFF 6: frozen generation source hashes.  The launcher pin was
-    # deliberately advanced three times: first from the sealed-v2 bytes
-    # (552ada69...) when the launcher gained RELEASE_EVALUATION_PROTOCOL
-    # selection, then from the sealed-v3 bytes (461508ee..., recorded in the
-    # consumed seed-20260731 RELEASE_INTENT/MANIFEST) when its pinned v3
-    # protocol fixture was re-aimed at seed 20260733, and again from the
-    # sealed run #2 bytes (2773701b..., recorded in the consumed
-    # seed-20260733 RELEASE_INTENT/MANIFEST) when the fixture was re-aimed
-    # at seed 20260734 and seed 20260733 joined the consumed-seed refusal
-    # list.  'v2' (default) still embeds the byte-identical historical
-    # protocol object, and 'v3' embeds the staged protocol from the pinned
-    # fixture printed by evaluate_v3_release_suite.py
-    # --print-expected-protocol (which itself refuses any suite whose intent
-    # protocol differs).
+    # Frozen generation source hash.  The v2 default remains byte-compatible
+    # with its historical protocol; v3 reads the seed-20260735 fixture and
+    # refuses all four consumed release seeds before generating anything.
     "launcher_sha256": (
-        "3d39161ac6d98039d379e76000d743c41f7570c9234e91f4e070faec5e331eeb"
+        "c071bf0dbdc17088fae674b441a4b7f89a1c4323d8e2a82e56a4572f5619c50d"
     ),
     "corpus_generator_sha256": (
         "305418a5bc7bd8f9a49799477f3a457b4c07d0c58b637766989fc9557565371b"
@@ -214,10 +191,9 @@ DEFAULT_PINS: dict[str, Any] = {
     # The consumed sealed roots, preserved as negative evidence: the v2 root
     # (HANDOFF 7, still the evaluator's read-only schema reference), the v3
     # seed-20260731 root (HANDOFF 25, the frozen 22/23 failure) and the v3
-    # seed-20260733 root (HANDOFF 27, the frozen 21/23 failure whose two
-    # near-miss margins ground the owner's gate redeclaration).  A drifted
-    # hash here means the frozen evidence was touched, which is a NO-GO
-    # regardless of everything else.
+    # seed-20260733 root (frozen 21/23 failure) and seed-20260734 root (frozen
+    # 22/23 failure under its historical gate contract).  A drifted hash means
+    # the frozen evidence was touched, which is a NO-GO.
     "consumed_sealed_roots": {
         "invariant_fusion_v2_sealed_seed20260729": {
             "RELEASE_INTENT.json": (
@@ -252,6 +228,17 @@ DEFAULT_PINS: dict[str, Any] = {
                 "089da0b4f0f833221069b6553f336279d6cd87c0024fba6327aad14d3856ec8b"
             ),
         },
+        "invariant_fusion_v3_sealed_seed20260734": {
+            "RELEASE_INTENT.json": (
+                "0c0a42ea02daeef99b116981f62483e7112ad748c839fd6921fd2432ee309b20"
+            ),
+            "RELEASE_MANIFEST.json": (
+                "a9e00543bb257659bb25aeebc738fc18a4096ff892f7c3b6c5836d4aa315bf06"
+            ),
+            "RELEASE_EVALUATION.json": (
+                "701f296e55853c892bd169e75edec8ba7c4c4f9e36735d7d6aea1f7b8ca94bc2"
+            ),
+        },
     },
     # Frozen open-set policy (v3_time_domain_openset, HANDOFF 15.2/20).
     "frozen_policy": {
@@ -273,36 +260,33 @@ DEFAULT_PINS: dict[str, Any] = {
     # bit-identical to the 0.02 set; only the per-length operating points
     # moved.  The fit report predates the seed-20260731 sealed run, so the
     # release seed it recorded as not-spent is 20260731, not this preflight's
-    # 20260734; both facts are pinned separately.
+    # 20260735; both facts are pinned separately.
     "prefilter_version": "noise-prefilter-v1",
     "prefilter_lengths": (4096, 8192, 16384),
     "prefilter_fitting_seed": 20261001,
     "prefilter_fitting_namespace": (20261000, 20261999),
     "prefilter_known_false_positive_budget": 0.01,
     "prefilter_recorded_release_seed": 20260731,
-    # The staged validation artifact for the composite candidate (evidence
-    # protocol for the seed-20260734 attempt, unchanged since it validated
-    # the identical candidate for the consumed seed-20260733 run): a passing
-    # validate-role run of the composite policy on the FRESH validation
-    # novelty seeds, designed on
-    # the fresh design seed.  ``staged_policy_version`` is the sibling
+    # The next staged validation artifact must be a passing validate-role run
+    # on the reserved fresh validation novelty seeds, referencing the frozen
+    # design seed.  ``staged_policy_version`` is the sibling
     # module's frozen constant and is REQUIRED to match both the module and
     # the artifact; a None pin fails the check loudly rather than skipping.
-    "staged_design_novelty_seed": 20260946,
-    "staged_validation_novelty_seeds": (20260947, 20260948),
+    "staged_design_novelty_seed": 20260949,
+    "staged_validation_novelty_seeds": (20260950, 20260951),
     "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
     # The launcher's pinned v3 expected-protocol fixture for this seed.
     # Pinned after verifying the fixture's evaluation_protocol object is
     # byte-equal to a fresh
-    # ``evaluate_v3_release_suite.py --print-expected-protocol 20260734``
+    # ``evaluate_v3_release_suite.py --print-expected-protocol 20260735``
     # (composite policy version, staged score axis, q95-on-composite text,
-    # and the owner's gates_redeclared block) and that the launcher reads
-    # exactly this file.
+    # strict gates and inactive historical redeclaration) and that the
+    # launcher reads exactly this file.
     "v3_protocol_fixture_name": (
-        "time-domain-v3-expected-evaluation-protocol-seed20260734.json"
+        "time-domain-v3-expected-evaluation-protocol-seed20260735.json"
     ),
     "v3_protocol_fixture_sha256": (
-        "0ff66662d992705c139c7e0d87e77c300fd34778ebf10daec079427603eac570"
+        "6dfdab8e8fe7c656230bc0639a0db4e3667d6b8a726e11288a1326125be60fa6"
     ),
     # Bundle schema identity (export_v3_fusion_runtime).
     "bundle_schema": "atomos.v3.time-domain-invariant-fusion.runtime-bundle",
@@ -1059,30 +1043,20 @@ def check_frozen_policy(pins: Mapping[str, Any]) -> list[Check]:
             pins["staged_policy_kind"],
         )
     )
-    # The staged module's BYTES are frozen: the staged validation artifact
-    # recorded its source hash and the sealed evaluator's source hard
-    # contract refuses any drift.  Its ledger constants therefore stopped
-    # advancing at the state the candidate froze in -- BEFORE sealed run #2
-    # -- and record 20260733 as the then-unspent release seed.  The moving
-    # consumed-seed authority is now the pinned pair of refusal lists in the
-    # launcher and the v3 evaluator; here we assert the frozen module state
-    # is exactly the historical one AND that the new seed 20260734 is
-    # unreachable from every fit-module ledger.
+    # One current ledger must describe the complete evidence lifecycle before
+    # either the next development draw or the sealed draw is allowed.
     consumed_now = sorted(int(s) for s in pins["consumed_release_seeds"])
     new_seed = int(pins["release_seed"])
     ledger_ok = (
-        int(staged.RELEASE_SEED_NEVER_SPENT_HERE) == 20260733
-        and int(staged.RELEASE_SEED_NEVER_SPENT_HERE) in consumed_now
-        and int(staged.SEALED_RELEASE_SEED) == pins["sealed_seed"]
+        int(staged.RELEASE_SEED_NEVER_SPENT_HERE) == new_seed
         and sorted(staged.CONSUMED_SEALED_RELEASE_SEEDS)
-        == [20260729, 20260731]
+        == [20260729, 20260731, 20260733, 20260734]
         and int(openset_base.RELEASE_SEED_NEVER_SPENT_HERE)
         in staged.CONSUMED_SEALED_RELEASE_SEEDS
-        and consumed_now == [20260729, 20260731, 20260733]
+        and consumed_now == [20260729, 20260731, 20260733, 20260734]
         and new_seed not in consumed_now
         and new_seed not in staged.SPENT_NOVELTY_SEEDS
         and new_seed not in staged.CONSUMED_SEALED_RELEASE_SEEDS
-        and new_seed != int(staged.RELEASE_SEED_NEVER_SPENT_HERE)
         and sorted(staged.SPENT_NOVELTY_SEEDS)
         == [
             20260938,
@@ -1093,21 +1067,28 @@ def check_frozen_policy(pins: Mapping[str, Any]) -> list[Check]:
             20260943,
             20260944,
             20260945,
+            20260946,
+            20260947,
+            20260948,
         ]
         and int(staged.PROPOSED_DESIGN_NOVELTY_SEED)
         == int(pins["staged_design_novelty_seed"])
         and tuple(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS)
         == tuple(pins["staged_validation_novelty_seeds"])
+        and int(staged.PROPOSED_DESIGN_NOVELTY_SEED)
+        not in staged.SPENT_NOVELTY_SEEDS
+        and not (
+            set(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS)
+            & set(staged.SPENT_NOVELTY_SEEDS)
+        )
     )
     checks.append(
         (
             "policy.seed_ledger_constants",
             ledger_ok,
-            f"release seed {new_seed} unreachable from the fit modules; "
-            "staged module ledger frozen at its recorded pre-run-#2 state "
-            "(consumed 20260729/20260731, then-unspent 20260733, itself now "
-            f"consumed per pins {consumed_now}); spent novelty seeds "
-            "20260938-20260945; fresh design/validation seeds "
+            f"release seed {new_seed} reserved and unreachable from "
+            f"development; consumed releases {consumed_now}; spent novelty "
+            "seeds 20260938-20260948; reserved design/validation seeds "
             f"{pins['staged_design_novelty_seed']}/"
             f"{list(pins['staged_validation_novelty_seeds'])}"
             if ledger_ok
@@ -1158,10 +1139,7 @@ def check_evaluator_sources(
                 f"byte-compiles; sha256 {sha}",
             )
         )
-        # The evaluator bytes that carry the owner's V3_GATE_REDECLARATION
-        # (HANDOFF 27 option B / 28) are pinned: they must be exactly the
-        # bytes this preflight vouched for, or the redeclaration is no
-        # longer provably the pre-generation one.
+        # Pin the exact strict evaluator bytes before a sealed suite exists.
         checks.append(
             _match(
                 "sources.v3_evaluator_sha256",
@@ -1441,35 +1419,44 @@ def check_generation_sources(pins: Mapping[str, Any]) -> list[Check]:
                 ),
             )
         )
-        checks.extend(_check_fixture_gate_redeclaration(protocol, pins))
+        checks.extend(_check_fixture_gate_contract(protocol, pins))
     return checks
 
 
-def _check_fixture_gate_redeclaration(
+def _check_fixture_gate_contract(
     protocol: Mapping[str, Any],
     pins: Mapping[str, Any],
 ) -> list[Check]:
-    """The owner's pre-generation gate redeclaration inside the fixture.
-
-    The fixture (and therefore the release intent the launcher embeds it
-    into) must carry a ``gates_redeclared`` block with EXACTLY the two
-    owner-redeclared v3 gate levels, each stating the v2 level it replaces
-    and the owner rationale; the ``gates`` object must equal the imported v2
-    floors with only those two levels re-applied on top.  This is what makes
-    the redeclaration provably pre-generation: the sealed evaluator refuses
-    any suite whose intent lacks the matching block.
-    """
+    """Require strict current gates plus inactive seed-20260734 history."""
     import evaluate_invariant_release_suite as release
 
-    expected = pins["gates_redeclared"]
-    redeclared = protocol.get("gates_redeclared")
+    expected_history = pins["historical_gate_redeclaration"]
+    historical = protocol.get("historical_gate_redeclaration")
     problems: list[str] = []
+    if not isinstance(historical, Mapping):
+        problems.append(
+            "fixture protocol carries no historical_gate_redeclaration block"
+        )
+        historical = {}
+    if historical.get("active_for_current_protocol") is not False:
+        problems.append("historical redeclaration is not explicitly inactive")
+    if int(historical.get("release_seed", -1)) != int(
+        expected_history["release_seed"]
+    ):
+        problems.append("historical redeclaration names the wrong release seed")
+    if (
+        historical.get("current_protocol_gate_source")
+        != "imported_v2_gate_floors_unchanged"
+    ):
+        problems.append("current gate source is not the unchanged v2 floors")
+    expected = expected_history["gates"]
+    redeclared = historical.get("gates_redeclared", {})
     if not isinstance(redeclared, Mapping):
-        problems.append("fixture protocol carries no gates_redeclared block")
+        problems.append("historical gates_redeclared is not an object")
         redeclared = {}
     if sorted(redeclared) != sorted(expected):
         problems.append(
-            f"redeclared gate names {sorted(redeclared)} != "
+            f"historical gate names {sorted(redeclared)} != "
             f"{sorted(expected)}"
         )
     for gate_name in sorted(expected):
@@ -1493,17 +1480,13 @@ def _check_fixture_gate_redeclaration(
             not isinstance(rationale, str)
             or "re-declared for the v3 architecture by the owner on "
             "2026-07-28" not in rationale
-            or f"BEFORE release seed {pins['release_seed']} was generated"
+            or "BEFORE release seed 20260734 was generated"
             not in rationale
         ):
             problems.append(f"{gate_name}: owner_decision rationale missing")
     gates = protocol.get("gates", {})
-    redeclared_floor_keys = {
-        pin["v2_floor_key"]: float(pin["v3_level"])
-        for pin in expected.values()
-    }
     for floor_key, v2_level in sorted(release.GATE_FLOORS.items()):
-        want = redeclared_floor_keys.get(floor_key, float(v2_level))
+        want = float(v2_level)
         got = gates.get(floor_key)
         if got is None or float(got) != want:
             problems.append(
@@ -1516,11 +1499,11 @@ def _check_fixture_gate_redeclaration(
     ok = not problems
     return [
         (
-            "generation.v3_fixture_gates_redeclared",
+            "generation.v3_fixture_gate_contract",
             ok,
-            "fixture predeclares the two owner-redeclared v3 levels "
-            f"({', '.join(sorted(expected))}) with rationale; every other "
-            "gate floor equals its imported v2 level"
+            "fixture uses all 17 strict imported v2 gate floors; the "
+            "seed-20260734 0.12/0.84 redeclaration is retained only as "
+            "explicitly inactive historical metadata"
             if ok
             else "; ".join(problems),
         )
@@ -1604,10 +1587,10 @@ def build_generation_command(
     isolated_root: Path,
     node_bin_dir: Path,
 ) -> dict[str, Any]:
-    """The exact one-shot launcher invocation for seed 20260734.
+    """The exact one-shot launcher invocation for seed 20260735.
 
-    Reconstructed from the consumed seed-20260733 ``RELEASE_INTENT.json`` and
-    the launcher CLI: identical mechanics, re-aimed at the new untouched seed.
+    Reconstructed from the consumed release mechanics and re-aimed at the new
+    untouched seed.
     The candidate file is the runtime bundle's manifest: it embeds the SHA-256
     of every other bundle asset, so pinning it pins the entire candidate.
     This function only formats strings; nothing is executed.

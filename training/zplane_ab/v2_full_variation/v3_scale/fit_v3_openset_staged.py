@@ -70,7 +70,7 @@ What is preserved, unchanged and verified
 * The rebuilt fusion is checked against the fusion artifact's stored centers and
   prototypes, and the report records whether the rebuild was bit-identical.
 * ``sealed_release_data_used`` 0, ``consumed_test_rows_used`` 0, release seed
-  20260731 unreachable, sealed and release paths refused before any data load.
+  20260735 unreachable, sealed and release paths refused before any data load.
 * Gate floors are **imported** from :mod:`fit_v3_openset`, never re-typed, so
   they cannot drift and cannot be quietly lowered.
 
@@ -255,28 +255,46 @@ SPENT_NOVELTY_SEEDS: dict[int, str] = {
         "validated the v3.1 tightened-budget candidate (stage-1 budget 0.01): "
         "frozen FAIL, worst noise AUROC cell 0.7957 vs the 0.80 floor"
     ),
+    20260946: (
+        "designed the v3.2 composite-survivor policy; its choices are frozen"
+    ),
+    20260947: (
+        "validated the v3.2 composite-survivor policy; validation evidence is "
+        "consumed and may not be reused"
+    ),
+    20260948: (
+        "validated the v3.2 composite-survivor policy; validation evidence is "
+        "consumed and may not be reused"
+    ),
 }
 
 # Consumed sealed release suites (evidence rule 2): never re-run, never fit,
-# calibrated, selected or debugged against.  20260733 is the next untouched
-# release seed and cannot be reached from this module at all; 20260731 -- the
-# base module's constant, which predates the seed-20260731 sealed run -- stays
-# refused through the base validator as well.
+# calibrate, select or debug against.  The base module's older constants remain
+# refused through its validator as well; this moving ledger is authoritative
+# for every sealed attempt made since those modules were frozen.
 CONSUMED_SEALED_RELEASE_SEEDS: dict[int, str] = {
     20260729: "consumed sealed v2 release suite",
     20260731: (
         "consumed sealed v3.0 release suite (HANDOFF 25: 22/23 gates, known "
         "false-unknown failure frozen)"
     ),
+    20260733: (
+        "consumed sealed v3.2 release suite (21/23 gates; known false-unknown "
+        "and five-shot failures frozen)"
+    ),
+    20260734: (
+        "consumed sealed v3.2 release suite under its predeclared historical "
+        "gate redeclaration (22/23 gates; five-shot failure frozen)"
+    ),
 }
-SEALED_RELEASE_SEED = 20260729
-RELEASE_SEED_NEVER_SPENT_HERE = 20260733
+RELEASE_SEED_NEVER_SPENT_HERE = 20260735
 
-# 20260946 onward are clean.  The composite (policy version 2) design draws
-# 20260946; 20260947/20260948 stay untouched for its single validation run.
-FIRST_CLEAN_NOVELTY_SEED = 20260946
-PROPOSED_DESIGN_NOVELTY_SEED = 20260946
-DEFAULT_VALIDATION_NOVELTY_SEEDS = (20260947, 20260948)
+# Seeds through 20260948 are consumed.  The next candidate may design exactly
+# once on 20260949, then validate exactly once on the reserved untouched pair
+# 20260950/20260951.
+FIRST_CLEAN_NOVELTY_SEED = 20260949
+PROPOSED_DESIGN_NOVELTY_SEED = 20260949
+DEFAULT_VALIDATION_NOVELTY_SEEDS = (20260950, 20260951)
 
 ROLES = ("design", "validate")
 
@@ -799,9 +817,10 @@ def validate_seed_plan(
 ) -> tuple[str, int, tuple[int, ...]]:
     """Return ``(role, design_seed, novelty_seeds)`` or refuse to run.
 
-    Evidence rule 4 in one function, with the ledger of HANDOFF 19.3 applied:
-    20260938 through 20260941 are all spent, so a validation run may draw none
-    of them and the design seed may be none of them either.
+    A design run must draw a fresh design seed.  A later validation run only
+    *references* that now-frozen design seed, so it may be present in the
+    spent ledger; it never draws that seed again.  The novelty seeds actually
+    drawn by validation must remain fresh.
     """
     role_value = validate_role(role)
     if design_novelty_seed is None:
@@ -815,7 +834,29 @@ def validate_seed_plan(
     ):
         raise ValueError("--design-novelty-seed must be an integer")
     design = int(design_novelty_seed)
-    _refuse_ledger_seed(design, "a design seed")
+    if role_value == "design":
+        _refuse_ledger_seed(design, "a design seed")
+        if design != PROPOSED_DESIGN_NOVELTY_SEED:
+            raise ValueError(
+                f"the current design seed is reserved as "
+                f"{PROPOSED_DESIGN_NOVELTY_SEED}; got {design}"
+            )
+    else:
+        if design != PROPOSED_DESIGN_NOVELTY_SEED:
+            raise ValueError(
+                f"the current design seed is reserved as "
+                f"{PROPOSED_DESIGN_NOVELTY_SEED}; got {design}"
+            )
+        if design in CONSUMED_SEALED_RELEASE_SEEDS:
+            raise ValueError(
+                f"{design} is a consumed sealed release suite and cannot be "
+                "referenced as a development design seed"
+            )
+        if design == RELEASE_SEED_NEVER_SPENT_HERE:
+            raise ValueError(
+                f"{design} is the unspent release seed and cannot be "
+                "referenced as a development design seed"
+            )
     if design in DEFAULT_VALIDATION_NOVELTY_SEEDS:
         raise ValueError(
             f"design novelty seed {design} is a default validation seed "
@@ -2576,7 +2617,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "sealed_release_data_used": 0,
         "consumed_test_rows_used": 0,
         "sealed_release_paths_read": 0,
-        "release_seed_20260733_used": False,
+        "release_seed_20260735_used": False,
         "consumed_sealed_release_seeds_excluded": sorted(
             CONSUMED_SEALED_RELEASE_SEEDS
         ),
@@ -2941,7 +2982,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "the novelty seed the staged system's own choices were (or will be) "
             "made on. Emitted into the report. Refused if it is spent "
-            f"{sorted(SPENT_NOVELTY_SEEDS)}, sealed {SEALED_RELEASE_SEED}, the "
+            f"{sorted(SPENT_NOVELTY_SEEDS)}, consumed sealed seeds "
+            f"{sorted(CONSUMED_SEALED_RELEASE_SEEDS)}, the "
             f"release seed {RELEASE_SEED_NEVER_SPENT_HERE}, or a default "
             f"validation seed {list(DEFAULT_VALIDATION_NOVELTY_SEEDS)}."
         ),

@@ -18,10 +18,9 @@ in ``setUpClass`` and every structural assertion reads that one report:
   length; the length above the max fitted length is gated through the
   causal-prefix rule with the max-fitted-length bundle);
 * the refuse-to-rerun guards;
-* gate identity with the v2 evaluator's helpers and floors, EXCEPT exactly
-  the two owner-redeclared v3 entries (known-FUR ceiling 0.12, five-shot
-  floor 0.84), each carrying the owner rationale; an intent without the
-  matching ``gates_redeclared`` block is refused.
+* exact gate identity with the strict v2 floors (known-FUR ceiling 0.10,
+  five-shot floor 0.85), plus the consumed seed-20260734 0.12/0.84
+  redeclaration retained only as inactive historical metadata.
 
 The mini corpus intentionally covers one fitted stage-1 capture length (256)
 and one length above it with no fitted bundle (512), mirroring the real run's
@@ -1047,10 +1046,8 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
             gates["open_known_false_unknown_worst_length"]["value"], worst_fur
         )
 
-    def test_gate_identity_with_v2_except_the_two_redeclared_entries(self):
-        """The emitted gates ARE the v2 assembly, except exactly the two
-        owner-redeclared entries: same measured value and comparison, the
-        owner's v3 level, and the redeclaration record with the rationale."""
+    def test_gate_identity_with_v2_is_exact_and_strict(self):
+        """The current emitted gates are the v2 assembly byte for byte."""
         gates = self.report["gates"]
         rebuilt = release._assemble_release_gates(
             candidate_sha256=self.suite.candidate_sha256,
@@ -1068,83 +1065,49 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
             length_sweep=self.report["matched_length_sweep"],
             scale_sweep=self.report["physical_scale_sweep"],
         )
-        redeclared = evaluator.V3_GATE_REDECLARATION
+        self.assertEqual(rebuilt, gates)
         self.assertEqual(
-            set(redeclared),
-            {
-                "open_known_false_unknown_worst_length",
-                "five_shot_worst_length_balanced",
-            },
-        )
-        self.assertEqual(set(rebuilt), set(gates))
-        for name in set(gates) - set(redeclared):
-            self.assertEqual(rebuilt[name], gates[name], name)
-        for name, record in redeclared.items():
-            v2_gate = rebuilt[name]
-            v3_gate = gates[name]
-            self.assertEqual(v3_gate["value"], v2_gate["value"], name)
-            self.assertEqual(
-                v3_gate["comparison"], v2_gate["comparison"], name
-            )
-            self.assertEqual(
-                v2_gate["threshold"], float(record["v2_level"]), name
-            )
-            self.assertEqual(
-                v3_gate["threshold"], float(record["v3_level"]), name
-            )
-            self.assertEqual(
-                v3_gate["passes"],
-                release._gate(
-                    float(v3_gate["value"]),
-                    float(record["v3_level"]),
-                    comparison=record["comparison"],
-                )["passes"],
-                name,
-            )
-            self.assertEqual(
-                v3_gate["redeclaration"],
-                {
-                    "v2_level": float(record["v2_level"]),
-                    "v3_level": float(record["v3_level"]),
-                    "owner_decision": (
-                        evaluator.V3_GATE_REDECLARATION_RATIONALE
-                    ),
-                },
-                name,
-            )
-        self.assertEqual(
-            gates["open_known_false_unknown_worst_length"]["threshold"], 0.12
+            gates["open_known_false_unknown_worst_length"]["threshold"], 0.10
         )
         self.assertEqual(
-            gates["five_shot_worst_length_balanced"]["threshold"], 0.84
+            gates["five_shot_worst_length_balanced"]["threshold"], 0.85
         )
+        for gate in gates.values():
+            self.assertNotIn("redeclaration", gate)
 
-    def test_report_and_protocol_carry_the_gates_redeclared_block(self):
-        expected = evaluator.gates_redeclared_block()
-        self.assertEqual(self.report["gates_redeclared"], expected)
+    def test_report_and_protocol_carry_inactive_historical_redeclaration(self):
+        expected = evaluator.historical_gate_redeclaration_block()
+        self.assertEqual(self.report["historical_gate_redeclaration"], expected)
         self.assertEqual(
             self.report["provenance"]["evaluation_protocol"][
-                "gates_redeclared"
+                "historical_gate_redeclaration"
             ],
             expected,
         )
         self.assertEqual(
-            self.suite.intent["evaluation_protocol"]["gates_redeclared"],
+            self.suite.intent["evaluation_protocol"][
+                "historical_gate_redeclaration"
+            ],
             expected,
         )
-        for entry in expected.values():
+        self.assertEqual(expected["release_seed"], 20260734)
+        self.assertFalse(expected["active_for_current_protocol"])
+        self.assertEqual(
+            expected["current_protocol_gate_source"],
+            "imported_v2_gate_floors_unchanged",
+        )
+        for entry in expected["gates_redeclared"].values():
             self.assertEqual(
                 entry["owner_decision"],
-                evaluator.V3_GATE_REDECLARATION_RATIONALE,
+                evaluator.HISTORICAL_V3_GATE_REDECLARATION_RATIONALE,
             )
-        # The rationale is the owner's verbatim decision text.
         self.assertIn(
             "re-declared for the v3 architecture by the owner on 2026-07-28",
-            evaluator.V3_GATE_REDECLARATION_RATIONALE,
+            evaluator.HISTORICAL_V3_GATE_REDECLARATION_RATIONALE,
         )
         self.assertIn(
             "BEFORE release seed 20260734 was generated",
-            evaluator.V3_GATE_REDECLARATION_RATIONALE,
+            evaluator.HISTORICAL_V3_GATE_REDECLARATION_RATIONALE,
         )
 
     # -- the staged decision path -------------------------------------------
@@ -1465,32 +1428,29 @@ class SuiteTamperTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "evaluation_protocol"):
             evaluator.load_v3_release_suite(root, self.candidate)
 
-    def test_intent_without_the_gates_redeclared_block_is_refused(self):
-        """A suite whose intent does not pre-declare the two owner-redeclared
-        v3 gate levels may not be evaluated under them: the block in the
-        intent is what proves the declaration preceded generation."""
+    def test_intent_without_historical_redeclaration_is_refused(self):
         root = self._copy_suite()
 
         def mutate(intent):
-            del intent["evaluation_protocol"]["gates_redeclared"]
+            del intent["evaluation_protocol"]["historical_gate_redeclaration"]
 
         self._mutate_intent(root, mutate)
         with self.assertRaisesRegex(
-            ValueError, "no matching gates_redeclared block"
+            ValueError, "no matching historical_gate_redeclaration block"
         ):
             evaluator.load_v3_release_suite(root, self.candidate)
 
-    def test_intent_with_a_tampered_redeclared_level_is_refused(self):
+    def test_intent_with_a_tampered_historical_level_is_refused(self):
         root = self._copy_suite()
 
         def mutate(intent):
-            intent["evaluation_protocol"]["gates_redeclared"][
-                "open_known_false_unknown_worst_length"
-            ]["v3_level"] = 0.5
+            intent["evaluation_protocol"]["historical_gate_redeclaration"][
+                "gates_redeclared"
+            ]["open_known_false_unknown_worst_length"]["v3_level"] = 0.5
 
         self._mutate_intent(root, mutate)
         with self.assertRaisesRegex(
-            ValueError, "no matching gates_redeclared block"
+            ValueError, "no matching historical_gate_redeclaration block"
         ):
             evaluator.load_v3_release_suite(root, self.candidate)
 
@@ -1758,21 +1718,18 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
 
     def test_expected_protocol_reuses_v2_rules_and_updates_v3_fields(self):
         protocol = evaluator.expected_evaluation_protocol(
-            20260734, (4096, 8192, 16384)
+            20260735, (4096, 8192, 16384)
         )
         v2 = release.EXPECTED_EVALUATION_PROTOCOL
         self.assertEqual(protocol["version"], evaluator.EVALUATION_VERSION)
-        # The v2 floors verbatim, EXCEPT exactly the two owner-redeclared v3
-        # levels; the redeclaration block states both levels and rationale.
-        expected_gates = dict(release.GATE_FLOORS)
-        expected_gates["open_known_false_unknown_max"] = 0.12
-        expected_gates["five_shot"] = 0.84
-        self.assertEqual(protocol["gates"], expected_gates)
+        self.assertEqual(protocol["gates"], dict(release.GATE_FLOORS))
+        historical = protocol["historical_gate_redeclaration"]
         self.assertEqual(
-            protocol["gates_redeclared"], evaluator.gates_redeclared_block()
+            historical, evaluator.historical_gate_redeclaration_block()
         )
+        self.assertFalse(historical["active_for_current_protocol"])
         self.assertEqual(
-            set(protocol["gates_redeclared"]),
+            set(historical["gates_redeclared"]),
             {
                 "open_known_false_unknown_worst_length",
                 "five_shot_worst_length_balanced",
@@ -1783,7 +1740,7 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
         self.assertEqual(
             protocol["length_observation_rule"], v2["length_observation_rule"]
         )
-        self.assertEqual(protocol["novelty"]["seed"], 20260734)
+        self.assertEqual(protocol["novelty"]["seed"], 20260735)
         self.assertEqual(
             protocol["novelty"]["seed_derivation"],
             v2["novelty"]["seed_derivation"],
@@ -1846,12 +1803,13 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
             20260731,
             20260732,
             20260733,
+            20260734,
             20260942,
             20261001,
         ):
             with self.assertRaises(ValueError):
                 evaluator.expected_evaluation_protocol(seed, (4096,))
-        evaluator.expected_evaluation_protocol(20260734, (4096,))
+        evaluator.expected_evaluation_protocol(20260735, (4096,))
 
     def test_novelty_seed_derivation_matches_v2_formula(self):
         for family in release.NOVELTY_FAMILIES:
@@ -1863,13 +1821,14 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
             evaluator._novelty_seed(1, "not-a-family")
 
     def test_validate_release_seed(self):
-        self.assertEqual(evaluator.validate_release_seed(20260734), 20260734)
+        self.assertEqual(evaluator.validate_release_seed(20260735), 20260735)
         for seed in (
             20260729,
             20260730,
             20260731,
             20260732,
             20260733,
+            20260734,
             20260900,
             20260999,
             20261000,
@@ -1883,6 +1842,8 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
             evaluator.validate_release_seed(20260731)
         with self.assertRaisesRegex(ValueError, "HANDOFF 27"):
             evaluator.validate_release_seed(20260733)
+        with self.assertRaisesRegex(ValueError, "historical"):
+            evaluator.validate_release_seed(20260734)
 
     def test_default_candidate_directories_are_the_frozen_candidate(self):
         parser = evaluator.build_parser()

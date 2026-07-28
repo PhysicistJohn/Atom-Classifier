@@ -1,10 +1,9 @@
-"""Unit suite for the seed-20260734 release preflight.
+"""Unit suite for the seed-20260735 release preflight.
 
 What is under test is the property that makes the preflight worth running at
 all: a pin that does not match disk, a tampered artifact, a missing evaluator,
 a wrong runtime or a spent seed must each surface as an itemised FAIL and a
-NO-GO, while the real frozen candidate on this machine (with the real, pinned
-v3 evaluator carrying the owner's gate redeclaration) must pass every check.
+NO-GO, while the real pinned inputs and strict evaluator must pass every check.
 
 Hygiene properties asserted explicitly:
 
@@ -16,7 +15,7 @@ Hygiene properties asserted explicitly:
   independent inline reimplementation rather than by calling the function
   under test;
 * the reconstructed generation command is exactly the sealed mechanics
-  re-aimed at seed 20260734 with 192 rows per class, and is never executed;
+  re-aimed at seed 20260735 with 192 rows per class, and is never executed;
 * an existing report path is refused before any check runs, and a report can
   never be written under the release tree.
 
@@ -441,13 +440,14 @@ class SeedLedgerCheckTest(TempDirTestCase):
         "fake_sealed_v2_root",
         "fake_sealed_v3_root",
         "fake_sealed_v3_run2_root",
+        "fake_sealed_v3_run3_root",
     )
 
     def _pins_with_fake_sealed(self, releases: Path) -> dict:
         pins = copy.deepcopy(preflight.DEFAULT_PINS)
         pins["consumed_sealed_roots"] = {}
         for root_name, recorded_seed in zip(
-            self.FAKE_ROOTS, (20260729, 20260731, 20260733)
+            self.FAKE_ROOTS, (20260729, 20260731, 20260733, 20260734)
         ):
             sealed = releases / root_name
             hashes = {}
@@ -477,7 +477,7 @@ class SeedLedgerCheckTest(TempDirTestCase):
     def test_seed_named_root_fails(self) -> None:
         releases = Path(self.tmpdir())
         pins = self._pins_with_fake_sealed(releases)
-        (releases / "v3_sealed_seed20260734").mkdir()
+        (releases / "v3_sealed_seed20260735").mkdir()
         checks = _by_name(preflight.check_seed_ledger(releases, pins))
         self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
 
@@ -486,14 +486,14 @@ class SeedLedgerCheckTest(TempDirTestCase):
         pins = self._pins_with_fake_sealed(releases)
         _write(
             releases / "innocuous_name" / "RELEASE_INTENT.json",
-            json.dumps({"release_seed": 20260734}).encode(),
+            json.dumps({"release_seed": 20260735}).encode(),
         )
         checks = _by_name(preflight.check_seed_ledger(releases, pins))
         self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
 
     def test_consumed_v3_root_is_not_flagged_as_seed_use(self) -> None:
-        # The consumed seed-20260731/20260733 roots exist on disk by design;
-        # only the NEW seed 20260734 may appear in no release root.
+        # Consumed roots through 20260734 exist on disk by design; only the
+        # NEW seed 20260735 may appear in no release root.
         releases = Path(self.tmpdir())
         pins = self._pins_with_fake_sealed(releases)
         _write(
@@ -656,7 +656,7 @@ class GenerationCommandTest(TempDirTestCase):
     @unittest.skipUnless(
         preflight.DEFAULT_BUNDLE_DIR.is_dir(), "real runtime bundle missing"
     )
-    def test_command_matches_sealed_mechanics_for_seed_20260734(self) -> None:
+    def test_command_matches_sealed_mechanics_for_seed_20260735(self) -> None:
         generation = preflight.build_generation_command(
             preflight.DEFAULT_PINS,
             preflight.DEFAULT_BUNDLE_DIR,
@@ -665,7 +665,7 @@ class GenerationCommandTest(TempDirTestCase):
         )
         self.assertTrue(generation["not_run_by_preflight"])
         environment = generation["environment"]
-        self.assertEqual(environment["RELEASE_SEED"], "20260734")
+        self.assertEqual(environment["RELEASE_SEED"], "20260735")
         self.assertEqual(environment["RELEASE_EVALUATION_PROTOCOL"], "v3")
         self.assertEqual(environment["RELEASE_TARGET_PER_CLASS"], "192")
         self.assertEqual(
@@ -683,7 +683,7 @@ class GenerationCommandTest(TempDirTestCase):
             str(preflight.DEFAULT_ISOLATED_ROOT),
         )
         self.assertIn(
-            "invariant_fusion_v3_sealed_seed20260734",
+            "invariant_fusion_v3_sealed_seed20260735",
             environment["RELEASE_ROOT"],
         )
         self.assertIn(
@@ -821,16 +821,9 @@ class HarnessTest(TempDirTestCase):
     "full frozen environment not present",
 )
 class EndToEndTest(TempDirTestCase):
-    """One full run against the real frozen inputs and the REAL evaluator.
+    """The real preflight stays NO-GO until seed49/50/51 evidence exists."""
 
-    This is exactly the run the orchestrator will perform.  It must be a GO,
-    it must write a report exactly once, and it must leave the release tree
-    untouched.  The evaluator is no longer stubbed: the seed-20260734
-    preflight pins the real evaluator bytes (the ones carrying the owner's
-    V3_GATE_REDECLARATION), so a stub would rightly NO-GO.
-    """
-
-    def test_full_preflight_is_go_with_real_evaluator(self) -> None:
+    def test_full_preflight_blocks_the_stale_v32_validation_artifact(self) -> None:
         tmp = Path(self.tmpdir())
         output = tmp / "preflight_report.json"
         previous = os.environ.get("PYTHONWARNINGS")
@@ -848,10 +841,10 @@ class EndToEndTest(TempDirTestCase):
             else:
                 os.environ["PYTHONWARNINGS"] = previous
         text = stdout.getvalue()
-        self.assertEqual(status, 0, text)
+        self.assertEqual(status, 1, text)
         final = text.splitlines()[-1]
-        self.assertTrue(final.startswith("GO:"), final)
-        self.assertIn("safe to spend release seed 20260734", final)
+        self.assertTrue(final.startswith("NO-GO:"), final)
+        self.assertIn("do not spend release seed 20260735", final)
         # Exactly one GO / NO-GO line, every check itemised above it.
         go_lines = [
             line
@@ -860,8 +853,9 @@ class EndToEndTest(TempDirTestCase):
         ]
         self.assertEqual(len(go_lines), 1)
         report = json.loads(output.read_text())
-        self.assertTrue(report["go"])
-        self.assertTrue(all(item["passed"] for item in report["checks"]))
+        self.assertFalse(report["go"])
+        failed = [item["name"] for item in report["checks"] if not item["passed"]]
+        self.assertEqual(failed, ["staged.evidence_seeds"])
         self.assertGreaterEqual(len(report["checks"]), 40)
         # The report carries full provenance: the real evaluator's hash both
         # observed and equal to the redeclaration pin.
@@ -893,7 +887,7 @@ class EndToEndTest(TempDirTestCase):
         # The generation command in the report is the v2 mechanics on the
         # new seed, and was not run: its release root must not exist.
         environment = report["generation_command"]["environment"]
-        self.assertEqual(environment["RELEASE_SEED"], "20260734")
+        self.assertEqual(environment["RELEASE_SEED"], "20260735")
         self.assertFalse(Path(environment["RELEASE_ROOT"]).exists())
 
 

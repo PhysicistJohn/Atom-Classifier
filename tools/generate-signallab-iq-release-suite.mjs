@@ -169,9 +169,9 @@ const EVALUATION_PROTOCOL = Object.freeze({
  */
 const V3_EXPECTED_PROTOCOL_FIXTURE = resolve(
   HERE,
-  'time-domain-v3-expected-evaluation-protocol-seed20260734.json',
+  'time-domain-v3-expected-evaluation-protocol-seed20260735.json',
 );
-const V3_EVALUATION_VERSION = 'time-domain-v3-release-evaluation-v1';
+const V3_EVALUATION_VERSION = 'time-domain-v3-release-evaluation-v2';
 /**
  * Seed hygiene mirrored from `evaluate_v3_release_suite.validate_release_seed`
  * so a refused seed fails here, before any corpus generation, instead of at
@@ -185,13 +185,17 @@ const V3_CONSUMED_RELEASE_SEEDS = Object.freeze({
   20260733:
     'consumed sealed v3.2 release suite (HANDOFF 27: 21/23 gates, known '
     + 'false-unknown and five-shot failures frozen; evidence rules 2 and 4)',
+  20260734:
+    'consumed sealed v3.2 release suite under its historical gate '
+    + 'redeclaration (22/23 gates, five-shot failure frozen; evidence rules '
+    + '2 and 4)',
   20260730:
     'development model/fusion seed; reusing it as a release seed would '
     + 'collide the model and release namespaces (HANDOFF 25 note)',
   20260732:
     'development model seed; reusing it as a release seed would collide '
     + 'the model and release namespaces (HANDOFF 25 note; next untouched '
-    + 'release seed after the consumed runs: 20260734)',
+    + 'release seed after the consumed runs: 20260735)',
 });
 const V3_REFUSED_RELEASE_SEED_BANDS = Object.freeze([
   [20260900, 20260999, 'development novelty seed namespace'],

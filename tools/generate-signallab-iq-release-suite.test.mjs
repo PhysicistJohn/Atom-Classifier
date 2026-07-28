@@ -132,7 +132,7 @@ test('v3 protocol refuses a release seed the fixture did not predeclare', () => 
     RELEASE_SEED: '20260728',
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /predeclares seed 20260734/);
+  assert.match(result.stderr, /predeclares seed 20260735/);
   assert.equal(existsSync(root), false);
 });
 
@@ -141,6 +141,7 @@ test('v3 protocol refuses consumed and development-band release seeds', () => {
     ['20260729', /consumed sealed v2 release suite/],
     ['20260731', /consumed sealed v3\.0 release suite/],
     ['20260733', /consumed sealed v3\.2 release suite/],
+    ['20260734', /historical gate redeclaration/],
     ['20260942', /development novelty seed namespace/],
     ['20261001', /noise-prefilter fit-only seed band/],
   ]) {
@@ -161,20 +162,20 @@ test('v3 protocol refuses consumed and development-band release seeds', () => {
 
 test('v3 protocol fixture is the evaluator-printed object, self-consistent', () => {
   // The fixture is captured from
-  //   evaluate_v3_release_suite.py --print-expected-protocol 20260734
+  //   evaluate_v3_release_suite.py --print-expected-protocol 20260735
   // (command recorded inside the fixture itself). Node tests never shell out
   // to Python; the sealed evaluator's own intent-equality check is the
   // final cross-language backstop.
   const wrapper = JSON.parse(
     readFileSync(
-      join(REPO, 'tools/time-domain-v3-expected-evaluation-protocol-seed20260734.json'),
+      join(REPO, 'tools/time-domain-v3-expected-evaluation-protocol-seed20260735.json'),
       'utf8',
     ),
   );
-  assert.equal(wrapper.release_seed, 20260734);
+  assert.equal(wrapper.release_seed, 20260735);
   const protocol = wrapper.evaluation_protocol;
-  assert.equal(protocol.version, 'time-domain-v3-release-evaluation-v1');
-  assert.equal(protocol.novelty.seed, 20260734);
+  assert.equal(protocol.version, 'time-domain-v3-release-evaluation-v2');
+  assert.equal(protocol.novelty.seed, 20260735);
   assert.deepEqual(protocol.required_capture_lengths, [4096, 8192, 16384, 32768]);
   assert.equal(protocol.open_set.additive_only, false);
   assert.equal(protocol.open_set.changes_closed_label, true);
@@ -223,19 +224,22 @@ test('v3 protocol fixture is the evaluator-printed object, self-consistent', () 
       (length) => !covered.includes(length) && length < maxFitted,
     ),
   );
-  // The gate floors are the imported v2 floors with EXACTLY the two
-  // owner-redeclared v3 levels applied on top (HANDOFF 27 option B, HANDOFF
-  // 28: declared BEFORE seed 20260734 was generated). No gate is added or
-  // removed; every other level is the v2 one.
+  // The current gate floors are the strict imported v2 floors.
   assert.equal(protocol.gates.open_unknown_recall_noise, 0.10);
   assert.equal(protocol.gates.open_auroc_noise, 0.80);
-  assert.equal(protocol.gates.open_known_false_unknown_max, 0.12);
-  assert.equal(protocol.gates.five_shot, 0.84);
+  assert.equal(protocol.gates.open_known_false_unknown_max, 0.10);
+  assert.equal(protocol.gates.five_shot, 0.85);
   assert.equal(Object.keys(protocol.gates).length, 17);
-  // The pre-generation declaration itself: two entries, both levels stated,
-  // with the owner rationale. The sealed evaluator refuses any intent whose
-  // gates_redeclared block differs from its own expected object.
-  const redeclared = protocol.gates_redeclared;
+  // The seed-20260734 relaxation remains transparent, but is explicitly
+  // historical and inactive for this protocol.
+  const historical = protocol.historical_gate_redeclaration;
+  assert.equal(historical.release_seed, 20260734);
+  assert.equal(historical.active_for_current_protocol, false);
+  assert.equal(
+    historical.current_protocol_gate_source,
+    'imported_v2_gate_floors_unchanged',
+  );
+  const redeclared = historical.gates_redeclared;
   assert.deepEqual(Object.keys(redeclared).sort(), [
     'five_shot_worst_length_balanced',
     'open_known_false_unknown_worst_length',
@@ -276,7 +280,7 @@ test('v3 intent embeds the evaluator-printed protocol object verbatim', {
   chmodSync(fakeNpx, 0o755);
   const result = run({
     RELEASE_ROOT: root,
-    RELEASE_SEED: '20260734',
+    RELEASE_SEED: '20260735',
     RELEASE_EVALUATION_PROTOCOL: 'v3',
     RELEASE_LENGTHS: '4096,8192,16384,32768',
     RELEASE_TARGET_PER_CLASS: '80',
@@ -289,19 +293,19 @@ test('v3 intent embeds the evaluator-printed protocol object verbatim', {
   );
   const fixture = JSON.parse(
     readFileSync(
-      join(REPO, 'tools/time-domain-v3-expected-evaluation-protocol-seed20260734.json'),
+      join(REPO, 'tools/time-domain-v3-expected-evaluation-protocol-seed20260735.json'),
       'utf8',
     ),
   );
   // The embedded object must equal the evaluator's --print-expected-protocol
   // output exactly: the sealed evaluator refuses the suite on ANY difference.
   assert.deepEqual(intent.evaluation_protocol, fixture.evaluation_protocol);
-  assert.equal(intent.release_seed, 20260734);
+  assert.equal(intent.release_seed, 20260735);
   assert.equal(intent.status, 'in_progress');
   // The v2 provenance constant remains selectable and untouched.
   assert.equal(
     intent.evaluation_protocol.version,
-    'time-domain-v3-release-evaluation-v1',
+    'time-domain-v3-release-evaluation-v2',
   );
 });
 
