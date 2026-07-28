@@ -3807,6 +3807,36 @@ class V4AdmissionHardeningTests(unittest.TestCase):
                         alias, 4, field="schema"
                     )
 
+    def test_protocol_boundary_admits_only_javascript_integral_float_collapse(
+        self,
+    ):
+        with self.assertRaisesRegex(ValueError, "int.*float"):
+            evaluator._require_exact_json_value(
+                1,
+                1.0,
+                field="protocol.physical_scale_factors[2]",
+            )
+        evaluator._require_exact_json_value(
+            {"physical_scale_factors": [0.5, 0.75, 1, 1.5, 2]},
+            {"physical_scale_factors": [0.5, 0.75, 1.0, 1.5, 2.0]},
+            field="protocol",
+            allow_integral_float_collapse=True,
+        )
+        for found, expected in (
+            (True, 1.0),
+            (1.0, 1),
+            (1, 1.5),
+            (2, 1.0),
+        ):
+            with self.subTest(found=found, expected=expected):
+                with self.assertRaises(ValueError):
+                    evaluator._require_exact_json_value(
+                        found,
+                        expected,
+                        field="protocol.value",
+                        allow_integral_float_collapse=True,
+                    )
+
     def test_dynamic_integer_maps_and_real_integer_names_reject_aliases(self):
         for collection in ("counts", "row_counts"):
             for alias in (False, True, 4.0, "4", None):

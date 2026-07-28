@@ -168,7 +168,7 @@ DEFAULT_PINS: dict[str, Any] = {
         "time-domain-v3-release-evaluation-v4-q97-dual-fusion"
     ),
     "v3_evaluator_sha256": (
-        "ac728f7f1059260814e74e9825d2ab937ed5cb29136fd4c8e2bf388d4ff454e3"
+        "61b6e65ccbf06a8b67bd6d069dc0b91f2fdc9bc3e03c9305a511d986569a0e28"
     ),
     "candidate_manifest_schema": "time-domain-v3-dual-release-candidate-v2",
     "candidate_evidence_schema": (

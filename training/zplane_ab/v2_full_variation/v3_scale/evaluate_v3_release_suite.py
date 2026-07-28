@@ -566,14 +566,32 @@ def _validate_json_scalar_types(
         raise ValueError(f"{field} contains a non-JSON scalar")
 
 
-def _require_exact_json_value(found: Any, expected: Any, *, field: str) -> None:
-    """Recursive equality with exact JSON scalar types."""
+def _require_exact_json_value(
+    found: Any,
+    expected: Any,
+    *,
+    field: str,
+    allow_integral_float_collapse: bool = False,
+) -> None:
+    """Recursive equality with exact JSON scalar types.
+
+    ``JSON.stringify`` emits an integral JavaScript Number such as ``1.0`` as
+    the token ``1``.  At the one Python-authored protocol boundary only, the
+    caller may admit that representation-preserving collapse when the frozen
+    expected value is a finite integral float.  Expected integer fields,
+    booleans, non-integral floats, and every artifact boundary remain exact.
+    """
     if isinstance(expected, Mapping):
         if not isinstance(found, Mapping) or set(found) != set(expected):
             raise ValueError(f"{field} object keys differ")
         for key, expected_item in expected.items():
             _require_exact_json_value(
-                found[key], expected_item, field=f"{field}.{key}"
+                found[key],
+                expected_item,
+                field=f"{field}.{key}",
+                allow_integral_float_collapse=(
+                    allow_integral_float_collapse
+                ),
             )
         return
     if isinstance(expected, list):
@@ -586,7 +604,19 @@ def _require_exact_json_value(found: Any, expected: Any, *, field: str) -> None:
                 found_item,
                 expected_item,
                 field=f"{field}[{index}]",
+                allow_integral_float_collapse=(
+                    allow_integral_float_collapse
+                ),
             )
+        return
+    if (
+        allow_integral_float_collapse
+        and type(expected) is float
+        and math.isfinite(expected)
+        and expected.is_integer()
+        and type(found) is int
+        and found == expected
+    ):
         return
     if type(found) is not type(expected) or found != expected:
         raise ValueError(
@@ -4762,6 +4792,7 @@ def load_v3_release_suite(
                 embedded,
                 expected_protocol,
                 field=f"release.{name}.evaluation_protocol",
+                allow_integral_float_collapse=True,
             )
         except ValueError:
             raise ValueError(

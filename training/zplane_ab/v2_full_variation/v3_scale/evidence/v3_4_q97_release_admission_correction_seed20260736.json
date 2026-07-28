@@ -1,0 +1,57 @@
+{
+  "schema": "time-domain-v3-release-admission-correction-v1",
+  "status": "pre_scoring_protocol_admission_failure_frozen",
+  "release_seed": 20260736,
+  "candidate_id": "v3.4-q97-decoupled-8k-classifier-4k-rejector",
+  "candidate_manifest_sha256": "7f824eb734466cb697ee28387a470e8e669e19567542d928130a2b4ad9f59053",
+  "pre_release_candidate_commit": "6691ebc9318864d475bcbaf266ad881d1a718b99",
+  "go_preflight_commit": "c2ef8bd110c3e71463fcd1fc4638389ce9bf50ac",
+  "go_preflight_sha256": "9baeac54cf0bbe3a6ebe2c20a82d238b61961aeaa18a9fbae060e9858e6a944f",
+  "sealed_suite": {
+    "path": "training/artifacts/releases/invariant_fusion_v3_sealed_seed20260736",
+    "release_intent_sha256": "d9be8f785efe3f3262d879f14870773bc0bfedb2b31e0be37f99d2344d4fad26",
+    "release_manifest_sha256": "ebbd3caff35bb86767b14bb69645da2a3b4a35bbb779577ae294a4843e1d8089",
+    "suite_generation_exit_code": 0,
+    "suite_regenerated": false,
+    "release_seed_redrawn": false
+  },
+  "failed_evaluator_attempt": {
+    "evaluator_sha256": "ac728f7f1059260814e74e9825d2ab937ed5cb29136fd4c8e2bf388d4ff454e3",
+    "exit_code": 1,
+    "failure_phase": "load_v3_release_suite.evaluation_protocol_admission",
+    "terminal_error": "release.intent.evaluation_protocol.physical_scale_factors[2]=1 (int), expected 1.0 (float)",
+    "release_evaluation_written": false,
+    "release_corpus_rows_loaded": 0,
+    "release_corpus_rows_scored": 0,
+    "novelty_realizations_generated": 0,
+    "gates_computed": 0
+  },
+  "root_cause": {
+    "python_fixture_token": "1.0",
+    "javascript_launcher_token": "1",
+    "json_numeric_value_changed": false,
+    "protocol_semantics_changed": false,
+    "candidate_behavior_changed": false,
+    "description": "JSON.stringify canonically emits an integral JavaScript Number such as 1.0 as 1; the evaluator incorrectly required Python's decoder-specific int/float class identity at this cross-language protocol boundary."
+  },
+  "correction": {
+    "corrected_evaluator_sha256": "61b6e65ccbf06a8b67bd6d069dc0b91f2fdc9bc3e03c9305a511d986569a0e28",
+    "scope": "release evaluation_protocol comparison only",
+    "admits": "an observed exact JSON integer only when the frozen expected value is a finite integral float with the identical numeric value",
+    "still_refuses": [
+      "boolean aliases",
+      "expected integer fields serialized as floats",
+      "non-integral numeric changes",
+      "unequal integral values",
+      "all scalar type drift at candidate and artifact boundaries"
+    ],
+    "gate_contract_changed": false,
+    "threshold_or_model_changed": false,
+    "release_suite_changed": false
+  },
+  "continuation_rule": {
+    "same_sealed_suite_only": true,
+    "regeneration_forbidden": true,
+    "reason_continuation_is_not_a_redraw": "The failed evaluator attempt stopped while comparing RELEASE_INTENT metadata, before opening any release corpus row or generating the deterministic novelty populations. The already sealed suite remains the sole seed-20260736 draw."
+  }
+}

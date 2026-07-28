@@ -907,13 +907,21 @@ class SeedLedgerCheckTest(TempDirTestCase):
     @unittest.skipUnless(
         preflight.DEFAULT_RELEASES_DIR.is_dir(), "real release tree missing"
     )
-    def test_real_release_tree_passes(self) -> None:
+    def test_real_release_tree_refuses_reusing_generated_seed36(self) -> None:
         checks = _by_name(
             preflight.check_seed_ledger(
                 preflight.DEFAULT_RELEASES_DIR, preflight.DEFAULT_PINS
             )
         )
-        self.assertTrue(all(item["passed"] for item in checks.values()), checks)
+        self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
+        self.assertTrue(
+            all(
+                item["passed"]
+                for name, item in checks.items()
+                if name != "ledger.release_seed_unused"
+            ),
+            checks,
+        )
 
 
 class IsolatedSourceCheckTest(TempDirTestCase):
@@ -1313,9 +1321,9 @@ class HarnessTest(TempDirTestCase):
     "full frozen environment not present",
 )
 class EndToEndTest(TempDirTestCase):
-    """The final pre-release environment admits release36 without spending it."""
+    """After generation, preflight refuses any second seed-36 spend."""
 
-    def test_full_preflight_is_go_and_consumes_nothing(self) -> None:
+    def test_full_preflight_is_no_go_after_sealed_suite_exists(self) -> None:
         tmp = Path(self.tmpdir())
         output = tmp / "preflight_report.json"
         previous = os.environ.get("PYTHONWARNINGS")
@@ -1333,10 +1341,10 @@ class EndToEndTest(TempDirTestCase):
             else:
                 os.environ["PYTHONWARNINGS"] = previous
         text = stdout.getvalue()
-        self.assertEqual(status, 0, text)
+        self.assertEqual(status, 1, text)
         final = text.splitlines()[-1]
-        self.assertTrue(final.startswith("GO:"), final)
-        self.assertIn("safe to spend release seed 20260736 once", final)
+        self.assertTrue(final.startswith("NO-GO:"), final)
+        self.assertIn("do not spend release seed 20260736", final)
         # Exactly one GO / NO-GO line, every check itemised above it.
         go_lines = [
             line
@@ -1345,9 +1353,9 @@ class EndToEndTest(TempDirTestCase):
         ]
         self.assertEqual(len(go_lines), 1)
         report = json.loads(output.read_text())
-        self.assertTrue(report["go"])
+        self.assertFalse(report["go"])
         failed = [item["name"] for item in report["checks"] if not item["passed"]]
-        self.assertEqual(failed, [])
+        self.assertEqual(failed, ["ledger.release_seed_unused"])
         self.assertGreaterEqual(len(report["checks"]), 40)
         self.assertEqual(
             report["observed"]["v3_evaluator_sha256"],
@@ -1375,16 +1383,13 @@ class EndToEndTest(TempDirTestCase):
             path.name for path in preflight.DEFAULT_RELEASES_DIR.iterdir()
         )
         self.assertEqual(releases_before, releases_after)
-        self.assertIn("generation_command", report)
-        self.assertTrue(
-            report["generation_command"]["not_run_by_preflight"]
-        )
+        self.assertNotIn("generation_command", report)
         release_root = (
             preflight.REPO
             / "training/artifacts/releases"
             / "invariant_fusion_v3_sealed_seed20260736"
         )
-        self.assertFalse(release_root.exists())
+        self.assertTrue(release_root.is_dir())
 
 
 if __name__ == "__main__":
