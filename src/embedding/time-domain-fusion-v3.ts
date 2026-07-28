@@ -40,6 +40,20 @@ export const TIME_DOMAIN_FUSION_V3_SCHEMA =
 export const TIME_DOMAIN_FUSION_V3_SCHEMA_VERSION = 1 as const;
 
 /**
+ * Explicit responsibilities used by the decoupled v3.3 runtime. The field is
+ * optional at this low-level loader so the frozen legacy single-fusion asset
+ * remains loadable; the dual-fusion composition requires one exact role on
+ * each of its two assets.
+ */
+export const TIME_DOMAIN_FUSION_REJECTOR_ROLE_V3 =
+  'known_unknown_rejector' as const;
+export const TIME_DOMAIN_FUSION_CLASSIFIER_ROLE_V3 =
+  'accepted_known_classifier' as const;
+export type TimeDomainFusionRuntimeRoleV3 =
+  | typeof TIME_DOMAIN_FUSION_REJECTOR_ROLE_V3
+  | typeof TIME_DOMAIN_FUSION_CLASSIFIER_ROLE_V3;
+
+/**
  * Schema identifiers the v3 runtime must refuse: the v2/hybrid frontend
  * contracts and the v2 paired-real staging export are silently wrong for the
  * time-domain frontend.
@@ -65,6 +79,15 @@ export interface FeatureStandardizationV3 {
   std: number[];
 }
 
+export interface TimeDomainFusionFrontendV3 {
+  version: 'invariant-patch-time-domain-v1';
+  patch_length: number;
+  patch_count: number;
+  target_frac: number;
+  feature_count: number;
+  uses_frequency_transform: false;
+}
+
 export interface TimeDomainClassificationV3 {
   classes: string[];
   /** One row per class, each `2 * embed_dim` wide. */
@@ -75,12 +98,25 @@ export interface TimeDomainFusionAssetV3 {
   schema: typeof TIME_DOMAIN_FUSION_V3_SCHEMA;
   schema_version: typeof TIME_DOMAIN_FUSION_V3_SCHEMA_VERSION;
   status: TimeDomainAssetStatusV3;
+  /**
+   * Present on role-bound dual-fusion exports. Optional only for backwards
+   * compatibility with the frozen legacy single-fusion browser package.
+   */
+  runtime_role?: TimeDomainFusionRuntimeRoleV3;
   packed_length: number;
+  /**
+   * The historical low-level loader ignored this already-exported metadata.
+   * It is retained now so the dual composition can bind `target_frac` and the
+   * explicit no-frequency-transform claim across both fusion roles.
+   */
+  frontend?: TimeDomainFusionFrontendV3;
   real: TimeDomainRealBranchV3;
   complex: TimeDomainComplexBranchV3;
   fusion: CenteredFusionV3;
   feature_standardization: FeatureStandardizationV3;
   classification: TimeDomainClassificationV3;
+  /** Export provenance is retained for package-level identity inspection. */
+  provenance?: unknown;
 }
 
 export interface TimeDomainForwardV3 {
@@ -148,6 +184,19 @@ export function loadTimeDomainFusionAssetV3(
     );
   }
   const status = admitTimeDomainAssetStatusV3(asset.status, 'asset.status', options);
+  let runtimeRole: TimeDomainFusionRuntimeRoleV3 | undefined;
+  if (asset.runtime_role !== undefined) {
+    if (
+      asset.runtime_role !== TIME_DOMAIN_FUSION_REJECTOR_ROLE_V3
+      && asset.runtime_role !== TIME_DOMAIN_FUSION_CLASSIFIER_ROLE_V3
+    ) {
+      throw new RangeError(
+        'asset.runtime_role must be known_unknown_rejector or '
+        + 'accepted_known_classifier',
+      );
+    }
+    runtimeRole = asset.runtime_role;
+  }
   const real = validateTimeDomainRealBranchV3(asset.real);
   const complex = validateTimeDomainComplexBranchV3(asset.complex);
   for (const field of [
@@ -163,6 +212,57 @@ export function loadTimeDomainFusionAssetV3(
   const packedLength = finite(asset.packed_length, 'asset.packed_length');
   if (packedLength !== real.config.patch_length * real.config.patch_count) {
     throw new RangeError('asset.packed_length does not match patch geometry');
+  }
+  let frontend: TimeDomainFusionFrontendV3 | undefined;
+  if (asset.frontend !== undefined) {
+    const frontendRaw = record(asset.frontend, 'asset.frontend');
+    if (frontendRaw.version !== 'invariant-patch-time-domain-v1') {
+      throw new RangeError(
+        'asset.frontend.version must be invariant-patch-time-domain-v1',
+      );
+    }
+    if (frontendRaw.uses_frequency_transform !== false) {
+      throw new RangeError(
+        'asset.frontend must declare uses_frequency_transform: false',
+      );
+    }
+    const patchLength = finite(
+      frontendRaw.patch_length,
+      'asset.frontend.patch_length',
+    );
+    const patchCount = finite(
+      frontendRaw.patch_count,
+      'asset.frontend.patch_count',
+    );
+    const targetFrac = finite(
+      frontendRaw.target_frac,
+      'asset.frontend.target_frac',
+    );
+    const featureCount = finite(
+      frontendRaw.feature_count,
+      'asset.frontend.feature_count',
+    );
+    if (
+      !Number.isInteger(patchLength)
+      || !Number.isInteger(patchCount)
+      || !Number.isInteger(featureCount)
+      || patchLength !== real.config.patch_length
+      || patchCount !== real.config.patch_count
+      || featureCount !== real.config.n_features
+      || !(targetFrac > 0 && targetFrac <= 1)
+    ) {
+      throw new RangeError(
+        'asset.frontend metadata does not match the branch geometry',
+      );
+    }
+    frontend = {
+      version: 'invariant-patch-time-domain-v1',
+      patch_length: patchLength,
+      patch_count: patchCount,
+      target_frac: targetFrac,
+      feature_count: featureCount,
+      uses_frequency_transform: false,
+    };
   }
 
   const embedDim = real.config.embed_dim;
@@ -244,12 +344,15 @@ export function loadTimeDomainFusionAssetV3(
     schema: TIME_DOMAIN_FUSION_V3_SCHEMA,
     schema_version: TIME_DOMAIN_FUSION_V3_SCHEMA_VERSION,
     status,
+    ...(runtimeRole === undefined ? {} : { runtime_role: runtimeRole }),
     packed_length: packedLength,
+    ...(frontend === undefined ? {} : { frontend }),
     real,
     complex,
     fusion,
     feature_standardization: { mean, std },
     classification: { classes, prototypes },
+    ...(asset.provenance === undefined ? {} : { provenance: asset.provenance }),
   };
 }
 

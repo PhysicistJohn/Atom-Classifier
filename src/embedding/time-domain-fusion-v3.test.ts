@@ -6,6 +6,8 @@ import {
   classifyTimeDomainFusionV3,
   loadTimeDomainFusionAssetV3,
   standardizeTimeDomainFeaturesV3,
+  TIME_DOMAIN_FUSION_CLASSIFIER_ROLE_V3,
+  TIME_DOMAIN_FUSION_REJECTOR_ROLE_V3,
 } from './time-domain-fusion-v3.js';
 
 /**
@@ -59,11 +61,10 @@ const fixture = JSON.parse(fixtureBytes.toString('utf8')) as ProbeFixture;
 const exportManifest = JSON.parse(
   readFileSync(new URL('export-manifest.json', staging), 'utf8'),
 ) as ExportManifest;
-const asset = loadTimeDomainFusionAssetV3(
-  JSON.parse(
-    readFileSync(new URL('time-domain-fusion-weights-v3.json', staging), 'utf8'),
-  ),
-);
+const assetRaw = JSON.parse(
+  readFileSync(new URL('time-domain-fusion-weights-v3.json', staging), 'utf8'),
+) as Record<string, unknown>;
+const asset = loadTimeDomainFusionAssetV3(assetRaw);
 
 const TOLERANCE = fixture.tolerance;
 
@@ -81,6 +82,48 @@ const stageWorst = new Map<string, number>();
 function recordStage(stage: string, error: number): void {
   stageWorst.set(stage, Math.max(stageWorst.get(stage) ?? 0, error));
 }
+
+describe('time-domain v3 fusion runtime roles', () => {
+  it('preserves explicit dual-fusion roles without breaking the legacy asset', () => {
+    expect(asset.runtime_role).toBeUndefined();
+    expect(asset.frontend).toMatchObject({
+      version: 'invariant-patch-time-domain-v1',
+      patch_length: 64,
+      patch_count: 16,
+      target_frac: 0.5,
+      feature_count: 12,
+      uses_frequency_transform: false,
+    });
+    for (const runtimeRole of [
+      TIME_DOMAIN_FUSION_REJECTOR_ROLE_V3,
+      TIME_DOMAIN_FUSION_CLASSIFIER_ROLE_V3,
+    ]) {
+      expect(loadTimeDomainFusionAssetV3({
+        ...assetRaw,
+        runtime_role: runtimeRole,
+      }).runtime_role).toBe(runtimeRole);
+    }
+  });
+
+  it('refuses an unknown or anonymous non-empty role', () => {
+    expect(() => loadTimeDomainFusionAssetV3({
+      ...assetRaw,
+      runtime_role: 'classifier',
+    })).toThrow(/runtime_role/);
+  });
+
+  it('refuses frontend metadata that changes geometry or uses a transform', () => {
+    const frontend = assetRaw.frontend as Record<string, unknown>;
+    expect(() => loadTimeDomainFusionAssetV3({
+      ...assetRaw,
+      frontend: { ...frontend, target_frac: 0 },
+    })).toThrow(/frontend/);
+    expect(() => loadTimeDomainFusionAssetV3({
+      ...assetRaw,
+      frontend: { ...frontend, uses_frequency_transform: true },
+    })).toThrow(/uses_frequency_transform/);
+  });
+});
 
 describe('time-domain v3 probe fixture provenance', () => {
   it('is the schema-tagged v3 fixture with a stated tolerance', () => {

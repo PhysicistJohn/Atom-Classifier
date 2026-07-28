@@ -17,3 +17,4 @@ export * from './recover.js';
 // explicitly named staging package until a sealed release is promoted.
 export * from './time-domain-asset-status-v3.js';
 export * from './time-domain-classifier-v3.js';
+export * from './time-domain-dual-fusion-classifier-v3.js';
