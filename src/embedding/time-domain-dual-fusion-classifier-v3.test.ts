@@ -47,7 +47,7 @@ function rawBinding(
     schema: TIME_DOMAIN_DUAL_FUSION_BINDING_SCHEMA,
     schema_version: 1,
     status,
-    candidate_id: 'v3.3-decoupled-8k-classifier-4k-rejector',
+    candidate_id: 'v3.4-q97-decoupled-8k-classifier-4k-rejector',
     frontend: {
       version: 'invariant-patch-time-domain-v1',
       patch_length: 2,
@@ -95,7 +95,9 @@ function rawBinding(
       report_sha256: VALIDATION_REPORT_SHA,
       role: 'validate',
       status: 'development_openset_pass',
-      novelty_seeds: [20260950, 20260951],
+      design_novelty_seed: 20260955,
+      novelty_seeds: [20260953, 20260954],
+      release_seed_not_spent: 20260736,
     },
     fail_closed: {
       role_assets_bound_by_sha256: true,
@@ -220,7 +222,7 @@ function opensetAsset(options: {
       },
     },
     provenance: {
-      candidate_id: 'v3.3-decoupled-8k-classifier-4k-rejector',
+      candidate_id: 'v3.4-q97-decoupled-8k-classifier-4k-rejector',
       runtime_bundle_manifest_sha256: REJECTOR_RUNTIME_SHA,
       fusion_directory_sha256: REJECTOR_DIRECTORY_SHA,
       staged_validation_report_sha256: VALIDATION_REPORT_SHA,
@@ -466,7 +468,13 @@ describe('dual-fusion role binding', () => {
       raw.validation.report_sha256 = 'c'.repeat(64);
     }],
     ['different validation seeds', (raw: Record<string, any>) => {
-      raw.validation.novelty_seeds = [20260952, 20260953];
+      raw.validation.novelty_seeds = [20260954, 20260953];
+    }],
+    ['different design seed', (raw: Record<string, any>) => {
+      raw.validation.design_novelty_seed = 20260956;
+    }],
+    ['different release seed', (raw: Record<string, any>) => {
+      raw.validation.release_seed_not_spent = 20260737;
     }],
     ['frequency-transform frontend', (raw: Record<string, any>) => {
       raw.frontend.uses_frequency_transform = true;
@@ -673,7 +681,7 @@ describe('dual-fusion execution order and public result', () => {
 });
 
 describe('dual-fusion public factory', () => {
-  it('loads raw JSON through every loader before composing the runtime', () => {
+  it('refuses legacy q95 JSON before composing the q97 runtime', () => {
     const staging = new URL('./assets-v3-staging/', import.meta.url);
     const fusionRaw = JSON.parse(readFileSync(
       new URL('time-domain-fusion-weights-v3.json', staging),
@@ -712,7 +720,7 @@ describe('dual-fusion public factory', () => {
       ...opensetRaw,
       provenance: {
         ...opensetRaw.provenance,
-        candidate_id: 'v3.3-decoupled-8k-classifier-4k-rejector',
+        candidate_id: 'v3.4-q97-decoupled-8k-classifier-4k-rejector',
         runtime_bundle_manifest_sha256: REJECTOR_RUNTIME_SHA,
         fusion_directory_sha256: REJECTOR_DIRECTORY_SHA,
         staged_validation_report_sha256: VALIDATION_REPORT_SHA,
@@ -723,27 +731,21 @@ describe('dual-fusion public factory', () => {
         },
       },
     };
-    const classifier = createTimeDomainDualFusionClassifierV3({
-      bindingAsset: raw,
-      rejectorFusion: {
-        asset: rejectorRaw,
-        preverifiedAssetSha256: REJECTOR_ASSET_SHA,
-      },
-      classifierFusion: {
-        asset: classifierRaw,
-        preverifiedAssetSha256: CLASSIFIER_ASSET_SHA,
-      },
-      opensetPolicy: {
-        asset: roleBoundOpenSetRaw,
-        preverifiedAssetSha256: OPENSET_ASSET_SHA,
-      },
-    });
-    expect(classifier).toBeInstanceOf(TimeDomainDualFusionClassifierV3);
-    expect(classifier.rejectorFusion.runtime_role).toBe(
-      TIME_DOMAIN_FUSION_REJECTOR_ROLE_V3,
-    );
-    expect(classifier.classifierFusion.runtime_role).toBe(
-      TIME_DOMAIN_FUSION_CLASSIFIER_ROLE_V3,
-    );
+    expect(() =>
+      createTimeDomainDualFusionClassifierV3({
+        bindingAsset: raw,
+        rejectorFusion: {
+          asset: rejectorRaw,
+          preverifiedAssetSha256: REJECTOR_ASSET_SHA,
+        },
+        classifierFusion: {
+          asset: classifierRaw,
+          preverifiedAssetSha256: CLASSIFIER_ASSET_SHA,
+        },
+        opensetPolicy: {
+          asset: roleBoundOpenSetRaw,
+          preverifiedAssetSha256: OPENSET_ASSET_SHA,
+        },
+      })).toThrow(/unsupported open-set schema version|staged policy version/);
   });
 });

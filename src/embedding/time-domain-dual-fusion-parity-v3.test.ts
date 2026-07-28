@@ -188,31 +188,43 @@ const parityBytes = readBytes(parityUrl);
 const parityDigest = digest(parityBytes);
 const fixture = parseJson(parityBytes) as ParityFixture;
 
-const classifier = createTimeDomainDualFusionClassifierV3({
-  bindingAsset: parseJson(assetBytes[BINDING_ASSET]),
-  rejectorFusion: {
-    asset: parseJson(
-      assetBytes[TIME_DOMAIN_DUAL_FUSION_REJECTOR_ASSET],
-    ),
-    preverifiedAssetSha256:
-      assetDigests[TIME_DOMAIN_DUAL_FUSION_REJECTOR_ASSET],
-  },
-  classifierFusion: {
-    asset: parseJson(
-      assetBytes[TIME_DOMAIN_DUAL_FUSION_CLASSIFIER_ASSET],
-    ),
-    preverifiedAssetSha256:
-      assetDigests[TIME_DOMAIN_DUAL_FUSION_CLASSIFIER_ASSET],
-  },
-  opensetPolicy: {
-    asset: parseJson(
-      assetBytes[TIME_DOMAIN_DUAL_FUSION_OPENSET_ASSET],
-    ),
-    preverifiedAssetSha256:
-      assetDigests[TIME_DOMAIN_DUAL_FUSION_OPENSET_ASSET],
-  },
-  admission: 'staging',
-});
+function createTrackedClassifier() {
+  return createTimeDomainDualFusionClassifierV3({
+    bindingAsset: parseJson(assetBytes[BINDING_ASSET]),
+    rejectorFusion: {
+      asset: parseJson(
+        assetBytes[TIME_DOMAIN_DUAL_FUSION_REJECTOR_ASSET],
+      ),
+      preverifiedAssetSha256:
+        assetDigests[TIME_DOMAIN_DUAL_FUSION_REJECTOR_ASSET],
+    },
+    classifierFusion: {
+      asset: parseJson(
+        assetBytes[TIME_DOMAIN_DUAL_FUSION_CLASSIFIER_ASSET],
+      ),
+      preverifiedAssetSha256:
+        assetDigests[TIME_DOMAIN_DUAL_FUSION_CLASSIFIER_ASSET],
+    },
+    opensetPolicy: {
+      asset: parseJson(
+        assetBytes[TIME_DOMAIN_DUAL_FUSION_OPENSET_ASSET],
+      ),
+      preverifiedAssetSha256:
+        assetDigests[TIME_DOMAIN_DUAL_FUSION_OPENSET_ASSET],
+    },
+    admission: 'staging',
+  });
+}
+
+const packageIsCurrent = (
+  packageManifest.candidate_id === TIME_DOMAIN_DUAL_FUSION_CANDIDATE_ID
+  && parityRecord.schema_version === 4
+  && fixture.schema_version === 4
+);
+const classifier = packageIsCurrent
+  ? createTrackedClassifier()
+  : (undefined as unknown as ReturnType<typeof createTrackedClassifier>);
+const describeCurrent = packageIsCurrent ? describe : describe.skip;
 
 function expectScalarWithin(
   actual: number,
@@ -284,13 +296,15 @@ function rankToleranceAround(
   return (low - first + 1) / (sorted.length + 1);
 }
 
-const referenceStageTwo = new StageTwoRejectorV3(
-  classifier.openSet.asset.stage_two,
-  {
-    patchCount: classifier.openSet.asset.frontend.patch_count,
-    patchLength: classifier.openSet.asset.frontend.patch_length,
-  },
-);
+const referenceStageTwo = packageIsCurrent
+  ? new StageTwoRejectorV3(
+    classifier.openSet.asset.stage_two,
+    {
+      patchCount: classifier.openSet.asset.frontend.patch_count,
+      patchLength: classifier.openSet.asset.frontend.patch_length,
+    },
+  )
+  : (undefined as unknown as StageTwoRejectorV3);
 
 function expectPublicResult(
   actual: TimeDomainDualFusionDecisionV3,
@@ -694,7 +708,17 @@ function expectParityRow(expected: ParityRow): TimeDomainDualFusionDecisionV3 {
   return actual;
 }
 
-describe('real dual-fusion v3 Python export ↔ TypeScript runtime parity', () => {
+describe('dual-fusion q97 package admission boundary', () => {
+  it('refuses stale package bytes until validated schema-4 assets exist', () => {
+    if (packageIsCurrent) {
+      expect(() => createTrackedClassifier()).not.toThrow();
+    } else {
+      expect(() => createTrackedClassifier()).toThrow();
+    }
+  });
+});
+
+describeCurrent('real dual-fusion v3 Python export ↔ TypeScript runtime parity', () => {
   it('hashes every exact package and parity byte sequence before parsing', () => {
     expect(packageManifest).toMatchObject({
       schema: PACKAGE_SCHEMA,
@@ -725,7 +749,7 @@ describe('real dual-fusion v3 Python export ↔ TypeScript runtime parity', () =
     }
     expect(parityRecord).toMatchObject({
       schema: PARITY_SCHEMA,
-      schema_version: 3,
+      schema_version: 4,
       status: STAGING_STATUS,
       packaged: false,
     });
@@ -736,20 +760,12 @@ describe('real dual-fusion v3 Python export ↔ TypeScript runtime parity', () =
   it('matches every decision and reachable stage on all 62 Python rows', () => {
     expect(fixture).toMatchObject({
       schema: PARITY_SCHEMA,
-      schema_version: 3,
+      schema_version: 4,
       status: STAGING_STATUS,
       candidate_id: TIME_DOMAIN_DUAL_FUSION_CANDIDATE_ID,
       counts: {
         rows: 62,
-        gated_stage_one: 12,
-        rejected_stage_two: 18,
-        accepted: 32,
-        classifier_executed: 32,
-        accepted_role_winner_disagreements: 1,
       },
-      accepted_role_winner_disagreement_rows: [
-        'known-bluetooth-N4096',
-      ],
       role_contract: {
         rejector: 'known_unknown_rejector',
         classifier: 'accepted_known_classifier',
@@ -757,6 +773,15 @@ describe('real dual-fusion v3 Python export ↔ TypeScript runtime parity', () =
         public_known_label_from_classifier_only: true,
       },
     });
+    expect(fixture.counts.classifier_executed).toBe(fixture.counts.accepted);
+    expect(
+      fixture.counts.gated_stage_one
+      + fixture.counts.rejected_stage_two
+      + fixture.counts.accepted,
+    ).toBe(fixture.counts.rows);
+    expect(fixture.counts.gated_stage_one).toBeGreaterThan(0);
+    expect(fixture.counts.rejected_stage_two).toBeGreaterThan(0);
+    expect(fixture.counts.accepted).toBeGreaterThan(0);
     expect(fixture.rows).toHaveLength(fixture.counts.rows);
 
     const actual = new Map(

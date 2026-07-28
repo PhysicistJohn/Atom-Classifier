@@ -165,6 +165,32 @@ class KnownOnlyPolicyTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             FrozenV3OpenSet.from_payload(payload)
 
+    def test_inner_q95_is_derived_from_combined_calibration(self):
+        train, train_y, enroll, enroll_y, enroll_v2 = self._fixture()
+        fitted = FrozenV3OpenSet.fit(
+            train,
+            train_y,
+            enroll,
+            enroll_y,
+            enroll_v2,
+            n_classes=3,
+        )
+        payload = fitted.to_payload()
+        payload["geometry_calibration_raw"] = np.asarray(
+            [0.1, 0.2, 0.4, 0.8], dtype=np.float64
+        )
+        payload["combined_calibration_raw"] = np.asarray(
+            [0.1, 0.2, 0.4, 0.8], dtype=np.float64
+        )
+        # These fabricated scores have q95=.685, but the raw calibration's
+        # actual searchsorted-left self-ranks are [0,.2,.4,.6], q95=.57.
+        payload["calibration_scores"] = np.asarray(
+            [0.0, 0.5, 0.6, 0.7], dtype=np.float64
+        )
+        payload["threshold"] = np.asarray(0.685, dtype=np.float64)
+        with self.assertRaisesRegex(ValueError, "empirical self-ranks"):
+            FrozenV3OpenSet.from_payload(payload)
+
     def test_aggregate_deviation_reducers(self):
         value = np.asarray(((1.0, 2.0), (3.0, 4.0)))
         index = np.asarray((0, 1))

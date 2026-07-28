@@ -17,19 +17,19 @@
  *   the frozen additive policy for survivors. Branch LOF ranks (real k=2
  *   weight 0.40, complex k=64 weight 0.60) are blended 0.80/0.20 with the
  *   `across_patch_frequency_dispersion` class-deviation rank and re-ranked
- *   against enrollment; stage-2 internals are untouched by policy version 2.
- * - COMPOSITE (staged policy VERSION 2, the HANDOFF 25 follow-up): a stage-1
+ *   against enrollment; stage-2 remains the untouched q95 policy.
+ * - COMPOSITE (staged policy VERSION 4 / q97): a stage-1
  *   survivor's open-set score is
  *   `max(stage2_enrollment_rank, stage1_score_enrollment_rank)`, where the
  *   stage-1 term is the empirical enrollment rank (searchsorted-left, the
  *   stage-2 convention) of the stage-1 logistic log-odds against a
  *   calibration fit on ENROLLMENT stage-1 SURVIVORS only. The staged unknown
- *   threshold is the frozen q95 of that composite over enrollment survivors.
+ *   threshold is the frozen q97 of that composite over enrollment survivors.
  *   Gated rows keep the existing `1 + softsign(stage-1 log-odds)` axis in
  *   (1, 2), above every survivor. Version 1 (survivor score = stage-2 rank
- *   alone, stage-2 q95 threshold) was sealed at release seed 20260731 and
- *   its failure is frozen; this module refuses any asset whose recorded
- *   policy version is not the current frozen one.
+ *   alone, stage-2 q95 threshold), version 2 (composite q95), and the failed
+ *   version 3 (composite q99) remain historical evidence only; this module
+ *   refuses every asset whose recorded policy version is not current q97.
  *
  * ARCHITECTURE CONTRACT CHANGE (HANDOFF 20.4), machine-readable here as in
  * Python: the historical rejector was strictly additive; the staged system is
@@ -59,37 +59,53 @@ import {
 
 export const TIME_DOMAIN_OPENSET_SCHEMA =
   'atomos.v3.time-domain-openset.staged' as const;
-export const TIME_DOMAIN_OPENSET_SCHEMA_VERSION = 2 as const;
+export const TIME_DOMAIN_OPENSET_SCHEMA_VERSION = 4 as const;
 
 export const NOISE_PREFILTER_VERSION = 'noise-prefilter-v1' as const;
 
 /**
  * Mirror of the `fit_v3_openset_staged` STAGED POLICY frozen-constants block,
- * VERSION 2 (the composite survivor score). An asset recording any other
- * `policy_version` is refused at load: a version-1 artifact must not be able
- * to score with version-2 semantics or vice versa.
+ * VERSION 4 (the q97 composite survivor score). An asset recording legacy
+ * q95 or failed q99 semantics is refused at load.
  */
-export const STAGED_POLICY_SCHEMA = 2 as const;
+export const STAGED_POLICY_SCHEMA = 4 as const;
 export const STAGED_POLICY_VERSION =
-  'v3-staged-openset-policy-v2-composite-survivor' as const;
+  'v3-staged-openset-policy-v4-composite-survivor-q97' as const;
 export const STAGED_POLICY_KIND =
-  'v3_staged_noise_prefilter_then_composite_survivor_lof_geometry' as const;
+  'v3_staged_noise_prefilter_then_q97_composite_survivor_lof_geometry' as const;
 /** Mirror of `fit_v3_openset_staged.COMPOSITE_SURVIVOR_SCORE`. */
 export const COMPOSITE_SURVIVOR_SCORE =
   'max(stage2_enrollment_rank, stage1_score_enrollment_rank)' as const;
+/** The untouched inner stage-2 q95 policy kind. */
+export const FROZEN_STAGE_TWO_POLICY_KIND =
+  'v3_known_only_lof_frequency_dispersion_rank_blend' as const;
 
 /** Mirror of `v3_time_domain_openset` frozen constants. Never tuned here. */
 export const FROZEN_BRANCH_LOF_RANK_WEIGHT = 0.8;
 export const FROZEN_GEOMETRY_WEIGHT = 0.2;
 export const FROZEN_THRESHOLD_QUANTILE = 0.95;
 /**
- * The composite threshold quantile is the SAME frozen quantile stage 2 uses,
- * aliased exactly as Python aliases it (`COMPOSITE_THRESHOLD_QUANTILE =
- * THRESHOLD_QUANTILE`), never re-typed.
+ * The outer composite uses the predeclared q97 operating point. Stage two
+ * independently remains q95.
  */
-export const COMPOSITE_THRESHOLD_QUANTILE = FROZEN_THRESHOLD_QUANTILE;
+export const COMPOSITE_THRESHOLD_QUANTILE = 0.97 as const;
+export const STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET = 0.01 as const;
+export const SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET =
+  1 - COMPOSITE_THRESHOLD_QUANTILE;
+export const NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET =
+  STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+  + (1 - STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET)
+    * SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET;
+export const COMPOSITE_THRESHOLD_POPULATION =
+  'enrollment_stage_one_survivors_only' as const;
+export const COMPOSITE_ONLY_POLICY_CHANGE =
+  'composite survivor enrollment threshold quantile q99 -> q97' as const;
 export const FROZEN_GEOMETRY_FEATURE =
   'across_patch_frequency_dispersion' as const;
+const FROZEN_STAGE_TWO_BRANCH_CONTRACT = {
+  real: { weight: 0.4, neighbors: 2 },
+  complex: { weight: 0.6, neighbors: 64 },
+} as const;
 
 /** Mirror of `fit_v3_openset_staged.STAGE_ONE_SCORE_OFFSET`. */
 export const STAGE_ONE_SCORE_OFFSET = 1.0;
@@ -748,7 +764,7 @@ export interface StageTwoPolicyAsset {
 }
 
 export interface StageTwoAsset {
-  kind: typeof STAGED_POLICY_KIND;
+  kind: typeof FROZEN_STAGE_TWO_POLICY_KIND;
   lof_components: StageTwoLofComponentAsset[];
   policy: StageTwoPolicyAsset;
 }
@@ -774,7 +790,7 @@ export interface StageTwoEvaluation {
   /**
    * The stage-2 policy's OWN enrollment q95, recorded for cross-checks
    * exactly as Python records `stage_two_threshold`. Under staged policy
-   * version 2 the survivor DECISION compares the COMPOSITE against the
+   * version 4 the survivor DECISION compares the COMPOSITE against the
    * composite threshold, never this value.
    */
   threshold: number;
@@ -942,10 +958,22 @@ export class StageTwoRejectorV3 {
     asset: StageTwoAsset,
     frontend: { patchCount: number; patchLength: number },
   ) {
-    if (asset.kind !== STAGED_POLICY_KIND) {
-      throw new RangeError(`stage two kind must be ${STAGED_POLICY_KIND}`);
+    if (typeof asset !== 'object' || asset === null || Array.isArray(asset)) {
+      throw new TypeError('stage two asset must be an object');
+    }
+    if (asset.kind !== FROZEN_STAGE_TWO_POLICY_KIND) {
+      throw new RangeError(
+        `stage two kind must be ${FROZEN_STAGE_TWO_POLICY_KIND}`,
+      );
     }
     const policy = asset.policy;
+    if (
+      typeof policy !== 'object'
+      || policy === null
+      || Array.isArray(policy)
+    ) {
+      throw new TypeError('stage two policy must be an object');
+    }
     if (policy.branch_lof_rank_weight !== FROZEN_BRANCH_LOF_RANK_WEIGHT) {
       throw new RangeError('stage two branch LOF rank weight is not the frozen 0.80');
     }
@@ -968,7 +996,9 @@ export class StageTwoRejectorV3 {
       throw new RangeError('stage two threshold must lie in [0, 1)');
     }
     if (
-      policy.class_geometry_mean.length === 0
+      !Array.isArray(policy.class_geometry_mean)
+      || !Array.isArray(policy.class_geometry_scale)
+      || policy.class_geometry_mean.length === 0
       || policy.class_geometry_mean.length !== policy.class_geometry_scale.length
       || policy.class_geometry_scale.some(
         (value) => !Number.isFinite(value) || value <= 0,
@@ -979,7 +1009,7 @@ export class StageTwoRejectorV3 {
     }
     for (const name of ['geometry_calibration', 'combined_calibration'] as const) {
       const values = policy[name];
-      if (values.length === 0) {
+      if (!Array.isArray(values) || values.length === 0) {
         throw new RangeError(`stage two ${name} cannot be empty`);
       }
       for (let index = 0; index < values.length; index++) {
@@ -991,12 +1021,22 @@ export class StageTwoRejectorV3 {
         }
       }
     }
-    if (asset.lof_components.length === 0) {
+    if (
+      !Array.isArray(asset.lof_components)
+      || asset.lof_components.length === 0
+    ) {
       throw new RangeError('stage two needs at least one LOF component');
     }
     let totalWeight = 0;
     const seen = new Set<string>();
     for (const component of asset.lof_components) {
+      if (
+        typeof component !== 'object'
+        || component === null
+        || Array.isArray(component)
+      ) {
+        throw new TypeError('LOF component must be an object');
+      }
       if (component.branch !== 'real' && component.branch !== 'complex') {
         throw new RangeError('LOF component branch must be real or complex');
       }
@@ -1004,16 +1044,113 @@ export class StageTwoRejectorV3 {
         throw new RangeError(`duplicate LOF component for ${component.branch}`);
       }
       seen.add(component.branch);
-      if (!(component.weight > 0) || !Number.isInteger(component.neighbors)) {
-        throw new RangeError('LOF component weight/neighbors are invalid');
+      const frozen = FROZEN_STAGE_TWO_BRANCH_CONTRACT[component.branch];
+      if (
+        component.weight !== frozen.weight
+        || component.neighbors !== frozen.neighbors
+      ) {
+        throw new RangeError(
+          `${component.branch} LOF must use frozen weight ${frozen.weight} `
+          + `and neighbors ${frozen.neighbors}`,
+        );
+      }
+      if (
+        !Array.isArray(component.mean)
+        || !Array.isArray(component.scale)
+        || component.mean.length === 0
+        || component.scale.length !== component.mean.length
+        || component.mean.some((value) => !Number.isFinite(value))
+        || component.scale.some(
+          (value) => !Number.isFinite(value) || value <= 0,
+        )
+      ) {
+        throw new RangeError(
+          `${component.branch} LOF mean/scale arrays are invalid`,
+        );
+      }
+      const dimensions = component.mean.length;
+      if (
+        !Array.isArray(component.reference)
+        || !Array.isArray(component.reference_k_distance)
+        || !Array.isArray(component.reference_local_density)
+        || !Array.isArray(component.calibration)
+      ) {
+        throw new RangeError(
+          `${component.branch} LOF reference/calibration arrays are invalid`,
+        );
       }
       if (component.reference.length <= component.neighbors) {
         throw new RangeError('LOF reference must contain more rows than neighbors');
       }
+      for (let row = 0; row < component.reference.length; row++) {
+        const reference = component.reference[row];
+        if (
+          !Array.isArray(reference)
+          || reference.length !== dimensions
+          || reference.some((value) => !Number.isFinite(value))
+        ) {
+          throw new RangeError(
+            `${component.branch} LOF reference row ${row} is invalid`,
+          );
+        }
+      }
+      if (
+        component.reference_k_distance.length !== component.reference.length
+        || component.reference_k_distance.some(
+          (value) => !Number.isFinite(value) || value < 0,
+        )
+        || component.reference_local_density.length
+          !== component.reference.length
+        || component.reference_local_density.some(
+          (value) => !Number.isFinite(value) || value <= 0,
+        )
+      ) {
+        throw new RangeError(
+          `${component.branch} LOF reference statistics are invalid`,
+        );
+      }
+      if (component.calibration.length === 0) {
+        throw new RangeError(
+          `${component.branch} LOF calibration cannot be empty`,
+        );
+      }
+      for (let index = 0; index < component.calibration.length; index++) {
+        const value = component.calibration[index]!;
+        if (
+          !Number.isFinite(value)
+          || (
+            index > 0
+            && value < component.calibration[index - 1]!
+          )
+        ) {
+          throw new RangeError(
+            `${component.branch} LOF calibration must be sorted and finite`,
+          );
+        }
+      }
       totalWeight += component.weight;
+    }
+    if (!seen.has('real') || !seen.has('complex') || seen.size !== 2) {
+      throw new RangeError(
+        'stage two needs exactly the frozen real and complex LOF components',
+      );
     }
     if (Math.abs(totalWeight - 1) > 1e-9) {
       throw new RangeError('LOF component weights must sum to one');
+    }
+    const calibrationScores = policy.combined_calibration.map(
+      (value) => empiricalRank(policy.combined_calibration, value),
+    );
+    const expectedThreshold = numpyLinearQuantile(
+      calibrationScores,
+      FROZEN_THRESHOLD_QUANTILE,
+    );
+    if (policy.threshold !== expectedThreshold) {
+      throw new RangeError(
+        `stored stage-two q95 threshold ${policy.threshold} does not equal `
+        + 'the frozen q95 of ranks derived from combined_calibration '
+        + `(${expectedThreshold})`,
+      );
     }
     this.asset = asset;
     this.patchCount = frontend.patchCount;
@@ -1094,7 +1231,7 @@ export class StageTwoRejectorV3 {
 }
 
 // ---------------------------------------------------------------------------
-// the COMPOSITE survivor policy (staged policy version 2)
+// the COMPOSITE survivor policy (staged policy version 4 / q97)
 // ---------------------------------------------------------------------------
 
 /**
@@ -1108,7 +1245,7 @@ export interface CompositeSurvivorPolicyAsset {
   policy_version: string;
   survivor_score: string;
   threshold_quantile: number;
-  /** The staged decision threshold: q95 of the enrollment-survivor composite. */
+  /** The staged decision threshold: q97 of the enrollment-survivor composite. */
   threshold: number;
   /** The stage-2 policy's own untouched enrollment q95, for cross-checks. */
   stage_two_threshold: number;
@@ -1119,6 +1256,19 @@ export interface CompositeSurvivorPolicyAsset {
   enrollment_rows: number;
   enrollment_gated_rows: number;
   enrollment_capture_length: number;
+  threshold_population: typeof COMPOSITE_THRESHOLD_POPULATION;
+  training_rows_used_for_threshold: 0;
+  selection_rows_used_for_threshold: 0;
+  novelty_rows_used_for_threshold: 0;
+  release_rows_used_for_threshold: 0;
+  stage_one_known_false_positive_budget: number;
+  survivor_known_false_positive_budget: number;
+  nominal_enrollment_false_unknown_budget: number;
+  only_policy_change: typeof COMPOSITE_ONLY_POLICY_CHANGE;
+  stage_one_changed: false;
+  rejector_cnn_fusion_changed: false;
+  classifier_cnn_fusion_changed: false;
+  gate_contract_changed: false;
 }
 
 /**
@@ -1163,8 +1313,8 @@ function assertSortedFinite(values: number[], name: string): void {
 /**
  * The frozen composite survivor policy (`CompositeSurvivorPolicy`), validated
  * exactly as `fit_v3_openset_staged.load_composite_policy` validates it,
- * INCLUDING the policy-version refusal: a version-1 artifact must not be able
- * to score with version-2 semantics or vice versa.
+ * INCLUDING the policy-version and hygiene refusal: legacy q95 and failed q99
+ * artifacts must not be able to score with q97 semantics.
  */
 export class CompositeSurvivorPolicyV3 {
   readonly asset: CompositeSurvivorPolicyAsset;
@@ -1194,6 +1344,39 @@ export class CompositeSurvivorPolicyV3 {
         `composite threshold_quantile ${asset.threshold_quantile} is not the `
         + `frozen ${COMPOSITE_THRESHOLD_QUANTILE}`,
       );
+    }
+    const exactHygiene: ReadonlyArray<
+      readonly [keyof CompositeSurvivorPolicyAsset, unknown]
+    > = [
+      ['threshold_population', COMPOSITE_THRESHOLD_POPULATION],
+      ['training_rows_used_for_threshold', 0],
+      ['selection_rows_used_for_threshold', 0],
+      ['novelty_rows_used_for_threshold', 0],
+      ['release_rows_used_for_threshold', 0],
+      [
+        'stage_one_known_false_positive_budget',
+        STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET,
+      ],
+      [
+        'survivor_known_false_positive_budget',
+        SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET,
+      ],
+      [
+        'nominal_enrollment_false_unknown_budget',
+        NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET,
+      ],
+      ['only_policy_change', COMPOSITE_ONLY_POLICY_CHANGE],
+      ['stage_one_changed', false],
+      ['rejector_cnn_fusion_changed', false],
+      ['classifier_cnn_fusion_changed', false],
+      ['gate_contract_changed', false],
+    ];
+    for (const [name, expected] of exactHygiene) {
+      if (asset[name] !== expected) {
+        throw new RangeError(
+          `composite ${String(name)} must be ${JSON.stringify(expected)}`,
+        );
+      }
     }
     assertSortedFinite(
       asset.stage_one_calibration_raw,
@@ -1293,14 +1476,16 @@ export interface TimeDomainOpenSetAssetV3 {
   status: TimeDomainAssetStatusV3;
   contract: StagedArchitectureContract;
   frontend: {
+    version: 'invariant-patch-time-domain-v1';
     patch_length: number;
     patch_count: number;
     target_frac: number;
     packed_length: number;
+    uses_frequency_transform: false;
   };
   stage_one: StageOneAsset;
   stage_two: StageTwoAsset;
-  /** Staged policy version 2: the composite survivor score and threshold. */
+  /** Staged policy version 4: the q97 composite survivor score and threshold. */
   composite: CompositeSurvivorPolicyAsset;
   provenance?: unknown;
 }
@@ -1343,6 +1528,8 @@ export function loadTimeDomainOpenSetAssetV3(
   if (
     frontend === null
     || typeof frontend !== 'object'
+    || frontend.version !== 'invariant-patch-time-domain-v1'
+    || frontend.uses_frequency_transform !== false
     || !Number.isInteger(frontend.patch_length)
     || !Number.isInteger(frontend.patch_count)
     || frontend.patch_length <= 0
@@ -1398,13 +1585,13 @@ export interface StagedOpenSetDecision {
    */
   compositeScore: number | null;
   /**
-   * Single staged axis (`STAGED_SCORE_NOTE`, staged policy version 2):
+   * Single staged axis (`STAGED_SCORE_NOTE`, staged policy version 4):
    * survivors carry their COMPOSITE in [0, 1); gated rows land at
    * 1 + softsign(stage-1 log-odds) in (1, 2), above every survivor.
    * `stagedScore > threshold` is exactly the staged rejection decision.
    */
   stagedScore: number;
-  /** The composite threshold: frozen q95 over enrollment survivors. */
+  /** The composite threshold: frozen q97 over enrollment survivors. */
   threshold: number;
   contract: StagedArchitectureContract;
 }
@@ -1468,7 +1655,7 @@ export class TimeDomainOpenSetV3 {
   /**
    * Compose the final decision for a stage-1 survivor: the unchanged stage-2
    * path, then the composite `max(stage2_enrollment_rank,
-   * stage1_score_enrollment_rank)` against the composite q95 threshold.
+   * stage1_score_enrollment_rank)` against the composite q97 threshold.
    */
   finishSurvivor(
     stageOne: StageOneEvaluation,

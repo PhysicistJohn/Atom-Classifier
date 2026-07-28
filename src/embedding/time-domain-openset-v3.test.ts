@@ -3,13 +3,25 @@ import { describe, expect, it } from 'vitest';
 import {
   COMPOSITE_SURVIVOR_SCORE,
   COMPOSITE_THRESHOLD_QUANTILE,
+  COMPOSITE_ONLY_POLICY_CHANGE,
+  COMPOSITE_THRESHOLD_POPULATION,
   CompositeSurvivorPolicyV3,
   FROZEN_BRANCH_LOF_RANK_WEIGHT,
+  FROZEN_GEOMETRY_FEATURE,
   FROZEN_GEOMETRY_WEIGHT,
+  FROZEN_STAGE_TWO_POLICY_KIND,
+  FROZEN_THRESHOLD_QUANTILE,
+  NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET,
+  NOISE_PREFILTER_VERSION,
+  PREFILTER_FEATURE_NAMES,
   STAGE_ONE_SCORE_OFFSET,
+  STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET,
   STAGED_POLICY_KIND,
   STAGED_POLICY_SCHEMA,
   STAGED_POLICY_VERSION,
+  SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET,
+  TIME_DOMAIN_OPENSET_SCHEMA,
+  TIME_DOMAIN_OPENSET_SCHEMA_VERSION,
   StageOneGateV3,
   StageTwoRejectorV3,
   TimeDomainOpenSetV3,
@@ -22,6 +34,7 @@ import {
   stagedArchitectureContract,
   type CompositeSurvivorPolicyAsset,
   type StageOneEvaluation,
+  type StageTwoAsset,
   type TimeDomainOpenSetAssetV3,
 } from './time-domain-openset-v3.js';
 import {
@@ -70,7 +83,7 @@ interface FixtureRow {
   raw_features: number[];
   standardized_features: number[];
   stage_two: FixtureStageTwo | null;
-  /** Null exactly when gated (staged policy version 2 survivor terms). */
+  /** Null exactly when gated (staged policy version 4 survivor terms). */
   stage_one_survivor_rank: number | null;
   composite_score: number | null;
   staged_threshold: number;
@@ -98,18 +111,52 @@ interface ParityFixture {
   rows: FixtureRow[];
 }
 
-// Tests consume the tracked runtime package, never mutable gitignored training
-// output. The compact fixture preserves both fitted lengths and all decisions.
-const staging = new URL('./assets-v3-staging/', import.meta.url);
+// Tests consume the tracked dual runtime package. Until a validated v3.4/q97
+// package exists, the old package is explicitly refused and real parity stays
+// skipped; synthetic schema-4 unit tests below continue to run.
+const staging = new URL('./assets-v3-dual-staging/', import.meta.url);
+const packageManifest = JSON.parse(
+  readFileSync(new URL('runtime-package-manifest.json', staging), 'utf8'),
+) as {
+  candidate_id: string;
+  external_evidence: { parity: { path: string } };
+};
 const rawAsset = JSON.parse(
-  readFileSync(new URL('time-domain-openset-weights-v1.json', staging), 'utf8'),
+  readFileSync(new URL('time-domain-v3-openset-policy.json', staging), 'utf8'),
 ) as unknown;
 const fixture = JSON.parse(
-  readFileSync(new URL('time-domain-openset-smoke-v1.json', staging), 'utf8'),
+  readFileSync(
+    new URL(packageManifest.external_evidence.parity.path, staging),
+    'utf8',
+  ),
 ) as ParityFixture;
 
-const asset: TimeDomainOpenSetAssetV3 = loadTimeDomainOpenSetAssetV3(rawAsset);
-const openSet = new TimeDomainOpenSetV3(asset);
+const candidateId = 'v3.4-q97-decoupled-8k-classifier-4k-rejector';
+const assetsAreCurrent = (
+  packageManifest.candidate_id === candidateId
+  && (rawAsset as { schema_version?: unknown }).schema_version
+    === TIME_DOMAIN_OPENSET_SCHEMA_VERSION
+  && fixture.schema_version === 4
+);
+const loadedAsset = assetsAreCurrent
+  ? loadTimeDomainOpenSetAssetV3(rawAsset)
+  : null;
+const legacyAssetForSkippedTests = rawAsset as TimeDomainOpenSetAssetV3;
+const asset = (
+  loadedAsset
+  ?? {
+    ...legacyAssetForSkippedTests,
+    stage_two: {
+      ...legacyAssetForSkippedTests.stage_two,
+      kind: FROZEN_STAGE_TWO_POLICY_KIND,
+    },
+  }
+) as TimeDomainOpenSetAssetV3;
+const openSet = loadedAsset === null
+  ? (undefined as unknown as TimeDomainOpenSetV3)
+  : new TimeDomainOpenSetV3(loadedAsset);
+const describeCurrent = assetsAreCurrent ? describe : describe.skip;
+const itCurrent = assetsAreCurrent ? it : it.skip;
 
 function maxAbsDelta(actual: ArrayLike<number>, expected: number[]): number {
   expect(actual.length).toBe(expected.length);
@@ -120,7 +167,17 @@ function maxAbsDelta(actual: ArrayLike<number>, expected: number[]): number {
   return worst;
 }
 
-describe('time-domain openset v3 asset', () => {
+describe('time-domain openset v3 asset admission boundary', () => {
+  it('refuses stale q95/q99 assets until validated q97 assets exist', () => {
+    if (assetsAreCurrent) {
+      expect(() => loadTimeDomainOpenSetAssetV3(rawAsset)).not.toThrow();
+    } else {
+      expect(() => loadTimeDomainOpenSetAssetV3(rawAsset)).toThrow();
+    }
+  });
+});
+
+describeCurrent('time-domain openset v3 asset', () => {
   it('carries the staged architecture contract keys', () => {
     expect(asset.contract.additive_only).toBe(false);
     expect(asset.contract.changes_closed_label).toBe(true);
@@ -157,6 +214,7 @@ describe('time-domain openset v3 asset', () => {
   });
 
   it('pins the frozen policy constants', () => {
+    expect(asset.stage_two.kind).toBe(FROZEN_STAGE_TWO_POLICY_KIND);
     expect(asset.stage_two.policy.branch_lof_rank_weight).toBe(
       FROZEN_BRANCH_LOF_RANK_WEIGHT,
     );
@@ -173,13 +231,16 @@ describe('time-domain openset v3 asset', () => {
     ]);
   });
 
-  it('pins the staged composite policy (version 2)', () => {
+  it('pins the staged composite policy (version 4 / q97)', () => {
     expect(asset.composite.policy_version).toBe(STAGED_POLICY_VERSION);
     expect(asset.composite.kind).toBe(STAGED_POLICY_KIND);
     expect(asset.composite.schema).toBe(STAGED_POLICY_SCHEMA);
     expect(asset.composite.survivor_score).toBe(COMPOSITE_SURVIVOR_SCORE);
     expect(asset.composite.threshold_quantile).toBe(
       COMPOSITE_THRESHOLD_QUANTILE,
+    );
+    expect(asset.composite.threshold_population).toBe(
+      COMPOSITE_THRESHOLD_POPULATION,
     );
     // The composite was fit against exactly this stage-2 state.
     expect(asset.composite.stage_two_threshold).toBe(
@@ -190,12 +251,42 @@ describe('time-domain openset v3 asset', () => {
     expect(fixture.policy_version).toBe(STAGED_POLICY_VERSION);
   });
 
-  it('refuses an asset recording a different staged policy version', () => {
+  it.each([
+    [
+      'legacy q95',
+      2,
+      'v3-staged-openset-policy-v2-composite-survivor',
+      'v3_staged_noise_prefilter_then_composite_survivor_lof_geometry',
+      0.95,
+    ],
+    [
+      'failed q99',
+      3,
+      'v3-staged-openset-policy-v3-composite-survivor-q99',
+      'v3_staged_noise_prefilter_then_q99_composite_survivor_lof_geometry',
+      0.99,
+    ],
+  ])('refuses %s policy semantics', (
+    _label,
+    schema,
+    policyVersion,
+    kind,
+    quantile,
+  ) => {
     const broken = JSON.parse(JSON.stringify(asset)) as {
-      composite: { policy_version: string };
+      composite: {
+        schema: number;
+        policy_version: string;
+        kind: string;
+        threshold_quantile: number;
+      };
     };
-    broken.composite.policy_version =
-      'v3-staged-openset-policy-v1-stage2-only';
+    Object.assign(broken.composite, {
+      schema,
+      policy_version: policyVersion,
+      kind,
+      threshold_quantile: quantile,
+    });
     expect(() => loadTimeDomainOpenSetAssetV3(broken)).toThrow(
       /staged policy version mismatch/,
     );
@@ -237,7 +328,7 @@ describe('numpy linear quantile primitive', () => {
     expect(numpyLinearQuantile([1, 2], 1.0)).toBe(2);
   });
 
-  it('reproduces the asset threshold from the asset calibration exactly', () => {
+  itCurrent('reproduces the asset threshold from the asset calibration exactly', () => {
     expect(
       numpyLinearQuantile(
         asset.composite.composite_calibration_raw,
@@ -247,7 +338,7 @@ describe('numpy linear quantile primitive', () => {
   });
 });
 
-describe('stage-1 parity: pose-degeneracy prefilter', () => {
+describeCurrent('stage-1 parity: pose-degeneracy prefilter', () => {
   it('reproduces features, scores, and every gate decision', () => {
     let worstFeature = 0;
     let worstScore = 0;
@@ -327,7 +418,7 @@ function rankToleranceAround(
 
 const GEOMETRY_DEVIATION_RADIUS = 1e-9;
 
-describe('stage-2 parity: branch LOF + frozen geometry blend', () => {
+describeCurrent('stage-2 parity: branch LOF + frozen geometry blend', () => {
   const rejector = new StageTwoRejectorV3(asset.stage_two, {
     patchCount: asset.frontend.patch_count,
     patchLength: asset.frontend.patch_length,
@@ -402,7 +493,7 @@ describe('stage-2 parity: branch LOF + frozen geometry blend', () => {
         `${row.name} stage-2 score (bound ${scoreBound})`,
       ).toBeLessThanOrEqual(scoreBound);
       // The stage-2 threshold is recorded for cross-checks only; the staged
-      // decision is made on the composite (staged policy version 2).
+      // decision is made on the outer q97 composite (staged policy version 4).
       expect(evaluation.threshold).toBe(expected.threshold);
     }
     expect(worstRawRelative).toBeLessThanOrEqual(1e-9);
@@ -437,7 +528,7 @@ describe('stage-2 parity: branch LOF + frozen geometry blend', () => {
   });
 });
 
-describe('staged decision parity', () => {
+describeCurrent('staged decision parity', () => {
   it('matches the Python staged decision INCLUDING which stage rejected', () => {
     for (const row of fixture.rows) {
       const stageOne = openSet.evaluateStageOne(
@@ -461,12 +552,12 @@ describe('staged decision parity', () => {
         row.rejected_stage,
       );
       expect(decision.gated).toBe(row.rejected_stage === 1);
-      // The decision threshold is the composite q95, on every row.
+      // The decision threshold is the composite q97, on every row.
       expect(decision.threshold).toBe(row.staged_threshold);
       expect(decision.threshold).toBe(asset.composite.threshold);
       if (row.rejected_stage === 1) {
         // Gated rows have no stage-2 score at all: the short circuit is
-        // real, and the gated axis is unchanged by policy version 2.
+        // real, and the gated axis is unchanged by staged policy version 4.
         expect(decision.stageTwo).toBeNull();
         expect(decision.stageOneSurvivorRank).toBeNull();
         expect(decision.compositeScore).toBeNull();
@@ -551,7 +642,7 @@ describe('staged decision parity', () => {
   });
 });
 
-describe('stage-1 causal-prefix rule for long captures', () => {
+describeCurrent('stage-1 causal-prefix rule for long captures', () => {
   const gate = new StageOneGateV3(asset.stage_one, {
     patchLength: asset.frontend.patch_length,
     targetFrac: asset.frontend.target_frac,
@@ -736,6 +827,216 @@ describe('empirical rank primitive', () => {
   });
 });
 
+describe('separate stage-two q95 contract', () => {
+  function syntheticStageTwo(): StageTwoAsset {
+    const component = (
+      branch: 'real' | 'complex',
+      weight: number,
+      neighbors: number,
+    ) => ({
+      branch,
+      weight,
+      neighbors,
+      mean: [0],
+      scale: [1],
+      reference: Array.from({ length: 66 }, (_, index) => [index]),
+      reference_k_distance: Array.from({ length: 66 }, () => 1),
+      reference_local_density: Array.from({ length: 66 }, () => 1),
+      calibration: [0.5, 1],
+    });
+    const combinedCalibration = [0.1, 0.2, 0.4, 0.8];
+    const derivedScores = combinedCalibration.map(
+      (value) => empiricalRank(combinedCalibration, value),
+    );
+    return {
+      kind: FROZEN_STAGE_TWO_POLICY_KIND,
+      lof_components: [
+        component('real', 0.4, 2),
+        component('complex', 0.6, 64),
+      ],
+      policy: {
+        branch_lof_rank_weight: FROZEN_BRANCH_LOF_RANK_WEIGHT,
+        geometry_weight: FROZEN_GEOMETRY_WEIGHT,
+        threshold_quantile: FROZEN_THRESHOLD_QUANTILE,
+        threshold: numpyLinearQuantile(
+          derivedScores,
+          FROZEN_THRESHOLD_QUANTILE,
+        ),
+        geometry_feature: FROZEN_GEOMETRY_FEATURE,
+        class_geometry_mean: [0],
+        class_geometry_scale: [1],
+        geometry_calibration: [0, 1],
+        combined_calibration: combinedCalibration,
+      },
+    };
+  }
+
+  function syntheticOpenSetAsset(): TimeDomainOpenSetAssetV3 {
+    const compositeCalibration = [0, 0.2, 0.4, 0.6];
+    const stageTwo = syntheticStageTwo();
+    return {
+      schema: TIME_DOMAIN_OPENSET_SCHEMA,
+      schema_version: TIME_DOMAIN_OPENSET_SCHEMA_VERSION,
+      status: 'staging_not_release',
+      contract: stagedArchitectureContract(),
+      frontend: {
+        version: 'invariant-patch-time-domain-v1',
+        patch_length: 2,
+        patch_count: 2,
+        target_frac: 0.5,
+        packed_length: 4,
+        uses_frequency_transform: false,
+      },
+      stage_one: {
+        kind: NOISE_PREFILTER_VERSION,
+        feature_names: [...PREFILTER_FEATURE_NAMES],
+        match_frontend_min_bandwidth: true,
+        models: {
+          '4': {
+            capture_length: 4,
+            feature_names: [...PREFILTER_FEATURE_NAMES],
+            mean: Array.from({ length: PREFILTER_FEATURE_NAMES.length }, () => 0),
+            scale: Array.from({ length: PREFILTER_FEATURE_NAMES.length }, () => 1),
+            coefficients: Array.from(
+              { length: PREFILTER_FEATURE_NAMES.length },
+              () => 0,
+            ),
+            intercept: 0,
+            threshold_score: 0,
+          },
+        },
+      },
+      stage_two: stageTwo,
+      composite: {
+        schema: STAGED_POLICY_SCHEMA,
+        kind: STAGED_POLICY_KIND,
+        policy_version: STAGED_POLICY_VERSION,
+        survivor_score: COMPOSITE_SURVIVOR_SCORE,
+        threshold_quantile: COMPOSITE_THRESHOLD_QUANTILE,
+        threshold: numpyLinearQuantile(
+          compositeCalibration,
+          COMPOSITE_THRESHOLD_QUANTILE,
+        ),
+        stage_two_threshold: stageTwo.policy.threshold,
+        stage_one_calibration_raw: [-1, 0, 1, 2],
+        composite_calibration_raw: compositeCalibration,
+        enrollment_rows: 5,
+        enrollment_gated_rows: 1,
+        enrollment_capture_length: 4,
+        threshold_population: COMPOSITE_THRESHOLD_POPULATION,
+        training_rows_used_for_threshold: 0,
+        selection_rows_used_for_threshold: 0,
+        novelty_rows_used_for_threshold: 0,
+        release_rows_used_for_threshold: 0,
+        stage_one_known_false_positive_budget:
+          STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET,
+        survivor_known_false_positive_budget:
+          SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET,
+        nominal_enrollment_false_unknown_budget:
+          NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET,
+        only_policy_change: COMPOSITE_ONLY_POLICY_CHANGE,
+        stage_one_changed: false,
+        rejector_cnn_fusion_changed: false,
+        classifier_cnn_fusion_changed: false,
+        gate_contract_changed: false,
+      },
+    };
+  }
+
+  it('admits the inner q95 kind independently of outer q97', () => {
+    expect(() =>
+      new StageTwoRejectorV3(
+        syntheticStageTwo(),
+        { patchCount: 2, patchLength: 2 },
+      )).not.toThrow();
+    expect(FROZEN_THRESHOLD_QUANTILE).toBe(0.95);
+    expect(COMPOSITE_THRESHOLD_QUANTILE).toBe(0.97);
+  });
+
+  it('refuses relabelling stage two as the outer q97 policy', () => {
+    const broken = syntheticStageTwo() as unknown as Record<string, unknown>;
+    broken.kind = STAGED_POLICY_KIND;
+    expect(() =>
+      new StageTwoRejectorV3(
+        broken as unknown as StageTwoAsset,
+        { patchCount: 2, patchLength: 2 },
+      )).toThrow(/stage two kind/);
+  });
+
+  it('refuses moving the inner threshold quantile to q97', () => {
+    const broken = syntheticStageTwo();
+    broken.policy.threshold_quantile = COMPOSITE_THRESHOLD_QUANTILE;
+    expect(() =>
+      new StageTwoRejectorV3(
+        broken,
+        { patchCount: 2, patchLength: 2 },
+      )).toThrow(/frozen q95/);
+  });
+
+  it('derives inner q95 from combined calibration instead of trusting it', () => {
+    const broken = syntheticStageTwo();
+    // A fabricated calibration-score vector [0, .5, .6, .7] would yield
+    // .685, but the stored raw calibration self-ranks are [0, .2, .4, .6]
+    // and their exact q95 is .57.
+    broken.policy.threshold = 0.685;
+    expect(() =>
+      new StageTwoRejectorV3(
+        broken,
+        { patchCount: 2, patchLength: 2 },
+      )).toThrow(/stage-two q95/);
+  });
+
+  it.each([
+    ['real weight', 'real', 'weight', 0.5],
+    ['real neighbors', 'real', 'neighbors', 3],
+    ['complex weight', 'complex', 'weight', 0.5],
+    ['complex neighbors', 'complex', 'neighbors', 63],
+  ] as const)('refuses a non-frozen %s', (_label, branch, field, value) => {
+    const broken = syntheticStageTwo();
+    const component = broken.lof_components.find(
+      (candidate) => candidate.branch === branch,
+    )!;
+    component[field] = value;
+    expect(() =>
+      new StageTwoRejectorV3(
+        broken,
+        { patchCount: 2, patchLength: 2 },
+      )).toThrow(/frozen weight/);
+  });
+
+  it.each([
+    'mean',
+    'scale',
+    'reference',
+    'reference_k_distance',
+    'reference_local_density',
+    'calibration',
+  ] as const)('refuses a LOF component missing %s', (field) => {
+    const broken = syntheticStageTwo() as unknown as {
+      lof_components: Array<Record<string, unknown>>;
+    };
+    delete broken.lof_components[0]![field];
+    expect(() =>
+      new StageTwoRejectorV3(
+        broken as unknown as StageTwoAsset,
+        { patchCount: 2, patchLength: 2 },
+      )).toThrow(/LOF/);
+  });
+
+  it.each([
+    ['version', 'legacy-hybrid-v2'],
+    ['uses_frequency_transform', true],
+  ] as const)('refuses an open-set frontend with %s=%s', (field, value) => {
+    const broken = syntheticOpenSetAsset() as unknown as {
+      frontend: Record<string, unknown>;
+    };
+    broken.frontend[field] = value;
+    expect(() => loadTimeDomainOpenSetAssetV3(broken)).toThrow(
+      /frontend geometry/,
+    );
+  });
+});
+
 describe('composite survivor policy primitive', () => {
   function syntheticComposite(): CompositeSurvivorPolicyAsset {
     const compositeCalibration = [0.1, 0.2, 0.4, 0.8];
@@ -755,6 +1056,22 @@ describe('composite survivor policy primitive', () => {
       enrollment_rows: 6,
       enrollment_gated_rows: 2,
       enrollment_capture_length: 16384,
+      threshold_population: COMPOSITE_THRESHOLD_POPULATION,
+      training_rows_used_for_threshold: 0,
+      selection_rows_used_for_threshold: 0,
+      novelty_rows_used_for_threshold: 0,
+      release_rows_used_for_threshold: 0,
+      stage_one_known_false_positive_budget:
+        STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET,
+      survivor_known_false_positive_budget:
+        SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET,
+      nominal_enrollment_false_unknown_budget:
+        NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET,
+      only_policy_change: COMPOSITE_ONLY_POLICY_CHANGE,
+      stage_one_changed: false,
+      rejector_cnn_fusion_changed: false,
+      classifier_cnn_fusion_changed: false,
+      gate_contract_changed: false,
     };
   }
 
@@ -802,9 +1119,67 @@ describe('composite survivor policy primitive', () => {
       /gated \+ survivors/,
     );
   });
+
+  it.each([
+    [
+      'legacy q95',
+      2,
+      'v3-staged-openset-policy-v2-composite-survivor',
+      'v3_staged_noise_prefilter_then_composite_survivor_lof_geometry',
+      0.95,
+    ],
+    [
+      'failed q99',
+      3,
+      'v3-staged-openset-policy-v3-composite-survivor-q99',
+      'v3_staged_noise_prefilter_then_q99_composite_survivor_lof_geometry',
+      0.99,
+    ],
+  ])('refuses %s semantics in the active q97 primitive', (
+    _label,
+    schema,
+    policyVersion,
+    kind,
+    quantile,
+  ) => {
+    const broken = syntheticComposite() as unknown as Record<string, unknown>;
+    Object.assign(broken, {
+      schema,
+      policy_version: policyVersion,
+      kind,
+      threshold_quantile: quantile,
+    });
+    expect(() =>
+      new CompositeSurvivorPolicyV3(
+        broken as unknown as CompositeSurvivorPolicyAsset,
+      )).toThrow(/staged policy version mismatch/);
+  });
+
+  it.each([
+    ['threshold_population', 'selection'],
+    ['training_rows_used_for_threshold', 1],
+    ['selection_rows_used_for_threshold', 1],
+    ['novelty_rows_used_for_threshold', 1],
+    ['release_rows_used_for_threshold', 1],
+    ['stage_one_known_false_positive_budget', 0.02],
+    ['survivor_known_false_positive_budget', 0.04],
+    ['nominal_enrollment_false_unknown_budget', 0.05],
+    ['only_policy_change', 'anything else'],
+    ['stage_one_changed', true],
+    ['rejector_cnn_fusion_changed', true],
+    ['classifier_cnn_fusion_changed', true],
+    ['gate_contract_changed', true],
+  ])('refuses mutated schema-4 hygiene field %s', (field, value) => {
+    const broken = syntheticComposite() as unknown as Record<string, unknown>;
+    broken[field] = value;
+    expect(() =>
+      new CompositeSurvivorPolicyV3(
+        broken as unknown as CompositeSurvivorPolicyAsset,
+      )).toThrow(new RegExp(field));
+  });
 });
 
-describe('stage-1 evaluation shape', () => {
+describeCurrent('stage-1 evaluation shape', () => {
   it('exposes the prefilter internals for auditability', () => {
     const row = fixture.rows[0]!;
     const evaluation: StageOneEvaluation = openSet.evaluateStageOne(

@@ -567,9 +567,24 @@ class FrozenV3OpenSet:
             == len(calibration_scores)
         ):
             raise ValueError("serialized calibration lengths differ")
+        derived_calibration_scores = np.searchsorted(
+            combined_calibration,
+            combined_calibration,
+            side="left",
+        ) / (len(combined_calibration) + 1.0)
+        if not np.array_equal(
+            np.sort(calibration_scores), derived_calibration_scores
+        ):
+            raise ValueError(
+                "serialized calibration_scores are not the empirical "
+                "self-ranks of combined_calibration_raw"
+            )
         threshold = float(np.asarray(payload["threshold"]).item())
         expected_threshold = float(
-            np.quantile(calibration_scores, FROZEN_THRESHOLD_QUANTILE)
+            np.quantile(
+                derived_calibration_scores,
+                FROZEN_THRESHOLD_QUANTILE,
+            )
         )
         if (
             not np.isfinite(threshold)

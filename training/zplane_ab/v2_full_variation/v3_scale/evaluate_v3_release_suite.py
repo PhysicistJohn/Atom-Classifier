@@ -60,14 +60,14 @@ that control to make an open-set decision.
 Predeclared v3 semantics, all bound into the sealed ``evaluation_protocol``
 object the release intent must embed (see ``expected_evaluation_protocol``):
 
-1. **Open-set gates score the staged decision axis, staged policy version 2
-   (the composite survivor score).**  Stage-2 scores are enrollment ranks in
+1. **Open-set gates score the staged decision axis, staged policy version 4
+   (the q97 composite survivor score).**  Stage-2 scores are enrollment ranks in
    ``[0, 1)``; a stage-1 SURVIVOR is scored by the composite
    ``max(stage2_enrollment_rank, stage1_score_enrollment_rank)``, where the
    stage-1 rank is the enrollment-survivor empirical rank of the stage-1
    log-odds (searchsorted-left, the stage-2 convention); a stage-1-gated row
    is placed at ``1 + softsign(stage-1 log-odds)`` in ``(1, 2)``, above every
-   survivor.  The staged unknown threshold is the frozen q95 of the composite
+   survivor.  The staged unknown threshold is the frozen q97 of the composite
    over enrollment survivors, loaded verbatim from the staged artifact's
    composite policy npz, so ``score > threshold`` is exactly the staged
    decision (asserted row by row by the staged module's own equivalence
@@ -121,8 +121,11 @@ import copy
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 from pathlib import Path
 import platform
+import re
+import subprocess
 import sys
 from typing import Any, Mapping, Sequence
 
@@ -164,14 +167,108 @@ from v3_time_domain_openset import (  # noqa: E402
 # identity with the v2 evaluator: imported objects, never re-typed values
 # ---------------------------------------------------------------------------
 
-EVALUATOR_SCHEMA = 3
-EVALUATION_VERSION = "time-domain-v3-release-evaluation-v3-dual-fusion"
+EVALUATOR_SCHEMA = 4
+EVALUATION_VERSION = "time-domain-v3-release-evaluation-v4-q97-dual-fusion"
 RELEASE_PROTOCOL = release.RELEASE_PROTOCOL
 
-CANDIDATE_MANIFEST_SCHEMA = "time-domain-v3-dual-release-candidate-v1"
-CANDIDATE_EVIDENCE_SCHEMA = "time-domain-v3-decoupled-validation-evidence-v1"
-CANDIDATE_CONTRACT_SCHEMA = "time-domain-v3-decoupled-candidate-v1"
-CANDIDATE_ID = "v3.3-decoupled-8k-classifier-4k-rejector"
+CANDIDATE_MANIFEST_SCHEMA = "time-domain-v3-dual-release-candidate-v2"
+CANDIDATE_EVIDENCE_SCHEMA = "time-domain-v3-decoupled-validation-evidence-v2"
+CANDIDATE_CONTRACT_SCHEMA = "time-domain-v3-q97-candidate-v1"
+CANDIDATE_ID = "v3.4-q97-decoupled-8k-classifier-4k-rejector"
+EXPECTED_RELEASE_SEED = 20260736
+CONSUMED_PREVIOUS_RELEASE_SEED = 20260735
+DESIGN_NOVELTY_SEED = 20260955
+VALIDATION_NOVELTY_SEEDS = (20260953, 20260954)
+
+# Copy the v4 policy identity into the evaluator instead of accepting whatever
+# the currently-imported fitting module happens to call "current".  The
+# module is cross-checked against these literals before a candidate is loaded,
+# and every staged/browser artifact is checked against the same values.
+EXPECTED_STAGED_POLICY_SCHEMA = 4
+EXPECTED_STAGED_POLICY_VERSION = (
+    "v3-staged-openset-policy-v4-composite-survivor-q97"
+)
+EXPECTED_STAGED_POLICY_KIND = (
+    "v3_staged_noise_prefilter_then_q97_composite_survivor_lof_geometry"
+)
+EXPECTED_COMPOSITE_THRESHOLD_QUANTILE = 0.97
+EXPECTED_STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET = 0.01
+EXPECTED_SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET = (
+    1.0 - EXPECTED_COMPOSITE_THRESHOLD_QUANTILE
+)
+EXPECTED_NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET = (
+    EXPECTED_STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+    + (1.0 - EXPECTED_STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET)
+    * EXPECTED_SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET
+)
+EXPECTED_POLICY_ONLY_CHANGE = (
+    "composite survivor enrollment threshold quantile q99 -> q97"
+)
+EXPECTED_FROZEN_ARCHITECTURE = {
+    "frontend": "invariant-patch-time-domain-v1",
+    "execution_order": [
+        "stage_one_noise_gate",
+        "rejector_known_unknown",
+        "classifier_known_label",
+    ],
+    "intentional_dual_fusion": True,
+    "known_label_source": "classifier_fusion_8k_regularized",
+    "known_unknown_source": "rejector_fusion_4k_frozen_policy",
+    "stage_one_short_circuit": True,
+    "open_set_decision_changes_closed_label": True,
+    "stage_one_causal_prefix_rule": {
+        "4096": 4096,
+        "8192": 8192,
+        "16384": 16384,
+        "32768": 16384,
+    },
+    "uses_frequency_transform": False,
+}
+EXPECTED_POLICY_HYGIENE = {
+    "threshold_population": (
+        "enrollment stage-1 survivors only (enrollment only, as every rank "
+        "and threshold in this chain)"
+    ),
+    "training_rows_used_for_threshold": 0,
+    "selection_rows_used_for_threshold": 0,
+    "novelty_rows_used_for_threshold": 0,
+    "release_rows_used_for_threshold": 0,
+    "stage_one_known_false_positive_budget": (
+        EXPECTED_STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+    ),
+    "survivor_known_false_positive_budget": (
+        EXPECTED_SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET
+    ),
+    "nominal_enrollment_false_unknown_budget": (
+        EXPECTED_NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET
+    ),
+    "only_policy_change": EXPECTED_POLICY_ONLY_CHANGE,
+    "stage_one_changed": False,
+    "rejector_cnn_fusion_changed": False,
+    "classifier_cnn_fusion_changed": False,
+    "gate_floors_and_known_fur_ceiling_unchanged": True,
+}
+EXPECTED_SERIALIZED_POLICY_HYGIENE = {
+    "threshold_population": "enrollment_stage_one_survivors_only",
+    "training_rows_used_for_threshold": 0,
+    "selection_rows_used_for_threshold": 0,
+    "novelty_rows_used_for_threshold": 0,
+    "release_rows_used_for_threshold": 0,
+    "stage_one_known_false_positive_budget": (
+        EXPECTED_STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+    ),
+    "survivor_known_false_positive_budget": (
+        EXPECTED_SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET
+    ),
+    "nominal_enrollment_false_unknown_budget": (
+        EXPECTED_NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET
+    ),
+    "only_policy_change": EXPECTED_POLICY_ONLY_CHANGE,
+    "stage_one_changed": False,
+    "rejector_cnn_fusion_changed": False,
+    "classifier_cnn_fusion_changed": False,
+    "gate_contract_changed": False,
+}
 STAGING_PACKAGE_SCHEMA = "atomos.v3.time-domain-classifier.dual-runtime-package"
 STAGING_PACKAGE_SCHEMA_VERSION = 1
 DUAL_BINDING_SCHEMA = "atomos.v3.time-domain-dual-fusion.binding"
@@ -182,7 +279,7 @@ BROWSER_FUSION_SCHEMA = (
 )
 BROWSER_FUSION_SCHEMA_VERSION = 1
 BROWSER_OPENSET_SCHEMA = "atomos.v3.time-domain-openset.staged"
-BROWSER_OPENSET_SCHEMA_VERSION = 2
+BROWSER_OPENSET_SCHEMA_VERSION = 4
 REJECTOR_BROWSER_ASSET = "time-domain-v3-rejector-weights.json"
 CLASSIFIER_BROWSER_ASSET = "time-domain-v3-classifier-weights.json"
 OPENSET_BROWSER_ASSET = "time-domain-v3-openset-policy.json"
@@ -196,7 +293,7 @@ OPENSET_EXPORT_MANIFEST_SCHEMA = (
 )
 OPENSET_EXPORT_MANIFEST_SCHEMA_VERSION = 1
 PARITY_SCHEMA = "time-domain-openset-parity-v1"
-PARITY_SCHEMA_VERSION = 3
+PARITY_SCHEMA_VERSION = 4
 
 GATE_FLOORS = release.GATE_FLOORS
 FIVE_SHOT_K = release.FIVE_SHOT_K
@@ -214,13 +311,271 @@ SCALE_MIN_PER_CLASS = release.SCALE_MIN_PER_CLASS
 
 _gate = release._gate
 _sha256 = release._sha256
-_read_json = release._read_json
+_release_read_json = release._read_json
 _is_below = release._is_below
 _regular_file = release._regular_file
 _integer = release._integer
 _verify_file_record = release._verify_file_record
 _write_json_exclusive = release._write_json_exclusive
 resolve_device = release.resolve_device
+
+
+# JSON's surface syntax distinguishes booleans, integers and numbers, but
+# Python deliberately aliases ``bool`` to ``int`` and considers ``4 == 4.0``.
+# A sealed admission boundary must not.  These helpers are intentionally used
+# before semantic comparisons so a type-confused artifact cannot pass merely
+# because Python equality is permissive.
+_BOOL_FIELD_NAMES = frozenset(
+    {
+        "active_for_current_protocol",
+        "additive_only",
+        "all_pass",
+        "all_release_gates_pass",
+        "all_six_gates_claim_supported_as_complete_count",
+        "candidate_inference_behavior_changed",
+        "changes_candidate_behavior",
+        "changes_closed_label",
+        "classifier_runs_only_after_rejector_acceptance",
+        "closed_label_agreement",
+        "closed_label_can_be_gated",
+        "committed_before_validation",
+        "development_data_loaded",
+        "development_data_used",
+        "development_only",
+        "distinct_role_assets",
+        "exact",
+        "exact_target_per_class",
+        "gates_are_evidence",
+        "gates_before_classification",
+        "gate_contract_changed",
+        "gate_floors_and_known_fur_ceiling_unchanged",
+        "fitting_seed_is_not_a_validation_seed",
+        "has_clean_pairs",
+        "intentional_dual_fusion",
+        "ledger_only",
+        "matched_longest_rows",
+        "open_set_decision_changes_closed_label",
+        "original_text_preserved_verbatim",
+        "packaged",
+        "passes",
+        "policy_changed",
+        "public_known_label_from_classifier_only",
+        "recalibration_performed",
+        "rejector_cnn_fusion_changed",
+        "release_evidence",
+        "release_seed_drawn",
+        "retraining_performed",
+        "role_asset_sha256_must_differ",
+        "role_assets_bound_by_sha256",
+        "same_rows_or_same_novelty_draw",
+        "scored",
+        "stage_one_changed",
+        "stage_one_prefix_rule_applied",
+        "stage_one_short_circuit",
+        "training_rows_loaded",
+        "writes_under_releases",
+    }
+)
+_BOOL_FIELD_SUFFIXES = (
+    "_active",
+    "_applied",
+    "_bound",
+    "_changed",
+    "_exact",
+    "_frozen",
+    "_pass",
+    "_passes",
+    "_performed",
+)
+_INTEGER_FIELD_SUFFIXES = (
+    "_bytes",
+    "_count",
+    "_counts",
+    "_index",
+    "_indices",
+    "_length",
+    "_lengths",
+    "_rows",
+    "_seed",
+    "_seeds",
+)
+_INTEGER_FIELD_NAMES = frozenset(
+    {
+        "bytes_per_complex_sample",
+        "clean_validation_seeds_from",
+        "known_classes",
+        "minimum_target_per_class",
+        "novelty_seeds_consumed_once",
+        "release_seed_not_spent",
+        "sealed_release_data_used",
+        "staged_policy_schema",
+        "target_per_class",
+    }
+)
+
+
+def _snake_field_name(value: str) -> str:
+    """Normalize snake/camel JSON field names for scalar type admission."""
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", value).lower()
+
+
+def _field_requires_bool(field: str) -> bool:
+    name = _snake_field_name(field)
+    return (
+        name in _BOOL_FIELD_NAMES
+        or name.startswith(("has_", "is_"))
+        or name.endswith(_BOOL_FIELD_SUFFIXES)
+        or re.fullmatch(r"release_seed_\d+_used", name) is not None
+    )
+
+
+def _field_requires_int(field: str, value: Any) -> bool:
+    name = _snake_field_name(field)
+    if "sha256" in name or name in _BOOL_FIELD_NAMES:
+        return False
+    if name == "schema":
+        # Several artifact families use a string schema identifier; numeric
+        # schemas must nevertheless remain exact JSON integers.
+        return type(value) is not str
+    if name == "schema_version" or name.endswith("_schema_version"):
+        return True
+    if name in _INTEGER_FIELD_NAMES or name in {
+        "bytes",
+        "count",
+        "index",
+        "length",
+        "rows",
+        "seed",
+    }:
+        return True
+    if name.endswith("_accuracy_all_rows"):
+        return False
+    return (
+        name.endswith(_INTEGER_FIELD_SUFFIXES)
+        or "_rows_used_" in name
+        or "_rows_per_" in name
+        or name.startswith("minimum_rows_")
+        or re.search(
+            r"_rows_(?:loaded|used|exposed|evaluated|scored_(?:staged|unstaged))$",
+            name,
+        )
+        is not None
+        or re.search(
+            r"(?:consumed|spent)_.*release_seeds_excluded$", name
+        )
+        is not None
+        or name in {
+            "spent_novelty_seeds_excluded",
+            "spent_novelty_seeds_refused",
+            "fitting_seed_namespace",
+        }
+    )
+
+
+def _validate_json_scalar_types(
+    value: Any,
+    *,
+    field: str = "$",
+    collection_field: str | None = None,
+    force_int: bool = False,
+) -> None:
+    """Reject JSON scalar type confusion and non-finite numeric extensions.
+
+    ``json.load`` accepts the non-standard ``NaN``/``Infinity`` tokens by
+    default, and Python equality accepts booleans and integral floats in many
+    integer slots.  This recursive pass closes both holes for every candidate
+    and release JSON document before any field is trusted.
+    """
+    if isinstance(value, Mapping):
+        container = _snake_field_name(collection_field or "")
+        integer_count_map = (
+            container in {"counts", "row_counts"}
+            or container.endswith(("_counts", "_row_counts"))
+        )
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError(f"{field} contains a non-string JSON key")
+            numeric_seed_scalar = (
+                container == "seeds"
+                and type(item) in (bool, int, float)
+            )
+            _validate_json_scalar_types(
+                item,
+                field=f"{field}.{key}",
+                collection_field=collection_field if integer_count_map else key,
+                force_int=(
+                    force_int or integer_count_map or numeric_seed_scalar
+                ),
+            )
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_json_scalar_types(
+                item,
+                field=f"{field}[{index}]",
+                collection_field=collection_field,
+                force_int=force_int,
+            )
+        return
+    leaf = field.rsplit(".", 1)[-1].split("[", 1)[0]
+    semantic_field = collection_field or leaf
+    if _field_requires_bool(semantic_field):
+        if type(value) is not bool:
+            raise ValueError(f"{field} must be a JSON boolean")
+        return
+    if force_int or _field_requires_int(semantic_field, value):
+        if type(value) is not int:
+            raise ValueError(f"{field} must be an exact JSON integer")
+        return
+    if type(value) is float and not math.isfinite(value):
+        raise ValueError(f"{field} must be a finite JSON number")
+    if not (
+        value is None
+        or type(value) in (str, bool, int, float)
+    ):
+        raise ValueError(f"{field} contains a non-JSON scalar")
+
+
+def _require_exact_json_value(found: Any, expected: Any, *, field: str) -> None:
+    """Recursive equality with exact JSON scalar types."""
+    if isinstance(expected, Mapping):
+        if not isinstance(found, Mapping) or set(found) != set(expected):
+            raise ValueError(f"{field} object keys differ")
+        for key, expected_item in expected.items():
+            _require_exact_json_value(
+                found[key], expected_item, field=f"{field}.{key}"
+            )
+        return
+    if isinstance(expected, list):
+        if not isinstance(found, list) or len(found) != len(expected):
+            raise ValueError(f"{field} list shape differs")
+        for index, (found_item, expected_item) in enumerate(
+            zip(found, expected)
+        ):
+            _require_exact_json_value(
+                found_item,
+                expected_item,
+                field=f"{field}[{index}]",
+            )
+        return
+    if type(found) is not type(expected) or found != expected:
+        raise ValueError(
+            f"{field}={found!r} ({type(found).__name__}), expected "
+            f"{expected!r} ({type(expected).__name__})"
+        )
+
+
+def _require_finite_json_float(value: Any, *, field: str) -> float:
+    if type(value) is not float or not math.isfinite(value):
+        raise ValueError(f"{field} must be an exact finite JSON number")
+    return value
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    """The v2 sealed reader plus v4's strict scalar type pass."""
+    value = _release_read_json(path)
+    _validate_json_scalar_types(value, field=str(path))
+    return value
 
 #: The one frozen candidate directory set this evaluator was written for.
 DEFAULT_REJECTOR_BUNDLE_DIR = (
@@ -241,8 +596,8 @@ DEFAULT_REJECTOR_FUSION_DIR = (
 )
 DEFAULT_STAGED_DIR = (
     V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "staged_validate_decoupled_rejector4k_classifier8k_budget001_"
-    "seeds20260950_20260951"
+    / "staged_validate_v34_q97_decoupled_rejector4k_classifier8k_budget001_"
+    "seeds20260953_20260954"
 )
 #: The tightened stage-1 gate: the 0.01 enrollment-budget threshold set.
 #: Coefficients are bit-identical to the 0.02 set; only the operating points
@@ -253,8 +608,15 @@ DEFAULT_PREFILTER_DIR = (
 )
 DEFAULT_CANDIDATE_MANIFEST = (
     HERE / "evidence"
-    / "v3_dual_release_candidate.json"
+    / "v3_4_q97_dual_release_candidate.json"
 )
+DEFAULT_CANDIDATE_CONTRACT = (
+    HERE / "evidence" / "v3_q97_candidate_contract.json"
+)
+# Unit tests patch this only for their synthetic mini candidate.  Production
+# code has no CLI escape hatch: relocated manifests must still bind the exact
+# design55 report/source/commit.
+ENFORCE_CANONICAL_Q97_EVIDENCE = True
 
 BUNDLE_KIND = "v3-time-domain-centered-invariant-fusion"
 BUNDLE_SCHEMA = "atomos.v3.time-domain-invariant-fusion.runtime-bundle"
@@ -283,6 +645,12 @@ CONSUMED_RELEASE_SEEDS = {
         "consumed sealed v3.2 release suite under its predeclared historical "
         "gate redeclaration (22/23 gates, five-shot 0.8228 failure frozen; "
         "evidence rules 2 and 4)"
+    ),
+    20260735: (
+        "consumed sealed v3.3 release suite (22/23 gates; sole failure was "
+        "known false-unknown 149/1309 = 0.11382734912146678 at N32768 "
+        "against the unchanged 0.10 ceiling; immutable negative release "
+        "evidence, evidence rules 2 and 4)"
     ),
     20260730: (
         "development model/fusion seed; reusing it as a release seed would "
@@ -329,6 +697,54 @@ HISTORICAL_V3_GATE_REDECLARATION = {
     },
 }
 
+HISTORICAL_CLAIM_CORRECTION_SCHEMA = (
+    "time-domain-v3-historical-claim-correction-v1"
+)
+HISTORICAL_V3_GATE_REDECLARATION_RATIONALE_SHA256 = (
+    "cac7c5c4221fffeef59bbe74c2fc1203277e909b7f36511269b3579754a89199"
+)
+
+
+def historical_claim_correction_block() -> dict[str, Any]:
+    """Correct unsupported prose without rewriting the historical evidence.
+
+    The seed-20260734 owner-decision string above is intentionally preserved
+    verbatim.  This separately-versioned, machine-readable record is the
+    authoritative audit of its comparative claims.
+    """
+    original_sha256 = hashlib.sha256(
+        HISTORICAL_V3_GATE_REDECLARATION_RATIONALE.encode("utf-8")
+    ).hexdigest()
+    if (
+        original_sha256
+        != HISTORICAL_V3_GATE_REDECLARATION_RATIONALE_SHA256
+    ):
+        raise ValueError(
+            "the immutable seed-20260734 owner-decision text changed; keep "
+            "the original verbatim and amend only the versioned correction"
+        )
+    return {
+        "schema": HISTORICAL_CLAIM_CORRECTION_SCHEMA,
+        "applies_to_release_seed": (
+            HISTORICAL_GATE_REDECLARATION_RELEASE_SEED
+        ),
+        "original_text_preserved_verbatim": True,
+        "original_text_sha256": original_sha256,
+        "comparison_design": "cross_seed_unpaired",
+        "same_rows_or_same_novelty_draw": False,
+        "v2_failed_gate_count": 8,
+        "historical_claimed_v2_failed_gate_count": 6,
+        "every_identically_measured_axis_claim_supported": False,
+        "all_six_gates_claim_supported_as_complete_count": False,
+        "corrected_scope": (
+            "comparisons to v2 use different sealed release seeds and are "
+            "unpaired; the v2 release failed eight gates, not six; therefore "
+            "the preserved claim that the candidate beat v2 on every "
+            "identically measured axis is unsupported"
+        ),
+        "affects_current_gate_values_or_pass_fail": False,
+    }
+
 
 def historical_gate_redeclaration_block() -> dict[str, Any]:
     """Return seed 20260734's exact, explicitly inactive redeclaration record.
@@ -358,6 +774,65 @@ def historical_gate_redeclaration_block() -> dict[str, Any]:
         "active_for_current_protocol": False,
         "current_protocol_gate_source": "imported_v2_gate_floors_unchanged",
         "gates_redeclared": gates,
+        "historical_claim_correction": historical_claim_correction_block(),
+    }
+
+
+def q97_policy_contract_block() -> dict[str, Any]:
+    """Stable pre-validation identity for the only policy v4 may evaluate."""
+    return {
+        "schema": EXPECTED_STAGED_POLICY_SCHEMA,
+        "version": EXPECTED_STAGED_POLICY_VERSION,
+        "kind": EXPECTED_STAGED_POLICY_KIND,
+        "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
+        "threshold_quantile": EXPECTED_COMPOSITE_THRESHOLD_QUANTILE,
+        "only_policy_change": EXPECTED_POLICY_ONLY_CHANGE,
+        "calibration_hygiene": dict(EXPECTED_SERIALIZED_POLICY_HYGIENE),
+        "design_novelty_seed": DESIGN_NOVELTY_SEED,
+        "validation_novelty_seeds": list(VALIDATION_NOVELTY_SEEDS),
+        "release_seed_never_spent_in_development": EXPECTED_RELEASE_SEED,
+    }
+
+
+def source_transition_intent_block() -> dict[str, Any]:
+    """Stable transition intent that can be frozen before validation.
+
+    Endpoint hashes cannot all exist before validation.  Those live in the
+    evaluator's later :func:`ordered_source_transition_contract_block`; this
+    block freezes only the phase order, seed effects, and allowed assignment
+    surface.
+    """
+    return {
+        "schema": "time-domain-v3-q97-source-transition-intent-v1",
+        "source": "fit_v3_openset_staged.py",
+        "ordered_phases": ["predesign", "postdesign", "postvalidation"],
+        "transitions": [
+            {
+                "order": 1,
+                "transition_id": "predesign_to_postdesign",
+                "from_phase": "predesign",
+                "to_phase": "postdesign",
+                "consumed_novelty_seeds": [DESIGN_NOVELTY_SEED],
+                "excluded_top_level_assignments": [
+                    "SPENT_NOVELTY_SEEDS",
+                    "SEED_LEDGER_NOTE",
+                ],
+            },
+            {
+                "order": 2,
+                "transition_id": "validation_to_postvalidation",
+                "from_phase": "postdesign",
+                "to_phase": "postvalidation",
+                "consumed_novelty_seeds": list(VALIDATION_NOVELTY_SEEDS),
+                "excluded_top_level_assignments": [
+                    "SPENT_NOVELTY_SEEDS",
+                    "FIRST_CLEAN_NOVELTY_SEED",
+                    "SEED_LEDGER_NOTE",
+                ],
+            },
+        ],
+        "ledger_only": True,
+        "candidate_inference_behavior_changed": False,
     }
 
 #: Single source of truth for the causal-prefix rule text: the staged module.
@@ -381,7 +856,7 @@ SWEEP_REJECTOR_RULE = (
 KNOWN_FUR_ACCOUNTING = (
     "counts both stages: a known row gated by the stage-1 noise prefilter and "
     "a known survivor whose COMPOSITE score exceeds the frozen staged "
-    "threshold (q95 of the composite over enrollment survivors) are both "
+    "threshold (q97 of the composite over enrollment survivors) are both "
     "false-unknown, and every per-length open report attributes each rejected "
     "known row to the stage that rejected it. The additive control arm uses "
     "the stage-2 policy's own untouched threshold"
@@ -420,17 +895,10 @@ BUNDLE_ASSEMBLY_SOURCE_HARD_CONTRACT = (
     "train.py",
 )
 
-# The validation process necessarily moved its two novelty seeds from
-# "reserved and clean" to "spent" immediately after their one allowed draw.
-# That bookkeeping-only edit landed in the same commit as the immutable
-# validation artifacts, so the report correctly records the source bytes that
-# actually scored the validation rows while the working tree correctly refuses
-# to draw those rows again.  Admit only this exact old/new byte pair, and only
-# after proving that the complete Python AST is identical when the three
-# top-level seed-ledger assignments are removed.  Any inference, fitting,
-# threshold, feature, or policy edit changes the normalized digest and fails
-# closed.
-POST_VALIDATION_LEDGER_TRANSITION = {
+# Immutable v3.3 history.  Evaluator-v4 does not admit this transition; keeping
+# the complete record under a versioned name prevents the old evidence from
+# being silently rewritten while the v3.4 chain is populated.
+LEGACY_V3_3_POST_VALIDATION_LEDGER_TRANSITION = {
     "source": "fit_v3_openset_staged.py",
     "origin": "the staged validation artifact",
     "validated_sha256": (
@@ -458,6 +926,88 @@ POST_VALIDATION_LEDGER_TRANSITION = {
     "next_clean_novelty_seed": 20260952,
 }
 
+# Policy-v4 has two necessarily ordered, bookkeeping-only source transitions:
+#
+#   1. the q97 design artifact records the pre-design source; after its single
+#      passing draw, seed 20260955 is marked spent before validation;
+#   2. the validation artifact records that post-design source; after its
+#      single draw, seeds 20260953/20260954 are marked spent before release.
+#
+# Unknown endpoints are deliberate placeholders at this pre-validation stage.
+# They MUST be replaced by lowercase SHA-256/commit/diff bindings from the
+# actual ledger-only commits.  Any attempted source admission while one is
+# unbound fails closed.  The ordered verifier can bind either the complete
+# predesign -> postdesign -> postvalidation chain or only the validation ->
+# postvalidation suffix.
+ORDERED_STAGED_SOURCE_TRANSITIONS = (
+    {
+        "order": 1,
+        "transition_id": "predesign_to_postdesign",
+        "source": "fit_v3_openset_staged.py",
+        "origin": "the q97 design artifact",
+        "from_phase": "predesign",
+        "to_phase": "postdesign",
+        "from_sha256": (
+            "4cca22059959ec472278f28594bd54a72bbbab04fcf9a294baa81d31fea59be9"
+        ),
+        "to_sha256": (
+            "c412a6f9d0ea81ca760bceadcfe4eec6ddcbb43dc5174d6bdb6724395a1f17fa"
+        ),
+        "normalized_ast_sha256": (
+            "4618b54c28da283e7ac74f23bbcb43f2d55de6746eb244f80336af8368d09a20"
+        ),
+        "from_commit": "80298b80e6f56360325457efb49e58d13aa93d61",
+        "evidence_commit": "825cf3eace2443aa18899dc192911c060045b068",
+        "evidence_report_sha256": (
+            "bb749aadd5395a3fc21ff9453621ad8fa7a7512f9b3c21c29cee933b09adfb0f"
+        ),
+        "to_commit": "4306f67c298376b944bc3be58553983174538bce",
+        "full_index_diff_sha256": (
+            "9910df1e63ccfb482820ea83f1bec6475069a3dcbc85d134750ebb35fc769fec"
+        ),
+        "excluded_top_level_assignments": (
+            "SPENT_NOVELTY_SEEDS",
+            "SEED_LEDGER_NOTE",
+        ),
+        "consumed_novelty_seeds": (DESIGN_NOVELTY_SEED,),
+        "next_clean_novelty_seed": 20260953,
+    },
+    {
+        "order": 2,
+        "transition_id": "validation_to_postvalidation",
+        "source": "fit_v3_openset_staged.py",
+        "origin": "the staged validation artifact",
+        "from_phase": "postdesign",
+        "to_phase": "postvalidation",
+        "from_sha256": None,
+        "to_sha256": None,
+        "normalized_ast_sha256": None,
+        "from_commit": None,
+        "evidence_commit": None,
+        "evidence_report_sha256": None,
+        "to_commit": None,
+        "full_index_diff_sha256": None,
+        "excluded_top_level_assignments": (
+            "SPENT_NOVELTY_SEEDS",
+            "FIRST_CLEAN_NOVELTY_SEED",
+            "SEED_LEDGER_NOTE",
+        ),
+        "consumed_novelty_seeds": VALIDATION_NOVELTY_SEEDS,
+        "next_clean_novelty_seed": 20260956,
+    },
+)
+_TRANSITION_EVIDENCE_PATHS = {
+    "predesign_to_postdesign": (
+        "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/"
+        "v3_scale/staged_design_v34_q97_rejector4k_budget001_seed20260955/"
+        "openset_metrics.json"
+    ),
+    "validation_to_postvalidation": (
+        "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/"
+        "v3_scale/staged_validate_v34_q97_decoupled_rejector4k_"
+        "classifier8k_budget001_seeds20260953_20260954/openset_metrics.json"
+    ),
+}
 _SOURCE_LOOKUP = {
     "assemble_v3_fusion.py": HERE / "assemble_v3_fusion.py",
     "fit_v3_openset.py": HERE / "fit_v3_openset.py",
@@ -488,6 +1038,174 @@ _SOURCE_LOOKUP = {
     "train.py": TRAINING / "train.py",
 }
 
+# Complete transitive Python source surface reached by candidate loading,
+# release-suite admission, inference, reporting and the imported v2 helpers.
+# The evaluator itself is pinned separately by preflight because a source file
+# cannot contain a non-self-referential hash of its own final bytes.
+TRANSITIVE_DEPENDENCY_PATHS: dict[str, Path] = {
+    **{
+        f"training/{name}": TRAINING / name
+        for name in (
+            "canonical_probe.py",
+            "dataset.py",
+            "invariant_patch_preprocess.py",
+            "model.py",
+            "preprocess.py",
+            "rfgen.py",
+            "time_domain_geometry.py",
+            "time_domain_invariant_patch_preprocess.py",
+            "train.py",
+        )
+    },
+    **{
+        f"training/zplane_ab/{name}": ZPAB / name
+        for name in (
+            "common_split.py",
+            "train_common.py",
+            "zplane_backbone.py",
+        )
+    },
+    **{
+        f"training/zplane_ab/v2_full_variation/{name}": V2 / name
+        for name in (
+            "assemble_invariant_candidate.py",
+            "canonical_probe_net.py",
+            "complex_multiscale_backbone.py",
+            "denoise_eval.py",
+            "equalizer_frontend.py",
+            "evaluate_ab_v2.py",
+            "evaluate_invariant_release_suite.py",
+            "full_split.py",
+            "ground_state_data.py",
+            "invariant_fusion.py",
+            "invariant_patch_cnn.py",
+            "invariant_patch_data.py",
+            "known_only_patch_openset.py",
+            "length_aug.py",
+            "multitask_autoencoder.py",
+            "native_preprocess.py",
+            "openset_eval.py",
+            "pool_cache.py",
+            "run_bounded_dev.py",
+            "run_corrected_unet.py",
+            "run_invariant_cnn_dev.py",
+            "scalar_transfer.py",
+            "train_common_v2.py",
+            "train_transfer.py",
+            "unet_multitask.py",
+            "unet_transfer.py",
+            "v3_time_domain_openset.py",
+            "vit_backbone.py",
+        )
+    },
+    **{
+        f"training/zplane_ab/v2_full_variation/v3_scale/{name}": HERE / name
+        for name in (
+            "assemble_v3_fusion.py",
+            "export_v3_openset_browser_assets.py",
+            "fit_v3_openset.py",
+            "fit_v3_openset_staged.py",
+            "measure_pose_degeneracy.py",
+            "measure_v3_remaining_gates.py",
+            "noise_prefilter.py",
+            "pose_degeneracy.py",
+            "run_time_domain_dev.py",
+        )
+    },
+}
+if len(TRANSITIVE_DEPENDENCY_PATHS) != 49:  # pragma: no cover - import guard
+    raise RuntimeError("v4 transitive dependency contract must contain 49 files")
+
+# Filled only once every source is final.  Until then a canonical release
+# fails closed, while synthetic unit candidates explicitly disable canonical
+# evidence and remain usable.
+EXPECTED_TRANSITIVE_DEPENDENCY_SHA256: dict[str, str | None] = {
+    key: None for key in TRANSITIVE_DEPENDENCY_PATHS
+}
+EXPECTED_EVALUATOR_RUNTIME_IDENTITY = {
+    "python": "3.9.6",
+    "numpy": "2.0.2",
+    "torch": "2.8.0",
+    "device": "cpu",
+    "platform": "darwin-arm64",
+}
+
+
+def _current_evaluator_runtime_identity(device: torch.device) -> dict[str, str]:
+    torch_version = str(torch.__version__).split("+", 1)[0]
+    return {
+        "python": ".".join(str(part) for part in sys.version_info[:3]),
+        "numpy": str(np.__version__),
+        "torch": torch_version,
+        "device": str(torch.device(device).type),
+        "platform": f"{platform.system().lower()}-{platform.machine().lower()}",
+    }
+
+
+def _admit_transitive_execution_contract(
+    *,
+    canonical_release_candidate: bool,
+    device: torch.device,
+    dependency_paths: Mapping[str, Path] | None = None,
+    expected_sha256: Mapping[str, str | None] | None = None,
+    expected_runtime: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Admit the exact 49-file/runtime execution surface, or fail closed."""
+    paths = dict(
+        TRANSITIVE_DEPENDENCY_PATHS
+        if dependency_paths is None
+        else dependency_paths
+    )
+    hashes = dict(
+        EXPECTED_TRANSITIVE_DEPENDENCY_SHA256
+        if expected_sha256 is None
+        else expected_sha256
+    )
+    runtime = dict(
+        EXPECTED_EVALUATOR_RUNTIME_IDENTITY
+        if expected_runtime is None
+        else expected_runtime
+    )
+    if set(paths) != set(TRANSITIVE_DEPENDENCY_PATHS):
+        raise ValueError("transitive dependency path keys differ from exact 49-file contract")
+    if set(hashes) != set(TRANSITIVE_DEPENDENCY_PATHS):
+        raise ValueError("transitive dependency hash keys differ from exact 49-file contract")
+    _require_exact_json_value(
+        runtime,
+        EXPECTED_EVALUATOR_RUNTIME_IDENTITY,
+        field="evaluator_runtime_identity",
+    )
+    observed_runtime = _current_evaluator_runtime_identity(device)
+    _require_exact_json_value(
+        observed_runtime,
+        runtime,
+        field="observed_evaluator_runtime_identity",
+    )
+    observed: dict[str, str] = {}
+    for key in TRANSITIVE_DEPENDENCY_PATHS:
+        path = Path(paths[key])
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(
+                f"transitive dependency {key} must be a regular non-symlink file"
+            )
+        digest = _sha256(path)
+        observed[key] = digest
+        expected = hashes[key]
+        if canonical_release_candidate:
+            configured = _require_sha256(
+                expected, field=f"transitive_dependency_sha256.{key}"
+            )
+            if digest != configured:
+                raise ValueError(f"transitive dependency hash mismatch: {key}")
+    return {
+        "schema": "time-domain-v3-transitive-execution-contract-v1",
+        "canonical_enforced": bool(canonical_release_candidate),
+        "dependency_file_count": 49,
+        "dependency_source_sha256": observed,
+        "runtime_identity": observed_runtime,
+        "passes": True,
+    }
+
 
 def _source_path(name: str) -> Path:
     try:
@@ -509,6 +1227,7 @@ def _read_candidate_json(path: Path) -> dict[str, Any]:
         value = json.load(handle)
     if not isinstance(value, dict):
         raise ValueError(f"JSON root must be an object: {path}")
+    _validate_json_scalar_types(value, field=str(path))
     return value
 
 
@@ -529,7 +1248,49 @@ def validate_release_seed(value: Any) -> int:
                 f"release seed {seed} lies in the {reason} ({low}-{high}) and "
                 "is not an untouched release seed"
             )
+    if seed != EXPECTED_RELEASE_SEED:
+        raise ValueError(
+            f"evaluator schema {EVALUATOR_SCHEMA} is frozen for untouched "
+            f"release seed {EXPECTED_RELEASE_SEED}, not {seed}"
+        )
     return seed
+
+
+def _assert_expected_policy_module() -> None:
+    """Fail if imported fitting code no longer means the frozen q97 policy."""
+    expected = {
+        "schema": EXPECTED_STAGED_POLICY_SCHEMA,
+        "version": EXPECTED_STAGED_POLICY_VERSION,
+        "kind": EXPECTED_STAGED_POLICY_KIND,
+        "threshold_quantile": EXPECTED_COMPOSITE_THRESHOLD_QUANTILE,
+        "design_novelty_seed": DESIGN_NOVELTY_SEED,
+        "validation_novelty_seeds": VALIDATION_NOVELTY_SEEDS,
+        "release_seed_never_spent_here": EXPECTED_RELEASE_SEED,
+    }
+    found = {
+        "schema": int(staged.STAGED_POLICY_SCHEMA),
+        "version": staged.STAGED_POLICY_VERSION,
+        "kind": staged.STAGED_POLICY_KIND,
+        "threshold_quantile": float(staged.COMPOSITE_THRESHOLD_QUANTILE),
+        "design_novelty_seed": int(staged.PROPOSED_DESIGN_NOVELTY_SEED),
+        "validation_novelty_seeds": tuple(
+            int(seed) for seed in staged.DEFAULT_VALIDATION_NOVELTY_SEEDS
+        ),
+        "release_seed_never_spent_here": int(
+            staged.RELEASE_SEED_NEVER_SPENT_HERE
+        ),
+    }
+    if found != expected:
+        raise ValueError(
+            "imported staged policy identity/seed hygiene differs from the "
+            f"evaluator-v4 q97 contract: found {found!r}, expected {expected!r}"
+        )
+    hygiene = staged._policy_hygiene_expected(staged.STAGED_POLICY_SPEC)
+    if hygiene != EXPECTED_SERIALIZED_POLICY_HYGIENE:
+        raise ValueError(
+            "imported staged policy calibration hygiene differs from the "
+            "evaluator-v4 q97 contract"
+        )
 
 
 def expected_evaluation_protocol(
@@ -545,6 +1306,7 @@ def expected_evaluation_protocol(
     seed-20260734 redeclaration travels separately as explicitly inactive
     historical metadata.
     """
+    _assert_expected_policy_module()
     seed = validate_release_seed(release_seed)
     domain = tuple(sorted(int(length) for length in stage_one_lengths))
     if not domain or len(set(domain)) != len(domain):
@@ -587,10 +1349,10 @@ def expected_evaluation_protocol(
         "none; frozen per-length stage-1 noise-prefilter bundles, the frozen "
         "stage-2 branch-LOF ensemble and geometry blend, and the frozen "
         "composite survivor policy (enrollment-survivor stage-1 rank "
-        "calibration and its q95 composite threshold) are loaded verbatim"
+        "calibration and its q97 composite threshold) are loaded verbatim"
     )
     protocol["open_set"] = {
-        "architecture": staged.STAGED_POLICY_KIND,
+        "architecture": EXPECTED_STAGED_POLICY_KIND,
         "candidate_architecture": "dual_fusion_classifier8k_rejector4k",
         "classifier_role": (
             "the regularized 8k fusion supplies every accepted known-class "
@@ -607,15 +1369,23 @@ def expected_evaluation_protocol(
             "8k classifier fusion nearest-prototype known label for accepted rows",
         ],
         "intentional_dual_fusion": True,
-        "staged_policy_schema": int(staged.STAGED_POLICY_SCHEMA),
-        "staged_policy_version": staged.STAGED_POLICY_VERSION,
+        "staged_policy_schema": EXPECTED_STAGED_POLICY_SCHEMA,
+        "staged_policy_version": EXPECTED_STAGED_POLICY_VERSION,
+        "staged_policy_kind": EXPECTED_STAGED_POLICY_KIND,
+        "composite_threshold_quantile": (
+            EXPECTED_COMPOSITE_THRESHOLD_QUANTILE
+        ),
+        "policy_hygiene": dict(EXPECTED_POLICY_HYGIENE),
+        "design_novelty_seed": DESIGN_NOVELTY_SEED,
+        "validation_novelty_seeds": list(VALIDATION_NOVELTY_SEEDS),
         "additive_only": False,
         "changes_closed_label": True,
+        "open_set_decision_changes_closed_label": True,
         "gates_before_classification": True,
         "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
         "unknown_threshold_rule": (
             "the staged unknown threshold is the frozen "
-            f"q{float(staged.COMPOSITE_THRESHOLD_QUANTILE)} of the composite "
+            f"q{EXPECTED_COMPOSITE_THRESHOLD_QUANTILE} of the composite "
             "over enrollment stage-1 survivors, fit on enrollment only and "
             "loaded verbatim from the staged artifact; the additive control "
             "arm keeps the stage-2 policy's own untouched enrollment "
@@ -697,7 +1467,7 @@ class V3Candidate:
     classifier_feature_std: np.ndarray
     rejector_feature_mean: np.ndarray
     rejector_feature_std: np.ndarray
-    #: The STAGED decision threshold: the composite policy's frozen q95.
+    #: The STAGED decision threshold: the composite policy's frozen q97.
     threshold: float
     #: The stage-2 policy's own untouched threshold (the additive control).
     stage_two_threshold: float
@@ -764,7 +1534,7 @@ def _verify_source_contract(
         path = _source_path(name)
         current = _sha256(path)
         if current != expected:
-            transition = _admit_post_validation_ledger_transition(
+            transition = _admit_ordered_seed_ledger_transitions(
                 name=name,
                 origin=origin,
                 expected=expected,
@@ -782,14 +1552,17 @@ def _verify_source_contract(
     return checked, transitions
 
 
-def _ledger_neutral_ast_sha256(
-    path: Path, excluded_assignments: Sequence[str]
+def _ledger_neutral_ast_text_sha256(
+    source: str,
+    excluded_assignments: Sequence[str],
+    *,
+    filename: str,
 ) -> str:
-    """Hash the source AST after removing only named top-level assignments."""
+    """Hash source AST after removing only named top-level assignments."""
     excluded = set(excluded_assignments)
     if not excluded or len(excluded) != len(tuple(excluded_assignments)):
         raise ValueError("ledger transition exclusion names are invalid")
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    tree = ast.parse(source, filename=filename)
     kept: list[ast.stmt] = []
     removed: list[str] = []
     for node in tree.body:
@@ -817,7 +1590,312 @@ def _ledger_neutral_ast_sha256(
     return hashlib.sha256(payload).hexdigest()
 
 
-def _admit_post_validation_ledger_transition(
+def _ledger_neutral_ast_sha256(
+    path: Path, excluded_assignments: Sequence[str]
+) -> str:
+    return _ledger_neutral_ast_text_sha256(
+        path.read_text(encoding="utf-8"),
+        excluded_assignments,
+        filename=str(path),
+    )
+
+
+def _git_output(arguments: Sequence[str]) -> bytes:
+    try:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=REPO,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(
+            "q97 source transition Git binding cannot be recomputed: "
+            + " ".join(arguments)
+        ) from exc
+
+
+def _git_blob(commit: str, path: str) -> bytes:
+    return _git_output(("show", f"{commit}:{path}"))
+
+
+def _verify_git_transition_binding(transition: Mapping[str, Any]) -> None:
+    """Recompute every commit/source/evidence/diff endpoint from Git."""
+    transition_id = str(transition["transition_id"])
+    source_path = (
+        "training/zplane_ab/v2_full_variation/v3_scale/"
+        "fit_v3_openset_staged.py"
+    )
+    evidence_path = _TRANSITION_EVIDENCE_PATHS[transition_id]
+    from_commit = _configured_transition_commit(transition, "from_commit")
+    evidence_commit = _configured_transition_commit(
+        transition, "evidence_commit"
+    )
+    to_commit = _configured_transition_commit(transition, "to_commit")
+    if len({from_commit, evidence_commit, to_commit}) != 3:
+        raise ValueError(
+            f"q97 source transition {transition_id} commit order aliases "
+            "distinct phases"
+        )
+    for earlier, later in (
+        (from_commit, evidence_commit),
+        (evidence_commit, to_commit),
+    ):
+        try:
+            subprocess.run(
+                ["git", "merge-base", "--is-ancestor", earlier, later],
+                cwd=REPO,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise ValueError(
+                f"q97 source transition {transition_id} commit order differs"
+            ) from exc
+    try:
+        evidence_at_from = subprocess.run(
+            ["git", "cat-file", "-e", f"{from_commit}:{evidence_path}"],
+            cwd=REPO,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except OSError as exc:
+        raise ValueError(
+            f"q97 source transition {transition_id} evidence history "
+            "cannot be recomputed"
+        ) from exc
+    if evidence_at_from.returncode == 0:
+        raise ValueError(
+            f"q97 source transition {transition_id} evidence already exists "
+            "at the from phase"
+        )
+    source_blobs = {
+        "from": _git_blob(from_commit, source_path),
+        "evidence": _git_blob(evidence_commit, source_path),
+        "to": _git_blob(to_commit, source_path),
+    }
+    expected_from = _configured_transition_digest(transition, "from_sha256")
+    expected_to = _configured_transition_digest(transition, "to_sha256")
+    for endpoint, expected in (
+        ("from", expected_from),
+        ("evidence", expected_from),
+        ("to", expected_to),
+    ):
+        if hashlib.sha256(source_blobs[endpoint]).hexdigest() != expected:
+            raise ValueError(
+                f"q97 source transition {transition_id} {endpoint} source "
+                "blob differs"
+            )
+    evidence_digest = _configured_transition_digest(
+        transition, "evidence_report_sha256"
+    )
+    for commit, endpoint in (
+        (evidence_commit, "evidence"),
+        (to_commit, "to"),
+    ):
+        if hashlib.sha256(_git_blob(commit, evidence_path)).hexdigest() != (
+            evidence_digest
+        ):
+            raise ValueError(
+                f"q97 source transition {transition_id} {endpoint} evidence "
+                "blob differs"
+            )
+    diff = _git_output(
+        ("diff", from_commit, to_commit, "--", source_path)
+    )
+    if hashlib.sha256(diff).hexdigest() != _configured_transition_digest(
+        transition, "full_index_diff_sha256"
+    ):
+        raise ValueError(
+            f"q97 source transition {transition_id} source diff differs"
+        )
+    excluded = tuple(transition["excluded_top_level_assignments"])
+    expected_ast = _configured_transition_digest(
+        transition, "normalized_ast_sha256"
+    )
+    for endpoint, blob in source_blobs.items():
+        try:
+            text = blob.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(
+                f"q97 source transition {transition_id} {endpoint} source "
+                "is not UTF-8"
+            ) from exc
+        if _ledger_neutral_ast_text_sha256(
+            text, excluded, filename=f"{commit}:{source_path}"
+        ) != expected_ast:
+            raise ValueError(
+                f"q97 source transition {transition_id} {endpoint} normalized "
+                "AST differs"
+            )
+
+
+def ordered_source_transition_contract_block() -> dict[str, Any]:
+    """Return the exact, ordered policy-v4 source-transition contract.
+
+    ``None`` values are intentional fail-closed placeholders.  A release
+    candidate cannot rely on the transition chain until every endpoint,
+    normalized AST, commit and diff digest has been bound.
+    """
+    return {
+        "schema": "time-domain-v3-q97-source-transition-contract-v1",
+        "source": "fit_v3_openset_staged.py",
+        "ordered_phases": ["predesign", "postdesign", "postvalidation"],
+        "transitions": [
+            {
+                key: list(value) if isinstance(value, tuple) else value
+                for key, value in transition.items()
+            }
+            for transition in ORDERED_STAGED_SOURCE_TRANSITIONS
+        ],
+        "ledger_only": True,
+        "candidate_inference_behavior_changed": False,
+    }
+
+
+def _configured_transition_digest(
+    transition: Mapping[str, Any],
+    key: str,
+) -> str:
+    value = transition.get(key)
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError(
+            "q97 source transition contract is unbound: "
+            f"{transition.get('transition_id')}.{key} must be an exact "
+            "lowercase SHA-256 before release evaluation"
+        )
+    return value
+
+
+def _configured_transition_commit(
+    transition: Mapping[str, Any],
+    key: str,
+) -> str:
+    value = transition.get(key)
+    if (
+        not isinstance(value, str)
+        or len(value) != 40
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError(
+            "q97 source transition contract is unbound: "
+            f"{transition.get('transition_id')}.{key} must be an exact "
+            "40-character commit before release evaluation"
+        )
+    return value
+
+
+def _validated_ordered_source_transitions(
+    *, required_through_order: int = 2
+) -> tuple[dict[str, Any], ...]:
+    transitions = tuple(dict(item) for item in ORDERED_STAGED_SOURCE_TRANSITIONS)
+    if len(transitions) != 2:
+        raise ValueError("q97 source transition contract must contain two steps")
+    previous_to: str | None = None
+    expected_ids = (
+        "predesign_to_postdesign",
+        "validation_to_postvalidation",
+    )
+    expected_descriptors = (
+        {
+            "origin": "the q97 design artifact",
+            "from_phase": "predesign",
+            "to_phase": "postdesign",
+            "excluded_top_level_assignments": (
+                "SPENT_NOVELTY_SEEDS",
+                "SEED_LEDGER_NOTE",
+            ),
+            "next_clean_novelty_seed": 20260953,
+        },
+        {
+            "origin": "the staged validation artifact",
+            "from_phase": "postdesign",
+            "to_phase": "postvalidation",
+            "excluded_top_level_assignments": (
+                "SPENT_NOVELTY_SEEDS",
+                "FIRST_CLEAN_NOVELTY_SEED",
+                "SEED_LEDGER_NOTE",
+            ),
+            "next_clean_novelty_seed": 20260956,
+        },
+    )
+    for index, (transition, expected_id) in enumerate(
+        zip(transitions, expected_ids), start=1
+    ):
+        if (
+            type(transition.get("order")) is not int
+            or transition.get("order") != index
+            or transition.get("transition_id") != expected_id
+            or transition.get("source") != "fit_v3_openset_staged.py"
+        ):
+            raise ValueError(
+                "q97 source transition contract order/identity is invalid"
+            )
+        for key, expected in expected_descriptors[index - 1].items():
+            found = transition.get(key)
+            if key == "excluded_top_level_assignments":
+                found = tuple(found or ())
+            if found != expected:
+                raise ValueError(
+                    "q97 source transition contract descriptor differs: "
+                    f"{expected_id}.{key}"
+                )
+        if index <= required_through_order:
+            from_sha = _configured_transition_digest(
+                transition, "from_sha256"
+            )
+            to_sha = _configured_transition_digest(transition, "to_sha256")
+            _configured_transition_digest(
+                transition, "normalized_ast_sha256"
+            )
+            _configured_transition_digest(
+                transition, "full_index_diff_sha256"
+            )
+            _configured_transition_commit(transition, "from_commit")
+            _configured_transition_commit(transition, "evidence_commit")
+            _configured_transition_digest(
+                transition, "evidence_report_sha256"
+            )
+            _configured_transition_commit(transition, "to_commit")
+            if previous_to is not None and from_sha != previous_to:
+                raise ValueError(
+                    "q97 source transition chain is not contiguous at "
+                    f"{expected_id}"
+                )
+            if from_sha == to_sha:
+                raise ValueError(
+                    f"q97 source transition {expected_id} does not change bytes"
+                )
+            _verify_git_transition_binding(transition)
+            previous_to = to_sha
+    if (
+        any(
+            type(seed) is not int
+            for transition in transitions
+            for seed in transition["consumed_novelty_seeds"]
+        )
+        or tuple(transitions[0]["consumed_novelty_seeds"]) != (
+        DESIGN_NOVELTY_SEED,
+        )
+    ):
+        raise ValueError("q97 design source transition consumes another seed")
+    if tuple(transitions[1]["consumed_novelty_seeds"]) != (
+        VALIDATION_NOVELTY_SEEDS
+    ):
+        raise ValueError(
+            "q97 validation source transition consumes another seed set"
+        )
+    return transitions
+
+
+def _admit_ordered_seed_ledger_transitions(
     *,
     name: str,
     origin: str,
@@ -825,44 +1903,106 @@ def _admit_post_validation_ledger_transition(
     current: str,
     path: Path,
 ) -> dict[str, Any] | None:
-    """Admit the one exact seed-ledger-only transition after validation."""
-    transition = POST_VALIDATION_LEDGER_TRANSITION
-    if (
-        name != transition["source"]
-        or origin != transition["origin"]
-        or expected != transition["validated_sha256"]
-        or current != transition["current_sha256"]
-    ):
+    """Admit an exact contiguous suffix of the two-step q97 ledger chain."""
+    if name != "fit_v3_openset_staged.py":
         return None
-    excluded = transition["excluded_top_level_assignments"]
+    raw = tuple(ORDERED_STAGED_SOURCE_TRANSITIONS)
+    start = next(
+        (
+            index
+            for index, transition in enumerate(raw)
+            if transition.get("origin") == origin
+            and transition.get("from_sha256") == expected
+        ),
+        None,
+    )
+    if start is None:
+        return None
+    required_through = (
+        1
+        if start == 0 and raw[0].get("to_sha256") == current
+        else 2
+    )
+    transitions = _validated_ordered_source_transitions(
+        required_through_order=required_through
+    )
+    start = next(
+        (
+            index
+            for index, transition in enumerate(transitions)
+            if transition["origin"] == origin
+            and transition["from_sha256"] == expected
+        ),
+        None,
+    )
+    if start is None:
+        return None
+    selected: list[dict[str, Any]] = []
+    cursor = expected
+    for transition in transitions[start:]:
+        if transition["from_sha256"] != cursor:
+            raise ValueError("q97 source transition chain is not contiguous")
+        selected.append(transition)
+        cursor = transition["to_sha256"]
+        if cursor == current:
+            break
+    if cursor != current:
+        return None
+    excluded = tuple(selected[-1]["excluded_top_level_assignments"])
     normalized = _ledger_neutral_ast_sha256(path, excluded)
-    if normalized != transition["normalized_ast_sha256"]:
+    if normalized != selected[-1]["normalized_ast_sha256"]:
         raise ValueError(
-            "post-validation ledger transition changed executable source "
-            "outside the three declared top-level seed-ledger assignments"
+            "q97 seed-ledger transition changed executable source outside "
+            "the declared top-level seed-ledger assignments"
         )
-    consumed = tuple(transition["consumed_validation_seeds"])
+    consumed = tuple(
+        seed
+        for transition in transitions[: start + len(selected)]
+        for seed in transition["consumed_novelty_seeds"]
+    )
+    final = selected[-1]
     if (
-        tuple(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS) != consumed
+        tuple(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS)
+        != VALIDATION_NOVELTY_SEEDS
         or any(seed not in staged.SPENT_NOVELTY_SEEDS for seed in consumed)
         or staged.FIRST_CLEAN_NOVELTY_SEED
-        != transition["next_clean_novelty_seed"]
+        != final["next_clean_novelty_seed"]
     ):
         raise ValueError(
-            "post-validation ledger transition does not mark the validation "
-            "seeds spent and advance the clean-seed floor"
+            "q97 seed-ledger transition does not mark the required design/"
+            "validation seeds spent and advance the clean-seed floor"
         )
     return {
-        "admission": "exact_post_validation_seed_ledger_transition",
-        "validated_sha256": transition["validated_sha256"],
-        "current_sha256": transition["current_sha256"],
+        "admission": "exact_ordered_q97_seed_ledger_transition_chain",
+        "origin": origin,
+        "from_sha256": expected,
+        "current_sha256": current,
         "normalized_ast_sha256": normalized,
         "excluded_top_level_assignments": list(excluded),
-        "validated_parent_commit": transition["validated_parent_commit"],
-        "ledger_commit": transition["ledger_commit"],
-        "full_index_diff_sha256": transition["full_index_diff_sha256"],
-        "consumed_validation_seeds": list(consumed),
-        "next_clean_novelty_seed": transition["next_clean_novelty_seed"],
+        "ordered_transition_ids": [
+            transition["transition_id"] for transition in selected
+        ],
+        "transition_bindings": [
+            {
+                key: transition[key]
+                for key in (
+                    "order",
+                    "transition_id",
+                    "from_phase",
+                    "to_phase",
+                    "from_sha256",
+                    "to_sha256",
+                    "from_commit",
+                    "evidence_commit",
+                    "evidence_report_sha256",
+                    "to_commit",
+                    "full_index_diff_sha256",
+                )
+            }
+            for transition in selected
+        ],
+        "consumed_novelty_seeds": list(consumed),
+        "next_clean_novelty_seed": final["next_clean_novelty_seed"],
         "candidate_inference_behavior_changed": False,
     }
 
@@ -899,13 +2039,26 @@ def _load_bundle(bundle_dir: Path) -> dict[str, Any]:
         if str(name).endswith(".npy"):
             arrays[str(name)] = np.load(path)
     verification = manifest.get("self_verification")
+    worst_error = (
+        verification.get("worst_max_abs_error")
+        if isinstance(verification, Mapping)
+        else None
+    )
     if (
         not isinstance(verification, Mapping)
         or verification.get("closed_label_agreement") is not True
-        or not isinstance(verification.get("worst_max_abs_error"), (int, float))
-        or float(verification["worst_max_abs_error"])
-        > BUNDLE_SELF_VERIFICATION_TOLERANCE
     ):
+        raise ValueError(f"{bundle} does not carry a passing self-verification")
+    try:
+        worst_error = _require_finite_json_float(
+            worst_error,
+            field=f"{bundle}.self_verification.worst_max_abs_error",
+        )
+    except ValueError as exc:
+        raise ValueError(
+            f"{bundle} does not carry a passing self-verification"
+        ) from exc
+    if worst_error > BUNDLE_SELF_VERIFICATION_TOLERANCE:
         raise ValueError(f"{bundle} does not carry a passing self-verification")
     return {
         "directory": bundle,
@@ -927,7 +2080,9 @@ def _resolve_frozen_path(value: Any, *, field: str) -> Path:
 
 
 def _require_sha256(value: Any, *, field: str) -> str:
-    digest = str(value).lower()
+    if not isinstance(value, str):
+        raise ValueError(f"{field} is not a lowercase SHA-256 digest")
+    digest = value
     if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
         raise ValueError(f"{field} is not a lowercase SHA-256 digest")
     return digest
@@ -1374,6 +2529,370 @@ def _verify_bundle_binding(
         raise ValueError(f"{field} manifest SHA-256 does not match")
 
 
+def _browser_state_vector(
+    state: Mapping[str, torch.Tensor],
+    name: str,
+    shape: tuple[int, ...],
+) -> list[float]:
+    """Serialize one frozen float32 tensor exactly as the browser exporter."""
+    value = state.get(name)
+    if (
+        not isinstance(value, torch.Tensor)
+        or tuple(value.shape) != shape
+        or value.dtype != torch.float32
+        or not bool(torch.isfinite(value).all())
+    ):
+        raise ValueError(
+            f"runtime bundle state tensor {name} is not finite float32 {shape}"
+        )
+    return value.reshape(-1).tolist()
+
+
+def _browser_linear_payload(
+    state: Mapping[str, torch.Tensor],
+    prefix: str,
+    input_width: int,
+    output_width: int,
+) -> dict[str, Any]:
+    return {
+        "in": input_width,
+        "out": output_width,
+        "weight": _browser_state_vector(
+            state,
+            f"{prefix}.weight",
+            (output_width, input_width),
+        ),
+        "bias": _browser_state_vector(
+            state,
+            f"{prefix}.bias",
+            (output_width,),
+        ),
+    }
+
+
+def _browser_block_indices(
+    state: Mapping[str, torch.Tensor],
+    pattern: str,
+    *,
+    field: str,
+) -> list[int]:
+    expression = re.compile(pattern)
+    indices = sorted(
+        {
+            int(match.group(1))
+            for name in state
+            if (match := expression.fullmatch(name)) is not None
+        }
+    )
+    if not indices or indices != list(range(len(indices))):
+        raise ValueError(f"{field} indices are missing or non-contiguous")
+    return indices
+
+
+def _expected_browser_fusion_payload(
+    bundle: Mapping[str, Any],
+    *,
+    expected_runtime_role: str,
+) -> dict[str, Any]:
+    """Regenerate the complete browser asset from the hash-bound bundle.
+
+    This is deliberately an evaluator-local oracle instead of an import of
+    ``export_v3_browser_weights``: importing a new source during the sealed
+    run would silently expand the precommitted 49-file execution surface.
+    Every emitted tensor is reconstructed from the already SHA-verified state
+    dict and arrays, so package hashes cannot substitute for semantic
+    admission of frontend, branch, fusion or classifier geometry.
+    """
+    manifest = bundle["manifest"]
+    if manifest.get("runtime_role") != expected_runtime_role:
+        raise ValueError("runtime bundle role differs from browser role")
+    architecture = manifest.get("architecture")
+    if not isinstance(architecture, Mapping):
+        raise ValueError("runtime bundle has no browser architecture")
+    real_config = architecture.get("real")
+    complex_config = architecture.get("complex")
+    if not isinstance(real_config, Mapping) or not isinstance(
+        complex_config, Mapping
+    ):
+        raise ValueError("runtime bundle branch architecture is incomplete")
+    state = torch.load(
+        bundle["directory"] / "fusion_state_dict.pt",
+        map_location="cpu",
+        weights_only=True,
+    )
+    if not isinstance(state, Mapping):
+        raise ValueError("runtime bundle fusion state is not a mapping")
+
+    real_blocks: list[dict[str, Any]] = []
+    for index in _browser_block_indices(
+        state,
+        r"real_branch\.patch_encoder\.blocks\.(\d+)\.conv\.weight",
+        field="browser real blocks",
+    ):
+        prefix = f"real_branch.patch_encoder.blocks.{index}"
+        conv = state.get(f"{prefix}.conv.weight")
+        if not isinstance(conv, torch.Tensor) or conv.ndim != 3:
+            raise ValueError(f"{prefix}.conv.weight is not rank three")
+        output_channels, input_channels, kernel = (
+            int(value) for value in conv.shape
+        )
+        real_blocks.append(
+            {
+                "in_channels": input_channels,
+                "out_channels": output_channels,
+                "kernel": kernel,
+                "stride": 2,
+                "padding": kernel // 2,
+                "conv_weight": _browser_state_vector(
+                    state,
+                    f"{prefix}.conv.weight",
+                    (output_channels, input_channels, kernel),
+                ),
+                "batch_norm": {
+                    "eps": 1e-5,
+                    **{
+                        name: _browser_state_vector(
+                            state,
+                            f"{prefix}.bn.{name}",
+                            (output_channels,),
+                        )
+                        for name in (
+                            "weight",
+                            "bias",
+                            "running_mean",
+                            "running_var",
+                        )
+                    },
+                },
+            }
+        )
+    real_patch_dim = int(real_config["patch_dim"])
+    real_hidden = int(real_config["hidden"])
+    real_embed_dim = int(real_config["embed_dim"])
+    real_features = int(real_config["n_features"])
+    real_set_width = real_patch_dim * (
+        2 if real_config["set_pool"] == "mean_std" else 1
+    )
+    real = {
+        "config": dict(real_config),
+        "blocks": real_blocks,
+        "patch_projection": _browser_linear_payload(
+            state,
+            "real_branch.patch_projection.0",
+            2 * int(real_blocks[-1]["out_channels"]),
+            real_patch_dim,
+        ),
+        "fc1": _browser_linear_payload(
+            state,
+            "real_branch.fc1",
+            real_set_width + real_features,
+            real_hidden,
+        ),
+        "fc2": _browser_linear_payload(
+            state,
+            "real_branch.fc2",
+            real_hidden,
+            real_embed_dim,
+        ),
+    }
+
+    complex_stages: list[dict[str, Any]] = []
+    for index in _browser_block_indices(
+        state,
+        (
+            r"complex_branch\.patch_encoder\.stages\.(\d+)"
+            r"\.conv\.conv_re\.weight"
+        ),
+        field="browser complex stages",
+    ):
+        prefix = f"complex_branch.patch_encoder.stages.{index}"
+        weight = state.get(f"{prefix}.conv.conv_re.weight")
+        if not isinstance(weight, torch.Tensor) or weight.ndim != 3:
+            raise ValueError(f"{prefix}.conv.conv_re.weight is not rank three")
+        output_channels, input_channels, kernel = (
+            int(value) for value in weight.shape
+        )
+        complex_stages.append(
+            {
+                "in_channels": input_channels,
+                "out_channels": output_channels,
+                "kernel": kernel,
+                "padding": (kernel - 1) // 2,
+                "weight_real": _browser_state_vector(
+                    state,
+                    f"{prefix}.conv.conv_re.weight",
+                    (output_channels, input_channels, kernel),
+                ),
+                "weight_imag": _browser_state_vector(
+                    state,
+                    f"{prefix}.conv.conv_im.weight",
+                    (output_channels, input_channels, kernel),
+                ),
+                "threshold_raw": _browser_state_vector(
+                    state,
+                    f"{prefix}.act.thresh_raw",
+                    (output_channels,),
+                ),
+            }
+        )
+    complex_patch_dim = int(complex_config["patch_dim"])
+    complex_hidden = int(complex_config["hidden"])
+    complex_embed_dim = int(complex_config["embed_dim"])
+    complex_features = int(complex_config["n_features"])
+    complex_set_width = complex_patch_dim * (
+        2 if complex_config["set_pool"] == "mean_std" else 1
+    )
+    complex_lags = [1, 2, 4]
+    complex = {
+        "config": dict(complex_config),
+        "stages": complex_stages,
+        "mag_norm_eps": 1e-6,
+        "modrelu_magnitude_eps": 1e-12,
+        "lowpass": [0.25, 0.5, 0.25],
+        "lags": complex_lags,
+        "patch_projection": _browser_linear_payload(
+            state,
+            "complex_branch.patch_projection.0",
+            int(complex_stages[-1]["out_channels"])
+            * (2 + 2 * len(complex_lags)),
+            complex_patch_dim,
+        ),
+        "fc1": _browser_linear_payload(
+            state,
+            "complex_branch.fc1",
+            complex_set_width + complex_features,
+            complex_hidden,
+        ),
+        "fc2": _browser_linear_payload(
+            state,
+            "complex_branch.fc2",
+            complex_hidden,
+            complex_embed_dim,
+        ),
+    }
+    if (
+        real_config.get("patch_length") != complex_config.get("patch_length")
+        or real_config.get("patch_count") != complex_config.get("patch_count")
+        or real_embed_dim != complex_embed_dim
+        or real_features != complex_features
+    ):
+        raise ValueError("runtime bundle branch geometry differs")
+
+    arrays = bundle["arrays"]
+    classes = list(manifest["classification"]["classes"])
+    frontend = manifest["frontend"]
+    fusion = manifest["fusion"]
+    standardization = manifest["feature_standardization"]
+    rejection = manifest["rejection"]
+    provenance = manifest["provenance"]
+    asset_sha256 = {
+        name: record["sha256"]
+        for name, record in manifest["assets"].items()
+    }
+    return {
+        "schema": BROWSER_FUSION_SCHEMA,
+        "schema_version": BROWSER_FUSION_SCHEMA_VERSION,
+        "status": STAGING_STATUS,
+        "development_only": True,
+        "kind": manifest["kind"],
+        "runtime_role": expected_runtime_role,
+        "packed_length": int(frontend["packed_length"]),
+        "parameter_count": int(manifest["parameter_count"]),
+        "frontend": {
+            "version": frontend["version"],
+            "estimator_version": frontend["estimator_version"],
+            "patch_length": int(frontend["patch_length"]),
+            "patch_count": int(frontend["patch_count"]),
+            "target_frac": float(frontend["target_frac"]),
+            "feature_count": int(frontend["feature_count"]),
+            "uses_frequency_transform": False,
+            "source_sha256": dict(frontend["source_sha256"]),
+        },
+        "real": real,
+        "complex": complex,
+        "fusion": {
+            "real_center": _browser_state_vector(
+                state, "real_center", (real_embed_dim,)
+            ),
+            "complex_center": _browser_state_vector(
+                state, "complex_center", (complex_embed_dim,)
+            ),
+            "alpha_real": float(state["alpha_real"]),
+            "alpha_complex": float(state["alpha_complex"]),
+            "weight_real": float(state["weight_real"]),
+            "eps": float(state["eps"]),
+        },
+        "embedding_normalize_eps": 1e-12,
+        "feature_standardization": {
+            "mean": np.asarray(arrays["feature_mean.npy"]).tolist(),
+            "std": np.asarray(arrays["feature_std.npy"]).tolist(),
+            "epsilon": float(standardization["epsilon"]),
+            "rule": standardization["rule"],
+        },
+        "classification": {
+            "classes": classes,
+            "prototypes": np.asarray(
+                arrays["fusion_prototypes.npy"]
+            ).tolist(),
+            "distance": manifest["classification"]["distance"],
+            "label": manifest["classification"]["label"],
+            "embedding": manifest["classification"]["embedding"],
+        },
+        "rejection": {
+            "state": rejection["state"],
+            "runtime_behaviour": rejection["runtime_behaviour"],
+            "external_staged_policy_required_for_abstention": True,
+        },
+        "not_compatible_with_schema_ids": list(
+            manifest["not_compatible_with_schema_ids"]
+        ),
+        "provenance": {
+            "source_bundle_schema": manifest["schema"],
+            "source_bundle_manifest_sha256": bundle["manifest_sha256"],
+            "source_bundle_assets_sha256": asset_sha256,
+            "assembly_seed": int(provenance["assembly_seed"]),
+            "exporter": "export_v3_browser_weights.py",
+            "batch_norm_folded": False,
+        },
+        "release_blockers": list(manifest["release_blockers"]),
+        "release_evidence": False,
+    }
+
+
+def _expected_browser_openset_payload(
+    observed: Mapping[str, Any],
+    *,
+    stage_one: Any,
+    prefilter_set_sha256: str,
+    components: Sequence[tuple[str, float, Any]],
+    policy: Any,
+    composite: Any,
+    frontend: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Regenerate all runtime policy semantics from frozen Python state."""
+    provenance = observed.get("provenance")
+    if not isinstance(provenance, Mapping):
+        raise ValueError("browser open-set provenance must be an object")
+    expected = openset_export.openset_weights_payload(
+        stage_one.models,
+        prefilter_set_sha256,
+        components,
+        policy,
+        composite,
+        {
+            "version": str(frontend["version"]),
+            "patch_length": int(frontend["patch_length"]),
+            "patch_count": int(frontend["patch_count"]),
+            "target_frac": float(frontend["target_frac"]),
+            "packed_length": int(frontend["packed_length"]),
+            "uses_frequency_transform": False,
+        },
+        provenance,
+    )
+    # Normalize NumPy arrays/scalars through the exporter's actual JSON path.
+    return json.loads(openset_export.json_bytes(expected, compact=True))
+
+
 def _fusion_geometry_signature(artifact: Any) -> dict[str, Any]:
     """The dimensions that must agree across the two independently fit nets."""
     metrics = artifact.metrics
@@ -1410,6 +2929,146 @@ def _fusion_geometry_signature(artifact: Any) -> dict[str, Any]:
     return signature
 
 
+def _validate_frozen_q97_contract(
+    frozen_contract: Mapping[str, Any],
+    *,
+    canonical_release_candidate: bool,
+) -> dict[str, Any]:
+    """Validate the complete policy-v4 contract frozen before validation."""
+    expected_keys = {
+        "schema",
+        "status",
+        "candidate_id",
+        "architecture",
+        "q97_policy",
+        "q97_design_evidence",
+        "source_transition_intent",
+        "classifier_fusion_8k_regularized",
+        "rejector_fusion_4k",
+        "stage_one_noise_prefilter",
+    }
+    if set(frozen_contract) != expected_keys:
+        raise ValueError(
+            "pre-validation q97 candidate contract contains missing, extra "
+            "or legacy fields"
+        )
+    try:
+        _require_exact_json_value(
+            frozen_contract.get("q97_policy"),
+            q97_policy_contract_block(),
+            field="frozen_contract.q97_policy",
+        )
+    except ValueError:
+        raise ValueError("pre-validation q97 policy identity/hygiene differs")
+    if (
+        frozen_contract.get("source_transition_intent")
+        != source_transition_intent_block()
+    ):
+        raise ValueError(
+            "pre-validation q97 source transition order/seed intent differs"
+        )
+    architecture = frozen_contract.get("architecture")
+    try:
+        _require_exact_json_value(
+            architecture,
+            EXPECTED_FROZEN_ARCHITECTURE,
+            field="frozen_contract.architecture",
+        )
+    except ValueError as exc:
+        raise ValueError("pre-validation q97 architecture contract differs")
+    design_record = frozen_contract.get("q97_design_evidence")
+    expected_design_keys = {
+        "path",
+        "sha256",
+        "role",
+        "status",
+        "novelty_seed",
+        "source_sha256",
+        "commit",
+    }
+    if (
+        not isinstance(design_record, Mapping)
+        or set(design_record) != expected_design_keys
+        or design_record.get("role") != "design"
+        or design_record.get("status") != "design_selection_pass"
+        or design_record.get("novelty_seed") != DESIGN_NOVELTY_SEED
+    ):
+        raise ValueError("pre-validation q97 design evidence record differs")
+    design_path, design_sha256, design_report = _verify_json_binding(
+        design_record,
+        field="frozen_contract.q97_design_evidence",
+        expected_status="design_selection_pass",
+    )
+    first_transition = ORDERED_STAGED_SOURCE_TRANSITIONS[0]
+    if (
+        design_report.get("role") != "design"
+        or design_report.get("gates_are_evidence") is not False
+        or design_report.get("all_pass") is not True
+        or design_report.get("release_seed_20260736_used") is not False
+        or design_report.get("source_sha256", {}).get(
+            "fit_v3_openset_staged.py"
+        )
+        != design_record.get("source_sha256")
+    ):
+        raise ValueError("bound q97 design report is not the passing design draw")
+    design_seeds = design_report.get("seeds")
+    if (
+        not isinstance(design_seeds, Mapping)
+        or design_seeds.get("novelty_seeds") != [DESIGN_NOVELTY_SEED]
+        or design_seeds.get("design_novelty_seed") != DESIGN_NOVELTY_SEED
+        or design_seeds.get("release_seed_not_spent")
+        != EXPECTED_RELEASE_SEED
+    ):
+        raise ValueError("bound q97 design report seed hygiene differs")
+    design_architecture = design_report.get("architecture")
+    if (
+        not isinstance(design_architecture, Mapping)
+        or design_architecture.get("schema")
+        != EXPECTED_STAGED_POLICY_SCHEMA
+        or design_architecture.get("kind") != EXPECTED_STAGED_POLICY_KIND
+        or design_architecture.get("staged_policy_version")
+        != EXPECTED_STAGED_POLICY_VERSION
+    ):
+        raise ValueError("bound design report uses another staged policy")
+    design_composite = design_report.get("composite")
+    for key, expected in {
+        "policy_version": EXPECTED_STAGED_POLICY_VERSION,
+        "schema": EXPECTED_STAGED_POLICY_SCHEMA,
+        "kind": EXPECTED_STAGED_POLICY_KIND,
+        "threshold_quantile": EXPECTED_COMPOSITE_THRESHOLD_QUANTILE,
+        **EXPECTED_POLICY_HYGIENE,
+    }.items():
+        try:
+            _require_exact_json_value(
+                design_composite.get(key)
+                if isinstance(design_composite, Mapping)
+                else None,
+                expected,
+                field=f"design.composite.{key}",
+            )
+        except ValueError:
+            raise ValueError(
+                f"bound q97 design report policy hygiene {key} differs"
+            )
+    if canonical_release_candidate:
+        if (
+            design_sha256 != first_transition["evidence_report_sha256"]
+            or design_record.get("source_sha256")
+            != first_transition["from_sha256"]
+            or design_record.get("commit")
+            != first_transition["evidence_commit"]
+        ):
+            raise ValueError(
+                "canonical q97 contract does not bind the exact frozen "
+                "design55 report/source/commit"
+            )
+    return {
+        "path": design_path,
+        "sha256": design_sha256,
+        "report": design_report,
+    }
+
+
 def _validate_candidate_manifest(
     *,
     candidate_manifest_path: Path,
@@ -1422,9 +3081,15 @@ def _validate_candidate_manifest(
     prefilter_path: Path,
     prefilter_set_sha256: str,
     stage_one_lengths: Sequence[int],
+    stage_one: Any,
+    stage_two_components: Sequence[tuple[str, float, Any]],
+    stage_two_policy: Any,
+    composite_policy: Any,
+    frontend: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Verify the final release-candidate manifest and its complete chain."""
     manifest_path = Path(candidate_manifest_path).expanduser().resolve()
+    canonical_release_candidate = ENFORCE_CANONICAL_Q97_EVIDENCE
     manifest = _read_candidate_json(manifest_path)
     expected_manifest_keys = {
         "schema",
@@ -1501,6 +3166,31 @@ def _validate_candidate_manifest(
         or evidence.get("candidate_id") != CANDIDATE_ID
     ):
         raise ValueError("validation evidence is not the passing dual candidate")
+    expected_evidence_keys = {
+        "schema",
+        "status",
+        "candidate_id",
+        "candidate_contract",
+        "validation",
+        "validated_rejector",
+        "validation_locked_policy_artifacts",
+        "candidate_contract_clarification",
+        "source_transition_evidence",
+    }
+    if set(evidence) != expected_evidence_keys:
+        raise ValueError(
+            "q97 validation evidence contains missing, extra or legacy fields"
+        )
+    try:
+        _require_exact_json_value(
+            evidence.get("source_transition_evidence"),
+            ordered_source_transition_contract_block(),
+            field="validation_evidence.source_transition_evidence",
+        )
+    except ValueError:
+        raise ValueError(
+            "q97 validation evidence source transition endpoints/order differ"
+        )
 
     contract_record = evidence.get("candidate_contract")
     if not isinstance(contract_record, Mapping):
@@ -1516,18 +3206,18 @@ def _validate_candidate_manifest(
         or contract_record.get("committed_before_validation") is not True
     ):
         raise ValueError("pre-validation candidate contract is not frozen")
-    architecture = frozen_contract.get("architecture", {})
-    for key, expected in (
-        ("intentional_dual_fusion", True),
-        ("known_label_source", "classifier_fusion_8k_regularized"),
-        ("known_unknown_source", "rejector_fusion_4k_frozen_policy"),
-        ("stage_one_short_circuit", True),
+    if (
+        manifest_path == DEFAULT_CANDIDATE_MANIFEST.resolve()
+        and frozen_path != DEFAULT_CANDIDATE_CONTRACT.resolve()
     ):
-        if architecture.get(key) != expected:
-            raise ValueError(
-                f"pre-validation architecture.{key}={architecture.get(key)!r}, "
-                f"expected {expected!r}"
-            )
+        raise ValueError(
+            "canonical release manifest must bind "
+            f"{DEFAULT_CANDIDATE_CONTRACT}"
+        )
+    design_binding = _validate_frozen_q97_contract(
+        frozen_contract,
+        canonical_release_candidate=canonical_release_candidate,
+    )
 
     for field, artifact in (
         ("classifier_fusion_8k_regularized", classifier_artifact),
@@ -1545,13 +3235,27 @@ def _validate_candidate_manifest(
         ("all_pass", True),
         ("sealed_release_data_used", 0),
         ("consumed_test_rows_used", 0),
-        ("release_seed_20260735_used", False),
+        ("release_seed_20260736_used", False),
     ):
-        if validation.get(key) != expected:
+        try:
+            _require_exact_json_value(
+                validation.get(key),
+                expected,
+                field=f"validation.{key}",
+            )
+        except ValueError:
             raise ValueError(
                 f"validation evidence records {key}={validation.get(key)!r}, "
                 f"expected {expected!r}"
             )
+    try:
+        _require_exact_json_value(
+            validation.get("novelty_seeds_consumed_once"),
+            list(VALIDATION_NOVELTY_SEEDS),
+            field="validation.novelty_seeds_consumed_once",
+        )
+    except ValueError:
+        raise ValueError("validation evidence binds another novelty seed pair")
     report_path = _resolve_frozen_path(
         validation.get("report"), field="validation.report"
     )
@@ -1712,6 +3416,99 @@ def _validate_candidate_manifest(
             raise ValueError(
                 f"candidate browser_assets.{role} runtime_role differs"
             )
+        if role in {"classifier", "rejector"}:
+            expected_payload = _expected_browser_fusion_payload(
+                (
+                    classifier_bundle
+                    if role == "classifier"
+                    else rejector_bundle
+                ),
+                expected_runtime_role=str(expected_runtime_role),
+            )
+            try:
+                _require_exact_json_value(
+                    payload,
+                    expected_payload,
+                    field=f"candidate.browser_assets.{role}.payload",
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    f"candidate browser_assets.{role} is not the exact "
+                    "runtime-bundle export"
+                ) from exc
+        if role == "openset_policy":
+            browser_contract_block = payload.get("contract")
+            for key, expected in (
+                ("additive_only", False),
+                ("changes_closed_label", True),
+                ("gates_before_classification", True),
+            ):
+                if (
+                    not isinstance(browser_contract_block, Mapping)
+                    or browser_contract_block.get(key) != expected
+                ):
+                    raise ValueError(
+                        f"browser q97 contract {key} differs from Python"
+                    )
+            browser_stage_two = payload.get("stage_two")
+            if (
+                not isinstance(browser_stage_two, Mapping)
+                or browser_stage_two.get("kind") != FROZEN_POLICY_KIND
+            ):
+                raise ValueError("browser q97 stage-two policy kind differs")
+            browser_stage_two_policy = browser_stage_two.get("policy")
+            try:
+                browser_stage_two_quantile = _require_finite_json_float(
+                    browser_stage_two_policy.get("threshold_quantile")
+                    if isinstance(browser_stage_two_policy, Mapping)
+                    else None,
+                    field="browser.stage_two.policy.threshold_quantile",
+                )
+            except ValueError:
+                browser_stage_two_quantile = None
+            if browser_stage_two_quantile != float(FROZEN_THRESHOLD_QUANTILE):
+                raise ValueError(
+                    "browser q97 stage-two threshold quantile differs"
+                )
+            browser_composite = payload.get("composite")
+            browser_composite_expected = {
+                "schema": EXPECTED_STAGED_POLICY_SCHEMA,
+                "kind": EXPECTED_STAGED_POLICY_KIND,
+                "policy_version": EXPECTED_STAGED_POLICY_VERSION,
+                "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
+                "threshold_quantile": (
+                    EXPECTED_COMPOSITE_THRESHOLD_QUANTILE
+                ),
+                **EXPECTED_SERIALIZED_POLICY_HYGIENE,
+            }
+            for key, expected in browser_composite_expected.items():
+                if (
+                    not isinstance(browser_composite, Mapping)
+                    or browser_composite.get(key) != expected
+                ):
+                    raise ValueError(
+                        f"browser q97 composite policy/hygiene {key} differs"
+                    )
+            expected_payload = _expected_browser_openset_payload(
+                payload,
+                stage_one=stage_one,
+                prefilter_set_sha256=prefilter_set_sha256,
+                components=stage_two_components,
+                policy=stage_two_policy,
+                composite=composite_policy,
+                frontend=frontend,
+            )
+            try:
+                _require_exact_json_value(
+                    payload,
+                    expected_payload,
+                    field="candidate.browser_assets.openset_policy.payload",
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "candidate browser_assets.openset_policy is not the exact "
+                    "frozen staged-policy export"
+                ) from exc
         verified_browser[role] = {
             "path": path,
             "sha256": digest,
@@ -1854,6 +3651,10 @@ def _validate_candidate_manifest(
         or binding_validation.get("status") != "development_openset_pass"
         or binding_validation.get("novelty_seeds")
         != list(validation.get("novelty_seeds_consumed_once", ()))
+        or binding_validation.get("design_novelty_seed")
+        != DESIGN_NOVELTY_SEED
+        or binding_validation.get("release_seed_not_spent")
+        != EXPECTED_RELEASE_SEED
     ):
         raise ValueError("candidate dual_binding validation record differs")
     expected_fail_closed = {
@@ -1902,6 +3703,7 @@ def _validate_candidate_manifest(
         "frozen_contract_path": frozen_path,
         "frozen_contract_sha256": frozen_sha256,
         "frozen_contract": frozen_contract,
+        "q97_design_evidence": design_binding,
         "validation_report_sha256": report_sha256,
         "prefilter_bundle_sha256": expected_bundle_hashes,
         "browser_assets": verified_browser,
@@ -1931,12 +3733,19 @@ def load_candidate(
     device: torch.device,
 ) -> V3Candidate:
     """Load every frozen component and prove the dual-role binding chain."""
+    _assert_expected_policy_module()
+    execution_contract = _admit_transitive_execution_contract(
+        canonical_release_candidate=ENFORCE_CANONICAL_Q97_EVIDENCE,
+        device=device,
+    )
     classifier_bundle = _load_bundle(classifier_bundle_dir)
     rejector_bundle = _load_bundle(rejector_bundle_dir)
     if classifier_bundle["manifest"].get("runtime_role") != (
         "accepted_known_classifier"
     ):
-        raise ValueError("classifier bundle runtime_role is not accepted_known_classifier")
+        raise ValueError(
+            "classifier bundle runtime_role is not accepted_known_classifier"
+        )
     if rejector_bundle["manifest"].get("runtime_role") != (
         "known_unknown_rejector"
     ):
@@ -2064,12 +3873,19 @@ def load_candidate(
         ("release_evidence", False),
         ("sealed_release_data_used", 0),
         ("consumed_test_rows_used", 0),
+        ("release_seed_20260736_used", False),
         ("additive_only", False),
         ("changes_closed_label", True),
         ("gates_before_classification", True),
         ("closed_label_can_be_gated", True),
     ):
-        if staged_metrics.get(key) != expected:
+        try:
+            _require_exact_json_value(
+                staged_metrics.get(key),
+                expected,
+                field=f"staged_metrics.{key}",
+            )
+        except ValueError:
             raise ValueError(
                 f"staged artifact records {key}={staged_metrics.get(key)!r}, "
                 f"expected {expected!r}; only a passing validation run may "
@@ -2080,11 +3896,18 @@ def load_candidate(
     # scored with composite semantics, nor the reverse.
     architecture = staged_metrics.get("architecture", {})
     for key, expected in (
-        ("kind", staged.STAGED_POLICY_KIND),
-        ("schema", staged.STAGED_POLICY_SCHEMA),
-        ("staged_policy_version", staged.STAGED_POLICY_VERSION),
+        ("kind", EXPECTED_STAGED_POLICY_KIND),
+        ("schema", EXPECTED_STAGED_POLICY_SCHEMA),
+        ("staged_policy_version", EXPECTED_STAGED_POLICY_VERSION),
+        ("survivor_score", staged.COMPOSITE_SURVIVOR_SCORE),
     ):
-        if architecture.get(key) != expected:
+        try:
+            _require_exact_json_value(
+                architecture.get(key),
+                expected,
+                field=f"staged_metrics.architecture.{key}",
+            )
+        except ValueError:
             raise ValueError(
                 "staged policy version mismatch: the staged artifact records "
                 f"architecture.{key}={architecture.get(key)!r}, but this "
@@ -2096,10 +3919,12 @@ def load_candidate(
     if not composite_path.is_file():
         raise ValueError(
             f"staged artifact carries no {staged.COMPOSITE_POLICY_FILENAME}; "
-            "a composite-policy (version-2) validation artifact is required"
+            "a composite-policy (schema-4/q97) validation artifact is required"
         )
     composite = staged.load_composite_policy(
-        composite_path, expected_stage_two_threshold=policy.threshold
+        composite_path,
+        expected_stage_two_threshold=policy.threshold,
+        expected_policy_version=EXPECTED_STAGED_POLICY_VERSION,
     )
     staged_hashes = dict(staged_hashes)
     staged_hashes[staged.COMPOSITE_POLICY_FILENAME] = _sha256(composite_path)
@@ -2115,17 +3940,70 @@ def load_candidate(
             f"({recorded.get('directory_sha256')!r}) than the candidate "
             f"({fusion_artifact.directory_sha256!r})"
         )
-    if float(staged_metrics["stage_two"]["threshold"]) != float(policy.threshold):
+    staged_stage_two_threshold = _require_finite_json_float(
+        staged_metrics["stage_two"]["threshold"],
+        field="staged_metrics.stage_two.threshold",
+    )
+    if staged_stage_two_threshold != float(policy.threshold):
         raise ValueError(
             "loaded stage-2 threshold differs from the staged artifact record"
         )
-    if float(staged_metrics["composite"]["threshold"]) != float(
-        composite.threshold
-    ):
+    staged_composite_threshold = _require_finite_json_float(
+        staged_metrics["composite"]["threshold"],
+        field="staged_metrics.composite.threshold",
+    )
+    if staged_composite_threshold != float(composite.threshold):
         raise ValueError(
             "loaded composite threshold differs from the staged artifact "
             "record"
         )
+    composite_report = staged_metrics.get("composite")
+    if not isinstance(composite_report, Mapping):
+        raise ValueError("staged report has no q97 composite policy block")
+    composite_expected = {
+        "policy_version": EXPECTED_STAGED_POLICY_VERSION,
+        "schema": EXPECTED_STAGED_POLICY_SCHEMA,
+        "kind": EXPECTED_STAGED_POLICY_KIND,
+        "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
+        "threshold_quantile": EXPECTED_COMPOSITE_THRESHOLD_QUANTILE,
+        **EXPECTED_POLICY_HYGIENE,
+    }
+    for key, expected in composite_expected.items():
+        try:
+            _require_exact_json_value(
+                composite_report.get(key),
+                expected,
+                field=f"staged_metrics.composite.{key}",
+            )
+        except ValueError:
+            raise ValueError(
+                f"staged q97 policy hygiene {key}="
+                f"{composite_report.get(key)!r}, expected {expected!r}"
+            )
+    if composite.policy_spec != staged.STAGED_POLICY_SPEC:
+        raise ValueError("loaded composite is not the exact current q97 policy")
+    seeds = staged_metrics.get("seeds")
+    if not isinstance(seeds, Mapping):
+        raise ValueError("staged report has no seed hygiene block")
+    for key, expected in (
+        ("novelty_seeds", list(VALIDATION_NOVELTY_SEEDS)),
+        ("design_novelty_seed", DESIGN_NOVELTY_SEED),
+        ("default_validation_novelty_seeds", list(VALIDATION_NOVELTY_SEEDS)),
+        ("release_seed_not_spent", EXPECTED_RELEASE_SEED),
+        ("novelty_rows_used_to_choose_the_stage_one_operating_point", 0),
+        ("novelty_rows_used_to_choose_the_composite_threshold", 0),
+    ):
+        try:
+            _require_exact_json_value(
+                seeds.get(key),
+                expected,
+                field=f"staged_metrics.seeds.{key}",
+            )
+        except ValueError:
+            raise ValueError(
+                f"staged seed hygiene {key}={seeds.get(key)!r}, expected "
+                f"{expected!r}"
+            )
 
     # --- the stage-1 prefilter set ------------------------------------------
     prefilter_module = staged.load_prefilter_module()
@@ -2171,7 +4049,13 @@ def load_candidate(
         ("threshold_quantile", FROZEN_THRESHOLD_QUANTILE),
         ("module", "v3_time_domain_openset"),
     ):
-        if required_contract.get(key) != expected:
+        try:
+            _require_exact_json_value(
+                required_contract.get(key),
+                expected,
+                field=f"bundle.rejection.required_contract.{key}",
+            )
+        except ValueError:
             raise ValueError(
                 f"bundle rejection.required_contract[{key!r}] is "
                 f"{required_contract.get(key)!r}, expected {expected!r}"
@@ -2292,7 +4176,63 @@ def load_candidate(
         prefilter_path=prefilter_path,
         prefilter_set_sha256=set_sha256,
         stage_one_lengths=stage_one.lengths,
+        stage_one=stage_one,
+        stage_two_components=components,
+        stage_two_policy=policy,
+        composite_policy=composite,
+        frontend=frontend,
     )
+    if ENFORCE_CANONICAL_Q97_EVIDENCE:
+        (
+            design_transition,
+            validation_transition,
+        ) = _validated_ordered_source_transitions()
+        design_source = (
+            binding["q97_design_evidence"]["report"]
+            .get("source_sha256", {})
+            .get("fit_v3_openset_staged.py")
+        )
+        validation_source = staged_recorded.get(
+            "fit_v3_openset_staged.py"
+        )
+        current_staged_source = _sha256(
+            _source_path("fit_v3_openset_staged.py")
+        )
+        if (
+            design_source != design_transition["from_sha256"]
+            or validation_source != design_transition["to_sha256"]
+            or validation_source != validation_transition["from_sha256"]
+            or current_staged_source != validation_transition["to_sha256"]
+        ):
+            raise ValueError(
+                "q97 ordered source transitions do not bind the exact "
+                "design55, validation53/54 and postvalidation source bytes"
+            )
+        validation_excluded = tuple(
+            validation_transition["excluded_top_level_assignments"]
+        )
+        if _ledger_neutral_ast_sha256(
+            _source_path("fit_v3_openset_staged.py"),
+            validation_excluded,
+        ) != validation_transition["normalized_ast_sha256"]:
+            raise ValueError(
+                "q97 validation ledger transition changes executable source"
+            )
+        all_consumed = (
+            DESIGN_NOVELTY_SEED,
+            *VALIDATION_NOVELTY_SEEDS,
+        )
+        if (
+            any(
+                seed not in staged.SPENT_NOVELTY_SEEDS
+                for seed in all_consumed
+            )
+            or staged.FIRST_CLEAN_NOVELTY_SEED != 20260956
+        ):
+            raise ValueError(
+                "q97 postvalidation ledger does not mark design55 and "
+                "validation53/54 spent or advance FIRST_CLEAN to 20260956"
+            )
 
     rejector = openset_base.Rejector(
         nets={
@@ -2369,6 +4309,7 @@ def load_candidate(
             "recorded_only": recorded_only,
             "post_validation_ledger_transitions": source_transitions,
             "evaluator_chain": evaluator_chain,
+            "transitive_execution_contract": execution_contract,
         },
     )
 
@@ -2404,6 +4345,12 @@ def candidate_provenance(candidate: V3Candidate) -> dict[str, Any]:
             "schema": CANDIDATE_CONTRACT_SCHEMA,
             "status": candidate.frozen_contract["status"],
         },
+        "q97_design_evidence": dict(
+            candidate.frozen_contract["q97_design_evidence"]
+        ),
+        "ordered_source_transition_evidence": copy.deepcopy(
+            candidate.validation_evidence["source_transition_evidence"]
+        ),
         "classifier_runtime_bundle": {
             "directory": str(candidate.classifier_bundle_dir),
             "manifest_path": str(candidate.classifier_bundle_manifest_path),
@@ -2459,7 +4406,7 @@ def candidate_provenance(candidate: V3Candidate) -> dict[str, Any]:
                 candidate.staged_metrics["seeds"]["novelty_seeds"]
             ),
             "artifact_sha256": dict(candidate.staged_hashes),
-            "policy_version": staged.STAGED_POLICY_VERSION,
+            "policy_version": EXPECTED_STAGED_POLICY_VERSION,
             "staged_threshold": candidate.threshold,
             "stage_two_threshold": candidate.stage_two_threshold,
             "composite": candidate.composite.provenance(),
@@ -2568,7 +4515,13 @@ def load_v3_release_suite(
             if isinstance(embedded, Mapping)
             else None
         )
-        if embedded_historical != expected_historical:
+        try:
+            _require_exact_json_value(
+                embedded_historical,
+                expected_historical,
+                field=f"release.{name}.historical_gate_redeclaration",
+            )
+        except ValueError:
             raise ValueError(
                 f"release {name} evaluation_protocol carries no matching "
                 "historical_gate_redeclaration block. The consumed "
@@ -2576,7 +4529,13 @@ def load_v3_release_suite(
                 "inactive history, while the current suite is evaluated only "
                 "against the strict imported 0.10/0.85 levels"
             )
-        if embedded != expected_protocol:
+        try:
+            _require_exact_json_value(
+                embedded,
+                expected_protocol,
+                field=f"release.{name}.evaluation_protocol",
+            )
+        except ValueError:
             raise ValueError(
                 f"release {name} evaluation_protocol is missing or differs "
                 "from the precommitted v3 evaluator contract"
@@ -2602,7 +4561,13 @@ def load_v3_release_suite(
         "runtime_provenance",
         "started_at",
     ):
-        if release_manifest.get(key) != intent.get(key):
+        try:
+            _require_exact_json_value(
+                release_manifest.get(key),
+                intent.get(key),
+                field=f"release_manifest.{key}",
+            )
+        except ValueError:
             raise ValueError(
                 f"release manifest changed precommitted intent field {key!r}"
             )
@@ -3022,6 +4987,62 @@ def _final_labels_from_classifier(
     return np.where(mask, np.int64(-1), labels)
 
 
+def _deployment_classifier_labels(
+    candidate: V3Candidate,
+    packed: np.ndarray,
+    raw_features: np.ndarray,
+    rejected: np.ndarray,
+    control_prediction: np.ndarray,
+    device: torch.device,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Execute the literal deployed schedule on accepted rows only.
+
+    The all-row classifier arm remains a separately labelled closed-gate
+    control.  This second pass is the deployment proof: rejected rows are
+    removed before the classifier call, and accepted predictions must equal
+    the corresponding all-row control predictions.
+    """
+    mask = np.asarray(rejected, dtype=bool)
+    control = np.asarray(control_prediction, dtype=np.int64)
+    packed_value = np.asarray(packed)
+    raw_value = np.asarray(raw_features)
+    if (
+        mask.ndim != 1
+        or control.shape != mask.shape
+        or len(packed_value) != len(mask)
+        or len(raw_value) != len(mask)
+    ):
+        raise ValueError("deployment classifier inputs must align")
+    accepted = np.flatnonzero(~mask)
+    labels = np.full(len(mask), -1, dtype=np.int64)
+    if len(accepted):
+        _features, embeddings = _embed_classifier(
+            candidate,
+            packed_value[accepted],
+            raw_value[accepted],
+            device,
+        )
+        prediction, _distance = release._nearest(
+            embeddings["fusion"],
+            candidate.classifier_fusion_artifact.prototypes,
+        )
+        prediction = np.asarray(prediction, dtype=np.int64)
+        if not np.array_equal(prediction, control[accepted]):
+            raise AssertionError(
+                "accepted-only deployment classifier differs from all-row "
+                "closed-control predictions"
+            )
+        labels[accepted] = prediction
+    return labels, {
+        "rows": int(len(mask)),
+        "rejected_rows_never_submitted": int(np.count_nonzero(mask)),
+        "classifier_batch_rows": int(len(accepted)),
+        "accepted_rows": int(len(accepted)),
+        "accepted_prediction_agreement_with_closed_control": True,
+        "schedule": "reject_then_classify_accepted_only",
+    }
+
+
 def _unstaged_scores(
     candidate: V3Candidate,
     embeddings: Mapping[str, np.ndarray],
@@ -3067,6 +5088,99 @@ def _stage_one_features(
         target_frac=candidate.target_frac,
         population=population,
     )
+
+
+def _assert_attribution_conservation(
+    report: Mapping[str, Any],
+    *,
+    gated: np.ndarray,
+    staged_score: np.ndarray,
+    unstaged_score: np.ndarray,
+    staged_threshold: float,
+    unstaged_threshold: float,
+) -> None:
+    """Prove every staged rejection is attributed once, with bounded overlap."""
+    gated_mask = np.asarray(gated, dtype=bool)
+    staged_value = np.asarray(staged_score, dtype=np.float64)
+    unstaged_value = np.asarray(unstaged_score, dtype=np.float64)
+    if (
+        gated_mask.ndim != 1
+        or staged_value.shape != gated_mask.shape
+        or unstaged_value.shape != gated_mask.shape
+        or not np.isfinite(staged_value).all()
+        or not np.isfinite(unstaged_value).all()
+        or not len(gated_mask)
+    ):
+        raise AssertionError("attribution inputs must be aligned finite vectors")
+    expected_staged_threshold = _require_finite_json_float(
+        staged_threshold, field="staged_threshold"
+    )
+    expected_unstaged_threshold = _require_finite_json_float(
+        unstaged_threshold, field="unstaged_threshold"
+    )
+    for key, expected in (
+        ("staged_threshold", expected_staged_threshold),
+        ("unstaged_threshold", expected_unstaged_threshold),
+    ):
+        found = _require_finite_json_float(
+            report.get(key), field=f"attribution.{key}"
+        )
+        if found != expected:
+            raise AssertionError(
+                f"attribution.{key}={found!r}, expected exact {expected!r}"
+            )
+    stage_two = (~gated_mask) & (
+        staged_value > expected_staged_threshold
+    )
+    staged_rejected = gated_mask | stage_two
+    control_rejected = unstaged_value > expected_unstaged_threshold
+    rows = int(len(gated_mask))
+    stage_one_total = int(np.count_nonzero(gated_mask))
+    stage_two_total = int(np.count_nonzero(stage_two))
+    staged_total = int(np.count_nonzero(staged_rejected))
+    control_total = int(np.count_nonzero(control_rejected))
+    overlap = int(np.count_nonzero(gated_mask & control_rejected))
+    expected_counts = {
+        "rows": rows,
+        "staged_rejected_total": staged_total,
+        "rejected_by_stage_one_total": stage_one_total,
+        "stage_one_also_rejected_by_unstaged_control": overlap,
+        "rejected_by_stage_two_only": stage_two_total,
+        "attribution_partition_total": stage_one_total + stage_two_total,
+        "attribution_partition_exact": True,
+    }
+    for key, expected in expected_counts.items():
+        _require_exact_json_value(
+            report.get(key), expected, field=f"attribution.{key}"
+        )
+    if staged_total != stage_one_total + stage_two_total:
+        raise AssertionError("stage attribution does not conserve rejections")
+    if not (0 <= overlap <= stage_one_total and overlap <= control_total):
+        raise AssertionError("stage-one/control overlap is outside exact bounds")
+    survivor_total = rows - stage_one_total
+    expected_rates = {
+        "staged_false_unknown_rate": staged_total / rows,
+        "stage_one_gate_rate": stage_one_total / rows,
+        "stage_two_false_unknown_rate_marginal": stage_two_total / rows,
+        "stage_two_false_unknown_rate_among_survivors": (
+            stage_two_total / survivor_total if survivor_total else None
+        ),
+        "unstaged_false_unknown_rate": control_total / rows,
+    }
+    for key, expected in expected_rates.items():
+        found = report.get(key)
+        if expected is None:
+            if found is not None:
+                raise AssertionError(f"attribution.{key} must be null")
+        elif (
+            type(found) is not float
+            or not math.isfinite(found)
+            or found != float(expected)
+            or not 0.0 <= found <= 1.0
+        ):
+            raise AssertionError(
+                f"attribution.{key}={found!r}, expected exact {expected!r}"
+            )
 
 
 def _staged_scores(
@@ -3159,8 +5273,12 @@ def _staged_scores(
                 np.mean(rejected)
             ),
             "unstaged_false_unknown_rate": float(np.mean(unstaged_rejected)),
-            "rejected_by_stage_one_only": 0,
+            "staged_rejected_total": int(np.count_nonzero(rejected)),
+            "rejected_by_stage_one_total": 0,
+            "stage_one_also_rejected_by_unstaged_control": 0,
             "rejected_by_stage_two_only": int(np.count_nonzero(rejected)),
+            "attribution_partition_total": int(np.count_nonzero(rejected)),
+            "attribution_partition_exact": True,
             "attribution": (
                 "this capture length is below the smallest fitted stage-1 "
                 "length, so no bundle's fitted length is a causal prefix of "
@@ -3171,6 +5289,14 @@ def _staged_scores(
         }
     prediction = np.asarray(unstaged_prediction, dtype=np.int64).copy()
     rejected = gated | (staged_score > threshold)
+    _assert_attribution_conservation(
+        by_stage,
+        gated=gated,
+        staged_score=staged_score,
+        unstaged_score=unstaged_score,
+        staged_threshold=threshold,
+        unstaged_threshold=candidate.stage_two_threshold,
+    )
     return {
         "stage_one_active": bool(active),
         "stage_one_feature_length": (
@@ -3288,17 +5414,21 @@ def _open_report(
         "shorter_observation_rule": novelty_provenance["prefix_rule"],
         "score": (
             "staged axis, policy version "
-            f"{staged.STAGED_POLICY_VERSION}: frozen stage-1 noise prefilter "
+            f"{EXPECTED_STAGED_POLICY_VERSION}: frozen stage-1 noise prefilter "
             "gates; survivors carry the COMPOSITE "
             f"{staged.COMPOSITE_SURVIVOR_SCORE} over the frozen "
             "enrollment-ranked branch-LOF + geometry blend and the "
             "enrollment-survivor stage-1 rank; gated rows are placed above "
             "every survivor"
         ),
-        "staged_policy_version": staged.STAGED_POLICY_VERSION,
+        "staged_policy_schema": EXPECTED_STAGED_POLICY_SCHEMA,
+        "staged_policy_version": EXPECTED_STAGED_POLICY_VERSION,
+        "staged_policy_kind": EXPECTED_STAGED_POLICY_KIND,
+        "threshold_quantile": EXPECTED_COMPOSITE_THRESHOLD_QUANTILE,
+        "policy_hygiene": dict(EXPECTED_POLICY_HYGIENE),
         "threshold": float(threshold),
         "threshold_rule": (
-            "frozen q95 of the composite over enrollment stage-1 survivors, "
+            "frozen q97 of the composite over enrollment stage-1 survivors, "
             "loaded verbatim; the unstaged control below uses the stage-2 "
             "policy's own untouched threshold"
         ),
@@ -3590,9 +5720,16 @@ def evaluate_release(
             population=f"n{length}-known-query",
         )
         known_staged["unstaged_score"] = unstaged_score
-        known_staged["final_label_or_unknown"] = _final_labels_from_classifier(
-            classifier_prediction,
+        (
+            known_staged["final_label_or_unknown"],
+            known_staged["deployment_classifier_execution"],
+        ) = _deployment_classifier_labels(
+            candidate,
+            packed[query],
+            raw_features[query],
             known_staged["rejected"],
+            classifier_prediction,
+            device,
         )
         staged_known_by_length[length] = known_staged
 
@@ -3754,6 +5891,11 @@ def evaluate_release(
                 np.count_nonzero(~staged_known_by_length[length]["rejected"])
             ),
             "accepted_label_source": "classifier_fusion_8k_regularized",
+            "deployment_classifier_execution": dict(
+                staged_known_by_length[length][
+                    "deployment_classifier_execution"
+                ]
+            ),
             "accepted_classifier_rejector_label_agreement": float(
                 np.mean(
                     staged_known_by_length[length]["final_label_or_unknown"][
@@ -3792,13 +5934,18 @@ def evaluate_release(
             "open_gate_source": "rejector_fusion_4k_frozen_policy",
             "additive_only": False,
             "changes_closed_label": True,
+            "open_set_decision_changes_closed_label": True,
             "gates_before_classification": True,
             "architecture_contract_change": str(
                 noise_prefilter.ARCHITECTURE_CONTRACT_CHANGE
             ),
-            "staged_policy_kind": staged.STAGED_POLICY_KIND,
-            "staged_policy_schema": int(staged.STAGED_POLICY_SCHEMA),
-            "staged_policy_version": staged.STAGED_POLICY_VERSION,
+            "staged_policy_kind": EXPECTED_STAGED_POLICY_KIND,
+            "staged_policy_schema": EXPECTED_STAGED_POLICY_SCHEMA,
+            "staged_policy_version": EXPECTED_STAGED_POLICY_VERSION,
+            "composite_threshold_quantile": (
+                EXPECTED_COMPOSITE_THRESHOLD_QUANTILE
+            ),
+            "policy_hygiene": dict(EXPECTED_POLICY_HYGIENE),
             "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
             "staged_score_note": staged.STAGED_SCORE_NOTE,
             "known_false_unknown_accounting": KNOWN_FUR_ACCOUNTING,
@@ -3840,7 +5987,7 @@ def evaluate_release(
                 "frozen stage-2 policy (geometry blend, enrollment q95 "
                 "threshold)",
                 "frozen composite survivor policy (enrollment-survivor "
-                "stage-1 rank calibration, q95 composite threshold)",
+                "stage-1 rank calibration, q97 composite threshold)",
             ],
         },
         "closed_per_length": closed_by_length,

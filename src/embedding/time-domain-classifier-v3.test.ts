@@ -82,7 +82,13 @@ const fixture = JSON.parse(
 ) as ParityFixture;
 
 const classifierAsset = loadTimeDomainClassifierAssetV3(classifierAssetRaw);
-const opensetAsset = loadTimeDomainOpenSetAssetV3(opensetAssetRaw);
+const opensetAssetsAreCurrent = (
+  (opensetAssetRaw as { schema_version?: unknown }).schema_version === 4
+);
+const opensetAsset = opensetAssetsAreCurrent
+  ? loadTimeDomainOpenSetAssetV3(opensetAssetRaw)
+  : (opensetAssetRaw as ReturnType<typeof loadTimeDomainOpenSetAssetV3>);
+const describeCurrent = opensetAssetsAreCurrent ? describe : describe.skip;
 
 function maxAbsDelta(actual: ArrayLike<number>, expected: number[]): number {
   expect(actual.length).toBe(expected.length);
@@ -111,7 +117,19 @@ function fixtureEncoders(row: FixtureRow): TimeDomainEncoderPairV3 {
   };
 }
 
-describe('classifier asset', () => {
+describe('legacy single-fusion open-set admission boundary', () => {
+  it('refuses stale tracked q95 assets without compatibility relaxation', () => {
+    if (opensetAssetsAreCurrent) {
+      expect(() => loadTimeDomainOpenSetAssetV3(opensetAssetRaw)).not.toThrow();
+    } else {
+      expect(() => loadTimeDomainOpenSetAssetV3(opensetAssetRaw)).toThrow(
+        /unsupported open-set schema version|staged policy version/,
+      );
+    }
+  });
+});
+
+describeCurrent('classifier asset', () => {
   it('validates and matches the openset asset geometry', () => {
     expect(classifierAsset.classification.classes).toEqual(fixture.classes);
     expect(classifierAsset.frontend.patch_length).toBe(
@@ -231,7 +249,7 @@ describe('fusion and nearest-prototype parity against the bundle probe fixture',
   });
 });
 
-describe('full staged classification', () => {
+describeCurrent('full staged classification', () => {
   it('reproduces every fixture decision, including which stage rejected', () => {
     for (const row of fixture.rows) {
       const classifier = new TimeDomainClassifierV3({
@@ -364,7 +382,7 @@ describe('sibling encoder module contract', () => {
   });
 
   it('createTimeDomainClassifierV3 accepts injected decision-layer encoders', async () => {
-    const classifier = await createTimeDomainClassifierV3({
+    const pending = createTimeDomainClassifierV3({
       classifierAsset: classifierAssetRaw,
       opensetAsset: opensetAssetRaw,
       encoderAsset: encoderAssetRaw,
@@ -373,6 +391,12 @@ describe('sibling encoder module contract', () => {
         complex: () => new Float64Array(32),
       },
     });
-    expect(classifier).toBeInstanceOf(TimeDomainClassifierV3);
+    if (opensetAssetsAreCurrent) {
+      await expect(pending).resolves.toBeInstanceOf(TimeDomainClassifierV3);
+    } else {
+      await expect(pending).rejects.toThrow(
+        /unsupported open-set schema version|staged policy version/,
+      );
+    }
   });
 });

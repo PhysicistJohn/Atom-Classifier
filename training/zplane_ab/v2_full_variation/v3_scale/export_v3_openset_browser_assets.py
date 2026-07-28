@@ -12,11 +12,11 @@ What this produces (staging only, never release):
       from the staged artifact (``v3_branch_lof_components.npz`` /
       ``v3_open_policy_stage_two.npz``), including the single frozen geometry
       feature column, both enrollment calibrations and the stage-2 q95.
-      COMPOSITE (staged policy version 2): the survivor composite policy
+      COMPOSITE (staged policy version 4): the q97 survivor composite policy
       (``v3_staged_composite_policy.npz``) -- the enrollment-survivor stage-1
-      calibration, the composite calibration, the composite q95 threshold and
-      the explicit ``policy_version`` the TypeScript runtime refuses to run
-      without.
+      calibration, the composite calibration, the composite q97 threshold,
+      every enrollment-only hygiene declaration and the explicit
+      ``policy_version`` the TypeScript runtime refuses to run without.
   ``time-domain-classifier-weights-v1.json``
       The decision-layer half of the v3 runtime bundle
       supplied through ``--bundle-dir``: feature standardization, fusion
@@ -39,7 +39,7 @@ Evidence hygiene:
 - Known parity rows come from the development SELECTION split (scored, never
   fit).  No sealed or consumed path is read; ``assemble.reject_sealed_path``
   guards every directory argument.
-- Release seed 20260731 is neither used nor reachable from here.
+- Release seed 20260736 is neither used nor reachable from here.
 
 Determinism: JSON is written with ``sort_keys=True``, no timestamps, no
 absolute paths in the payloads, and float repr is Python's shortest
@@ -110,6 +110,7 @@ from train import embed_all, nearest  # noqa: E402
 from v3_time_domain_openset import (  # noqa: E402
     FROZEN_GEOMETRY_FEATURE,
     FROZEN_GEOMETRY_WEIGHT,
+    FROZEN_POLICY_KIND,
     FROZEN_THRESHOLD_QUANTILE,
     FROZEN_V2_WEIGHT,
     FrozenV3OpenSet,
@@ -121,10 +122,9 @@ from v3_time_domain_openset import (  # noqa: E402
 
 
 OPENSET_SCHEMA = "atomos.v3.time-domain-openset.staged"
-# Version 2: the composite survivor score (staged policy version 2).  The
-# TypeScript runtime refuses any other schema version, exactly as it refuses
-# any other staged policy version.
-OPENSET_SCHEMA_VERSION = 2
+# Version 4: policy-v4/q97 plus its enrollment-only hygiene declarations.  The
+# TypeScript runtime refuses every older schema and policy version.
+OPENSET_SCHEMA_VERSION = 4
 CLASSIFIER_SCHEMA = "atomos.v3.time-domain-invariant-fusion.browser-decision"
 CLASSIFIER_SCHEMA_VERSION = 1
 PARITY_SCHEMA = "time-domain-openset-parity-v1"
@@ -150,7 +150,17 @@ WEIGHTS_NAME = OPENSET_POLICY_NAME
 PARITY_NAME = "time-domain-openset-parity-v1.json"
 MANIFEST_NAME = "manifest.json"
 OPENSET_MANIFEST_SCHEMA = "time-domain-v3-dual-openset-staging-manifest-v1"
-CANDIDATE_ID = "v3.3-decoupled-8k-classifier-4k-rejector"
+CANDIDATE_ID = "v3.4-q97-decoupled-8k-classifier-4k-rejector"
+DESIGN_NOVELTY_SEED = 20260955
+VALIDATION_NOVELTY_SEEDS = (20260953, 20260954)
+RELEASE_SEED_NOT_SPENT = 20260736
+if (
+    staged.PROPOSED_DESIGN_NOVELTY_SEED != DESIGN_NOVELTY_SEED
+    or tuple(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS)
+    != VALIDATION_NOVELTY_SEEDS
+    or staged.RELEASE_SEED_NEVER_SPENT_HERE != RELEASE_SEED_NOT_SPENT
+):
+    raise RuntimeError("browser exporter seed contract differs from policy-v4")
 MAX_OPENSET_POLICY_BYTES = 25 * 1024 * 1024
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
@@ -228,7 +238,9 @@ def write_json(path: Path, payload: Any, *, compact: bool = False) -> None:
 
 
 def validate_parity_seed(seed: int) -> int:
-    value = int(seed)
+    if type(seed) is not int:
+        raise ValueError("parity seed must be an exact integer")
+    value = seed
     staged._refuse_ledger_seed(value, "a parity fixture draw")
     low, high = noise_prefilter.NOVELTY_SEED_NAMESPACE
     if low <= value <= high:
@@ -247,20 +259,404 @@ def validate_parity_seed(seed: int) -> int:
 
 def _staged_probability(value: Any, label: str) -> float:
     if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
+        type(value) is not float
         or not math.isfinite(float(value))
         or not 0.0 <= float(value) <= 1.0
     ):
-        raise ValueError(f"{label} must be a finite probability")
+        raise ValueError(f"{label} must be an exact finite JSON float probability")
     return float(value)
 
 
+def _staged_finite_float(value: Any, label: str) -> float:
+    if type(value) is not float or not math.isfinite(value):
+        raise ValueError(f"{label} must be an exact finite JSON float")
+    return value
+
+
+def _require_exact_scalar(value: Any, expected: Any, label: str) -> None:
+    """Reject equality aliases such as ``1 == True`` and ``0.0 == 0``."""
+    if type(value) is not type(expected) or value != expected:
+        raise ValueError(
+            f"{label}={value!r} ({type(value).__name__}), expected exact "
+            f"{expected!r} ({type(expected).__name__})"
+        )
+
+
+def _require_exact_int_list(
+    value: Any, expected: Sequence[int], label: str
+) -> None:
+    wanted = list(expected)
+    if (
+        type(value) is not list
+        or len(value) != len(wanted)
+        or any(type(item) is not int for item in value)
+        or value != wanted
+    ):
+        raise ValueError(f"{label} must be the exact integer list {wanted}")
+
+
+def _count_from_exact_fraction(
+    fraction: float, rows: int, label: str
+) -> int:
+    count = round(fraction * rows)
+    if not 0 <= count <= rows or fraction != count / rows:
+        raise ValueError(f"{label} is not an exact count/{rows} fraction")
+    return count
+
+
+def _validate_novelty_compute_counts(
+    family_row: Mapping[str, Any],
+    *,
+    rows: int,
+    gated_count: int,
+    gated_fraction: float,
+    label: str,
+) -> None:
+    compute = family_row.get("compute")
+    if not isinstance(compute, Mapping):
+        raise ValueError(f"{label}.compute must be an object")
+    expected = {
+        "rows": rows,
+        "short_circuited": gated_count,
+        "short_circuited_fraction": gated_fraction,
+        "stage_two_rows_scored_staged": rows - gated_count,
+        "stage_two_rows_scored_unstaged": rows,
+    }
+    for name, wanted in expected.items():
+        _require_exact_scalar(
+            compute.get(name), wanted, f"{label}.compute.{name}"
+        )
+    saving = compute.get("prefilter_module_compute_saving")
+    if not isinstance(saving, Mapping):
+        raise ValueError(
+            f"{label}.compute.prefilter_module_compute_saving must be an object"
+        )
+    saving_expected = {
+        "rows": rows,
+        "gated_rows": gated_count,
+        "downstream_rows_evaluated": rows - gated_count,
+        "gated_fraction": gated_fraction,
+        "measured": True,
+    }
+    for name, wanted in saving_expected.items():
+        _require_exact_scalar(
+            saving.get(name),
+            wanted,
+            f"{label}.compute.prefilter_module_compute_saving.{name}",
+        )
+
+
+KNOWN_ATTRIBUTION_TEXT = (
+    "a known row counted here was NOT classified if stage_one gated it; "
+    "rejected_by_stage_one_total counts every such row, while "
+    "stage_one_also_rejected_by_unstaged_control reports the overlap with the "
+    "counterfactual additive control without subtracting it from the staged "
+    "partition. The exact staged partition is rejected_by_stage_one_total + "
+    "rejected_by_stage_two_only. Survivor rejection is on the COMPOSITE axis "
+    "against staged_threshold; the unstaged control uses the additive axis "
+    "against unstaged_threshold"
+)
+KNOWN_ATTRIBUTION_KEYS = {
+    "rows",
+    "staged_threshold",
+    "unstaged_threshold",
+    "staged_false_unknown_rate",
+    "stage_one_gate_rate",
+    "stage_two_false_unknown_rate_marginal",
+    "stage_two_false_unknown_rate_among_survivors",
+    "unstaged_false_unknown_rate",
+    "staged_rejected_total",
+    "rejected_by_stage_one_total",
+    "stage_one_also_rejected_by_unstaged_control",
+    "rejected_by_stage_two_only",
+    "attribution_partition_total",
+    "attribution_partition_exact",
+    "attribution",
+}
+
+
+def _validate_known_attribution_body(
+    value: Any,
+    label: str,
+    *,
+    staged_threshold: float,
+    unstaged_threshold: float,
+) -> Mapping[str, Any]:
+    """Require the corrected, exact stage-one/stage-two known-FUR partition."""
+    if not isinstance(value, Mapping) or set(value) != KNOWN_ATTRIBUTION_KEYS:
+        raise ValueError(f"{label} is not the exact corrected attribution object")
+    recorded_staged_threshold = _staged_finite_float(
+        value["staged_threshold"], f"{label}.staged_threshold"
+    )
+    recorded_unstaged_threshold = _staged_finite_float(
+        value["unstaged_threshold"], f"{label}.unstaged_threshold"
+    )
+    if recorded_staged_threshold != staged_threshold:
+        raise ValueError(
+            f"{label}.staged_threshold is not the composite q97 threshold"
+        )
+    if recorded_unstaged_threshold != unstaged_threshold:
+        raise ValueError(
+            f"{label}.unstaged_threshold is not the stage-two q95 threshold"
+        )
+    rows = value["rows"]
+    count_names = (
+        "staged_rejected_total",
+        "rejected_by_stage_one_total",
+        "stage_one_also_rejected_by_unstaged_control",
+        "rejected_by_stage_two_only",
+        "attribution_partition_total",
+    )
+    if type(rows) is not int or rows <= 0:
+        raise ValueError(f"{label}.rows must be a positive integer")
+    counts: dict[str, int] = {}
+    for name in count_names:
+        found = value[name]
+        if type(found) is not int or not 0 <= found <= rows:
+            raise ValueError(f"{label}.{name} is not a valid row count")
+        counts[name] = found
+    stage_one = counts["rejected_by_stage_one_total"]
+    stage_two = counts["rejected_by_stage_two_only"]
+    staged_total = counts["staged_rejected_total"]
+    partition_total = counts["attribution_partition_total"]
+    if (
+        value["attribution_partition_exact"] is not True
+        or staged_total != stage_one + stage_two
+        or partition_total != staged_total
+        or counts["stage_one_also_rejected_by_unstaged_control"] > stage_one
+        or stage_two > rows - stage_one
+    ):
+        raise ValueError(f"{label} is not an exact stage-one/stage-two partition")
+    if value["attribution"] != KNOWN_ATTRIBUTION_TEXT:
+        raise ValueError(f"{label}.attribution wording differs")
+    survivors = rows - stage_one
+    if survivors <= 0:
+        raise ValueError(f"{label} must retain at least one stage-one survivor")
+    expected_rates = {
+        "staged_false_unknown_rate": staged_total / rows,
+        "stage_one_gate_rate": stage_one / rows,
+        "stage_two_false_unknown_rate_marginal": stage_two / rows,
+        "stage_two_false_unknown_rate_among_survivors": stage_two / survivors,
+    }
+    for name, expected in expected_rates.items():
+        if _staged_probability(value[name], f"{label}.{name}") != expected:
+            raise ValueError(f"{label}.{name} is not derived from its row counts")
+    unstaged_rate = _staged_probability(
+        value["unstaged_false_unknown_rate"],
+        f"{label}.unstaged_false_unknown_rate",
+    )
+    # The report does not carry a redundant unstaged rejection-count field.
+    # Recover the sole integer count whose exact count/rows ratio is recorded,
+    # then prove that the claimed stage-one/unstaged overlap can fit inside it.
+    unstaged_count = round(unstaged_rate * rows)
+    if (
+        not 0 <= unstaged_count <= rows
+        or unstaged_rate != unstaged_count / rows
+    ):
+        raise ValueError(
+            f"{label}.unstaged_false_unknown_rate is not an exact row-count rate"
+        )
+    if (
+        counts["stage_one_also_rejected_by_unstaged_control"]
+        > unstaged_count
+    ):
+        raise ValueError(
+            f"{label}.stage_one_also_rejected_by_unstaged_control exceeds "
+            "the derived unstaged rejection count"
+        )
+    return value
+
+
+def bind_known_attribution_to_row_evaluation(
+    report: Mapping[str, Any],
+    outcome: staged.StagedOutcome,
+    unstaged_score: np.ndarray,
+    *,
+    staged_threshold: float,
+    unstaged_threshold: float,
+) -> Mapping[str, Any]:
+    """Bind the report's aggregate attribution to evaluated known rows.
+
+    Count conservation inside JSON is necessary but insufficient: every
+    count could be changed coherently.  This function independently derives
+    the partition from the row-aligned gate, composite and unstaged score
+    vectors and requires the canonical report body to equal that result.
+    """
+    gated = np.asarray(outcome.gated)
+    if (
+        gated.ndim != 1
+        or gated.dtype != np.dtype(bool)
+        or len(gated) == 0
+    ):
+        raise ValueError(
+            "actual known-row gated must be a non-empty exact boolean vector"
+        )
+    rows = len(gated)
+    survivor_index = np.asarray(outcome.survivor_index)
+    if (
+        survivor_index.ndim != 1
+        or not np.issubdtype(survivor_index.dtype, np.integer)
+        or not np.array_equal(survivor_index, np.flatnonzero(~gated))
+    ):
+        raise ValueError(
+            "actual known-row survivor_index must be the exact ordered "
+            "integer indices of non-gated rows"
+        )
+    vectors: dict[str, np.ndarray] = {}
+    for name in (
+        "stage_one_raw",
+        "stage_one_rank",
+        "stage_two_score",
+        "stage_one_survivor_rank",
+        "composite_score",
+        "staged_score",
+    ):
+        vector = np.asarray(getattr(outcome, name))
+        if (
+            vector.ndim != 1
+            or len(vector) != rows
+            or not np.issubdtype(vector.dtype, np.floating)
+        ):
+            raise ValueError(
+                f"actual known-row {name} must be a row-aligned floating vector"
+            )
+        vectors[name] = vector.astype(np.float64, copy=False)
+    for name in ("stage_one_raw", "stage_one_rank", "staged_score"):
+        if not np.isfinite(vectors[name]).all():
+            raise ValueError(f"actual known-row {name} must be finite")
+    survivors = ~gated
+    for name in (
+        "stage_two_score",
+        "stage_one_survivor_rank",
+        "composite_score",
+    ):
+        vector = vectors[name]
+        if (
+            not np.all(np.isnan(vector[gated]))
+            or not np.isfinite(vector[survivors]).all()
+        ):
+            raise ValueError(
+                f"actual known-row {name} must be NaN exactly on gated rows "
+                "and finite on survivors"
+            )
+    expected_stage_one_rank = 0.5 * (
+        vectors["stage_one_raw"]
+        / (1.0 + np.abs(vectors["stage_one_raw"]))
+    ) + 0.5
+    if not np.array_equal(vectors["stage_one_rank"], expected_stage_one_rank):
+        raise ValueError(
+            "actual known-row stage_one_rank differs from stage_one_raw"
+        )
+    expected_composite = np.maximum(
+        vectors["stage_two_score"][survivors],
+        vectors["stage_one_survivor_rank"][survivors],
+    )
+    if not np.array_equal(
+        vectors["composite_score"][survivors], expected_composite
+    ):
+        raise ValueError(
+            "actual known-row composite_score is not the exact survivor max"
+        )
+    expected_staged = np.where(
+        gated,
+        staged.STAGE_ONE_SCORE_OFFSET + vectors["stage_one_rank"],
+        vectors["composite_score"],
+    )
+    if not np.array_equal(vectors["staged_score"], expected_staged):
+        raise ValueError(
+            "actual known-row staged_score differs from its row components"
+        )
+    staged.assert_staged_decision_equivalence(
+        gated,
+        vectors["stage_two_score"],
+        vectors["composite_score"],
+        vectors["staged_score"],
+        staged_threshold,
+    )
+
+    known = report.get("known")
+    if not isinstance(known, Mapping):
+        raise ValueError("staged report carries no known evidence body")
+    recorded = _validate_known_attribution_body(
+        known.get("by_stage"),
+        "known.by_stage",
+        staged_threshold=staged_threshold,
+        unstaged_threshold=unstaged_threshold,
+    )
+    actual = staged.known_false_unknown_by_stage(
+        outcome,
+        np.asarray(unstaged_score, dtype=np.float64),
+        staged_threshold,
+        unstaged_threshold,
+    )
+    if dict(recorded) != actual:
+        raise ValueError(
+            "known attribution differs from the actual known-row evaluation"
+        )
+    return recorded
+
+
+def bind_known_attribution_to_loaded_runtime(
+    report: Mapping[str, Any],
+    *,
+    rejector_artifact: base.FusionArtifact,
+    rejector: base.Rejector,
+    prefilter_dir: Path,
+    policy: FrozenV3OpenSet,
+    composite: Any,
+    device: torch.device,
+) -> Mapping[str, Any]:
+    """Rebuild and score the immutable selection rows, then bind attribution."""
+    prefilter_source = staged.load_prefilter_module()
+    posedegen_source = staged.load_posedegen_module()
+    rebuilt = staged.rebuild_populations(
+        rejector_artifact,
+        device,
+        posedegen_source,
+    )
+    data = rebuilt.populations.data
+    known_length = int(rebuilt.selection_capture_length)
+    stage_one = staged.load_stage_one(
+        prefilter_source,
+        posedegen_source,
+        prefilter_dir,
+        required_lengths=(known_length,),
+    )
+    known_unstaged, _seconds = staged.score_unstaged(
+        rejector,
+        data["xva"],
+        data["fva"],
+        device,
+    )
+    known_outcome = staged.score_staged(
+        rejector,
+        stage_one,
+        data["xva"],
+        data["fva"],
+        rebuilt.selection_features,
+        device,
+        capture_length=known_length,
+        composite=composite,
+        feature_seconds=rebuilt.selection_feature_seconds,
+    )
+    return bind_known_attribution_to_row_evaluation(
+        report,
+        known_outcome,
+        known_unstaged,
+        staged_threshold=float(composite.threshold),
+        unstaged_threshold=float(policy.threshold),
+    )
+
+
 def _validate_staged_gate_bodies(
-    report: Mapping[str, Any], gates: Mapping[str, Any]
+    report: Mapping[str, Any],
+    gates: Mapping[str, Any],
+    *,
+    staged_threshold: float,
+    unstaged_threshold: float,
 ) -> None:
     novelty = report.get("novelty")
-    expected_seeds = {"20260950", "20260951"}
+    expected_seeds = {str(seed) for seed in VALIDATION_NOVELTY_SEEDS}
     expected_lengths = {
         str(length) for length in REQUIRED_VALIDATION_PREFIX_LENGTHS
     }
@@ -270,6 +666,29 @@ def _validate_staged_gate_bodies(
         name: [] for name in staged.GATE_FLOORS
     }
     known_rates: list[float] = []
+    known = report.get("known")
+    if not isinstance(known, Mapping):
+        raise ValueError("staged report carries no known evidence body")
+    known_by_stage = _validate_known_attribution_body(
+        known.get("by_stage"),
+        "known.by_stage",
+        staged_threshold=staged_threshold,
+        unstaged_threshold=unstaged_threshold,
+    )
+    protocol = report["protocol"]
+    known_rows = protocol["known_rows"]
+    novelty_rows = protocol["novelty_n_each"]
+    if known_by_stage["rows"] != known_rows:
+        raise ValueError(
+            "known.by_stage.rows differs from protocol.known_rows"
+        )
+    known_rate = _staged_probability(
+        known.get("false_unknown_rate"),
+        "known.false_unknown_rate",
+    )
+    if known_rate != float(known_by_stage["staged_false_unknown_rate"]):
+        raise ValueError("known false-unknown rate differs from its attribution")
+
     for seed in sorted(expected_seeds):
         by_length = novelty[seed]
         if (
@@ -295,6 +714,17 @@ def _validate_staged_gate_bodies(
                 raise ValueError(
                     f"staged novelty row {seed}/{length} is incomplete"
                 )
+            row_known_by_stage = _validate_known_attribution_body(
+                row.get("known_false_unknown_by_stage"),
+                f"novelty {seed}/{length} known_false_unknown_by_stage",
+                staged_threshold=staged_threshold,
+                unstaged_threshold=unstaged_threshold,
+            )
+            if row_known_by_stage != known_by_stage:
+                raise ValueError(
+                    f"novelty {seed}/{length} known attribution differs from "
+                    "known.by_stage"
+                )
             observed["overall_auroc"].append(
                 _staged_probability(
                     overall.get("auroc"),
@@ -318,6 +748,45 @@ def _validate_staged_gate_bodies(
                         f"{family}.threshold_recall",
                     )
                 )
+                gated_fraction = _staged_probability(
+                    family_row.get("gated_at_stage_one_fraction"),
+                    f"novelty {seed}/{length} "
+                    f"{family}.gated_at_stage_one_fraction",
+                )
+                stage_two_fraction = _staged_probability(
+                    family_row.get("rejected_at_stage_two_fraction"),
+                    f"novelty {seed}/{length} "
+                    f"{family}.rejected_at_stage_two_fraction",
+                )
+                gated_count = _count_from_exact_fraction(
+                    gated_fraction,
+                    novelty_rows,
+                    f"novelty {seed}/{length} "
+                    f"{family}.gated_at_stage_one_fraction",
+                )
+                stage_two_count = _count_from_exact_fraction(
+                    stage_two_fraction,
+                    novelty_rows,
+                    f"novelty {seed}/{length} "
+                    f"{family}.rejected_at_stage_two_fraction",
+                )
+                recall_count = _count_from_exact_fraction(
+                    float(family_row["threshold_recall"]),
+                    novelty_rows,
+                    f"novelty {seed}/{length} {family}.threshold_recall",
+                )
+                if gated_count + stage_two_count != recall_count:
+                    raise ValueError(
+                        f"novelty {seed}/{length} {family} rejection "
+                        "counts do not derive threshold_recall"
+                    )
+                _validate_novelty_compute_counts(
+                    family_row,
+                    rows=novelty_rows,
+                    gated_count=gated_count,
+                    gated_fraction=gated_fraction,
+                    label=f"novelty {seed}/{length} {family}",
+                )
             known_rates.append(
                 _staged_probability(
                     row.get("known_false_unknown_rate"),
@@ -329,13 +798,6 @@ def _validate_staged_gate_bodies(
             raise ValueError(
                 f"staged gate {name!r} worst is not derived from novelty rows"
             )
-    known = report.get("known")
-    if not isinstance(known, Mapping):
-        raise ValueError("staged report carries no known evidence body")
-    known_rate = _staged_probability(
-        known.get("false_unknown_rate"),
-        "known.false_unknown_rate",
-    )
     if (
         any(value != known_rate for value in known_rates)
         or float(gates["known_false_unknown_rate"]["worst"]) != known_rate
@@ -362,38 +824,37 @@ def validate_staged_evidence_report(report: Mapping[str, Any]) -> None:
         ("sealed_release_data_used", 0),
         ("consumed_test_rows_used", 0),
         ("sealed_release_paths_read", 0),
-        ("release_seed_20260735_used", False),
+        ("release_seed_20260736_used", False),
         ("all_pass", True),
         ("closed_label_can_be_gated", True),
         ("additive_only", False),
         ("changes_closed_label", True),
         ("gates_before_classification", True),
     )
-    mismatched = [
-        f"{key}={report.get(key)!r}, expected {expected!r}"
-        for key, expected in required_scalars
-        if report.get(key) != expected
-    ]
-    if mismatched:
-        raise ValueError(
-            "staged artifact is not passing validate-role evidence: "
-            + "; ".join(mismatched)
-        )
+    for key, expected in required_scalars:
+        try:
+            _require_exact_scalar(report.get(key), expected, key)
+        except ValueError as exc:
+            raise ValueError(
+                "staged artifact is not passing validate-role evidence: "
+                f"{exc}"
+            ) from exc
 
     architecture = report.get("architecture")
     expected_architecture = {
         "kind": staged.STAGED_POLICY_KIND,
         "schema": int(staged.STAGED_POLICY_SCHEMA),
         "staged_policy_version": staged.STAGED_POLICY_VERSION,
+        "stage_two_policy_kind": FROZEN_POLICY_KIND,
+        "stage_one_fitted_here": False,
+        "stage_two_refit_on_survivors": False,
     }
     if not isinstance(architecture, Mapping):
         raise ValueError("staged artifact carries no architecture record")
     for key, expected in expected_architecture.items():
-        if architecture.get(key) != expected:
-            raise ValueError(
-                f"staged architecture {key}={architecture.get(key)!r}, "
-                f"expected {expected!r}"
-            )
+        _require_exact_scalar(
+            architecture.get(key), expected, f"staged architecture {key}"
+        )
 
     gates = report.get("gates")
     expected_gate_names = set(staged.GATE_FLOORS) | {
@@ -413,14 +874,12 @@ def validate_staged_evidence_report(report: Mapping[str, Any]) -> None:
         if (
             not isinstance(gate, Mapping)
             or gate.get("passes") is not True
-            or isinstance(recorded_floor, bool)
-            or not isinstance(recorded_floor, (int, float))
-            or not math.isfinite(float(recorded_floor))
-            or float(recorded_floor) != float(floor)
-            or isinstance(worst, bool)
-            or not isinstance(worst, (int, float))
-            or not math.isfinite(float(worst))
-            or float(worst) < float(floor)
+            or type(recorded_floor) is not float
+            or not math.isfinite(recorded_floor)
+            or recorded_floor != float(floor)
+            or type(worst) is not float
+            or not math.isfinite(worst)
+            or worst < float(floor)
         ):
             raise ValueError(
                 f"staged gate {name!r} did not pass its frozen floor {floor}"
@@ -439,14 +898,12 @@ def validate_staged_evidence_report(report: Mapping[str, Any]) -> None:
     if (
         not isinstance(known_gate, Mapping)
         or known_gate.get("passes") is not True
-        or isinstance(known_ceiling, bool)
-        or not isinstance(known_ceiling, (int, float))
-        or not math.isfinite(float(known_ceiling))
-        or float(known_ceiling) != float(staged.KNOWN_FUR_CEILING)
-        or isinstance(known_worst, bool)
-        or not isinstance(known_worst, (int, float))
-        or not math.isfinite(float(known_worst))
-        or float(known_worst) > float(staged.KNOWN_FUR_CEILING)
+        or type(known_ceiling) is not float
+        or not math.isfinite(known_ceiling)
+        or known_ceiling != float(staged.KNOWN_FUR_CEILING)
+        or type(known_worst) is not float
+        or not math.isfinite(known_worst)
+        or known_worst > float(staged.KNOWN_FUR_CEILING)
     ):
         raise ValueError(
             "known false-unknown rate did not pass the strict development "
@@ -456,8 +913,14 @@ def validate_staged_evidence_report(report: Mapping[str, Any]) -> None:
     stage_one = report.get("stage_one")
     if not isinstance(stage_one, Mapping):
         raise ValueError("staged artifact carries no stage-one provenance")
+    capture_lengths = stage_one.get("capture_lengths")
+    if (
+        type(capture_lengths) is not list
+        or any(type(length) is not int for length in capture_lengths)
+    ):
+        raise ValueError("staged fitted lengths must be exact integers")
     fitted_lengths = tuple(
-        sorted(int(length) for length in stage_one.get("capture_lengths", ()))
+        sorted(capture_lengths)
     )
     if fitted_lengths != FIXTURE_LENGTHS:
         raise ValueError(
@@ -468,12 +931,14 @@ def validate_staged_evidence_report(report: Mapping[str, Any]) -> None:
     protocol = report.get("protocol")
     if not isinstance(protocol, Mapping):
         raise ValueError("staged artifact carries no protocol record")
-    prefix_lengths = tuple(
-        int(length) for length in protocol.get("prefix_lengths", ())
-    )
-    if prefix_lengths != REQUIRED_VALIDATION_PREFIX_LENGTHS:
+    prefix_lengths = protocol.get("prefix_lengths")
+    if (
+        type(prefix_lengths) is not list
+        or any(type(length) is not int for length in prefix_lengths)
+        or tuple(prefix_lengths) != REQUIRED_VALIDATION_PREFIX_LENGTHS
+    ):
         raise ValueError(
-            f"staged validation prefixes {list(prefix_lengths)} != "
+            f"staged validation prefixes {prefix_lengths!r} != "
             f"{list(REQUIRED_VALIDATION_PREFIX_LENGTHS)}"
         )
     feature_lengths = protocol.get(
@@ -487,33 +952,174 @@ def validate_staged_evidence_report(report: Mapping[str, Any]) -> None:
         )
         for length in REQUIRED_VALIDATION_PREFIX_LENGTHS
     }
-    if feature_lengths != expected_feature_lengths:
+    if (
+        type(feature_lengths) is not dict
+        or any(type(value) is not int for value in feature_lengths.values())
+        or feature_lengths != expected_feature_lengths
+    ):
         raise ValueError(
             "staged validation does not declare the exact N32768 -> N16384 "
             f"causal-prefix mapping: {feature_lengths!r}"
         )
-    if protocol.get("stage_one_causal_prefix_rule_lengths") != [
-        CAUSAL_PREFIX_FIXTURE_LENGTH
-    ]:
+    try:
+        _require_exact_int_list(
+            protocol.get("stage_one_causal_prefix_rule_lengths"),
+            [CAUSAL_PREFIX_FIXTURE_LENGTH],
+            "staged stage-one causal-prefix lengths",
+        )
+    except ValueError as exc:
         raise ValueError(
             "staged validation does not identify N32768 as the sole "
             "causal-prefix length"
+        ) from exc
+    expected_protocol_scalars = {
+        "known_classes": 7,
+        "known_rows": 1908,
+        "novelty_n_each": 300,
+        "novelty_families": ["noise", "chirp"],
+        "stage_one_features_verified_against_stage_two_captures": True,
+    }
+    for name, expected in expected_protocol_scalars.items():
+        _require_exact_scalar(
+            protocol.get(name), expected, f"staged protocol {name}"
         )
 
     seeds = report.get("seeds")
     if not isinstance(seeds, Mapping):
         raise ValueError("staged artifact carries no seed provenance")
-    if seeds.get("design_novelty_seed") != 20260949:
+    if (
+        type(seeds.get("design_novelty_seed")) is not int
+        or seeds.get("design_novelty_seed") != DESIGN_NOVELTY_SEED
+    ):
         raise ValueError(
-            "staged validation must reference frozen design seed 20260949"
+            f"staged validation must reference frozen design seed "
+            f"{DESIGN_NOVELTY_SEED}"
         )
-    if seeds.get("novelty_seeds") != [20260950, 20260951]:
+    try:
+        _require_exact_int_list(
+            seeds.get("novelty_seeds"),
+            VALIDATION_NOVELTY_SEEDS,
+            "staged validation novelty seeds",
+        )
+    except ValueError as exc:
         raise ValueError(
-            "staged validation must be the one-shot 20260950/20260951 pair"
+            "staged validation must be the one-shot "
+            f"{list(VALIDATION_NOVELTY_SEEDS)} pair"
+        ) from exc
+    try:
+        _require_exact_int_list(
+            seeds.get("default_validation_novelty_seeds"),
+            VALIDATION_NOVELTY_SEEDS,
+            "staged default validation novelty seeds",
         )
-    if seeds.get("release_seed_not_spent") != 20260735:
-        raise ValueError("staged validation does not preserve release seed 20260735")
-    _validate_staged_gate_bodies(report, gates)
+    except ValueError as exc:
+        raise ValueError(
+            "staged validation seed reservation tuple/order differs"
+        ) from exc
+    if (
+        type(seeds.get("release_seed_not_spent")) is not int
+        or seeds.get("release_seed_not_spent") != RELEASE_SEED_NOT_SPENT
+    ):
+        raise ValueError(
+            "staged validation does not preserve release seed "
+            f"{RELEASE_SEED_NOT_SPENT}"
+        )
+
+    stage_two = report.get("stage_two")
+    if not isinstance(stage_two, Mapping):
+        raise ValueError("staged report carries no stage-two policy record")
+    expected_stage_two = {
+        "kind": FROZEN_POLICY_KIND,
+        "threshold_quantile": float(FROZEN_THRESHOLD_QUANTILE),
+    }
+    for name, expected in expected_stage_two.items():
+        _require_exact_scalar(
+            stage_two.get(name), expected, f"staged stage_two {name}"
+        )
+    stage_two_threshold = _staged_finite_float(
+        stage_two.get("threshold"), "staged stage_two threshold"
+    )
+
+    composite = report.get("composite")
+    if not isinstance(composite, Mapping):
+        raise ValueError("staged report carries no composite policy record")
+    expected_composite = {
+        "schema": int(staged.STAGED_POLICY_SCHEMA),
+        "kind": staged.STAGED_POLICY_KIND,
+        "policy_version": staged.STAGED_POLICY_VERSION,
+        "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
+        "threshold_quantile": float(staged.COMPOSITE_THRESHOLD_QUANTILE),
+        "threshold": float(staged.FROZEN_POLICY_V4_Q97_ENROLLMENT_THRESHOLD),
+        "threshold_population": (
+            "enrollment stage-1 survivors only (enrollment only, as every "
+            "rank and threshold in this chain)"
+        ),
+        "training_rows_used_for_threshold": 0,
+        "selection_rows_used_for_threshold": 0,
+        "novelty_rows_used_for_threshold": 0,
+        "release_rows_used_for_threshold": 0,
+        "stage_one_known_false_positive_budget": float(
+            staged.STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+        ),
+        "survivor_known_false_positive_budget": float(
+            staged.SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET
+        ),
+        "nominal_enrollment_false_unknown_budget": float(
+            staged.NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET
+        ),
+        "only_policy_change": staged.STAGED_POLICY_SPEC.only_policy_change,
+        "stage_one_changed": False,
+        "rejector_cnn_fusion_changed": False,
+        "classifier_cnn_fusion_changed": False,
+        "gate_floors_and_known_fur_ceiling_unchanged": True,
+    }
+    for name, expected in expected_composite.items():
+        _require_exact_scalar(
+            composite.get(name), expected, f"staged composite {name}"
+        )
+    composite_threshold = _staged_finite_float(
+        composite.get("threshold"), "staged composite threshold"
+    )
+    if composite_threshold != float(
+        staged.FROZEN_POLICY_V4_Q97_ENROLLMENT_THRESHOLD
+    ):
+        raise ValueError(
+            "staged composite threshold differs from the frozen q97 threshold"
+        )
+    if (
+        _staged_finite_float(
+            composite.get("stage_two_threshold_unchanged"),
+            "staged composite stage_two_threshold_unchanged",
+        )
+        != stage_two_threshold
+    ):
+        raise ValueError(
+            "staged composite does not preserve the stage-two q95 threshold"
+        )
+    enrollment_rows = composite.get("enrollment_rows")
+    enrollment_gated = composite.get("enrollment_gated_rows")
+    enrollment_survivors = composite.get("enrollment_survivor_rows")
+    if (
+        type(enrollment_rows) is not int
+        or type(enrollment_gated) is not int
+        or type(enrollment_survivors) is not int
+        or enrollment_rows <= 0
+        or enrollment_gated < 0
+        or enrollment_survivors <= 0
+        or enrollment_rows != enrollment_gated + enrollment_survivors
+        or type(composite.get("enrollment_capture_length")) is not int
+        or composite.get("enrollment_capture_length") != 16384
+        or type(composite.get("enrollment_stage_one_gate_rate")) is not float
+        or composite.get("enrollment_stage_one_gate_rate")
+        != enrollment_gated / enrollment_rows
+    ):
+        raise ValueError("staged composite enrollment counts are inconsistent")
+    _validate_staged_gate_bodies(
+        report,
+        gates,
+        staged_threshold=composite_threshold,
+        unstaged_threshold=stage_two_threshold,
+    )
 
 
 def _require_sha256(value: Any, label: str) -> str:
@@ -539,6 +1145,7 @@ def load_browser_fusion_export(
         manifest = json.load(handle)
     if (
         manifest.get("schema") != FUSION_EXPORT_SCHEMA
+        or type(manifest.get("schema_version")) is not int
         or manifest.get("schema_version") != FUSION_EXPORT_SCHEMA_VERSION
     ):
         raise ValueError(f"{root} has an unexpected fusion export schema")
@@ -581,6 +1188,7 @@ def load_browser_fusion_export(
     if (
         weights.get("schema")
         != "atomos.v3.time-domain-invariant-fusion.browser-weights"
+        or type(weights.get("schema_version")) is not int
         or weights.get("schema_version") != 1
         or weights.get("status") != "staging_not_release"
         or weights.get("runtime_role") != expected_role
@@ -891,7 +1499,7 @@ def load_composite_state(
     """Load and verify the composite survivor policy from the staged npz.
 
     The composite loader enforces the staged policy version and recomputes
-    the q95 threshold from the stored calibration; the stage-2 threshold
+    the q97 threshold from the stored calibration; the stage-2 q95 threshold
     cross-check proves the composite was fit against exactly this stage-2
     state.  Returns ``(composite, sha256)``.
     """
@@ -902,6 +1510,36 @@ def load_composite_state(
         expected_stage_two_threshold=float(policy.threshold),
     )
     return composite, _sha256(composite_path)
+
+
+def bind_report_thresholds_to_loaded_state(
+    report: Mapping[str, Any],
+    policy: FrozenV3OpenSet,
+    composite: Any,
+) -> None:
+    """Bind duplicated report thresholds to the verified NPZ policy objects."""
+    report_stage_two = report.get("stage_two")
+    report_composite = report.get("composite")
+    if not isinstance(report_stage_two, Mapping) or not isinstance(
+        report_composite, Mapping
+    ):
+        raise RuntimeError("staged report threshold records are missing")
+    loaded_stage_two = float(policy.threshold)
+    loaded_composite = float(composite.threshold)
+    loaded_composite_stage_two = float(composite.stage_two_threshold)
+    if (
+        report_stage_two.get("threshold") != loaded_stage_two
+        or report_composite.get("stage_two_threshold_unchanged")
+        != loaded_stage_two
+        or loaded_composite_stage_two != loaded_stage_two
+    ):
+        raise RuntimeError(
+            "staged report stage-two q95 threshold differs from loaded policy"
+        )
+    if report_composite.get("threshold") != loaded_composite:
+        raise RuntimeError(
+            "staged report composite q97 threshold differs from loaded policy"
+        )
 
 
 def compute_branch_lof_raw(
@@ -948,7 +1586,7 @@ def composite_policy_payload(composite: Any) -> dict[str, Any]:
     """The `v3_staged_composite_policy.npz` payload as plain JSON.
 
     Field names keep the npz spelling exactly, so the TypeScript loader's
-    validation (policy version refusal, sorted calibrations, recomputed q95)
+    validation (policy version refusal, sorted calibrations, recomputed q97)
     mirrors ``fit_v3_openset_staged.load_composite_policy`` key for key.
     """
     return {
@@ -964,6 +1602,25 @@ def composite_policy_payload(composite: Any) -> dict[str, Any]:
         "enrollment_rows": int(composite.enrollment_rows),
         "enrollment_gated_rows": int(composite.enrollment_gated_rows),
         "enrollment_capture_length": int(composite.enrollment_capture_length),
+        "threshold_population": "enrollment_stage_one_survivors_only",
+        "training_rows_used_for_threshold": 0,
+        "selection_rows_used_for_threshold": 0,
+        "novelty_rows_used_for_threshold": 0,
+        "release_rows_used_for_threshold": 0,
+        "stage_one_known_false_positive_budget": float(
+            staged.STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+        ),
+        "survivor_known_false_positive_budget": float(
+            staged.SURVIVOR_KNOWN_FALSE_POSITIVE_BUDGET
+        ),
+        "nominal_enrollment_false_unknown_budget": float(
+            staged.NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET
+        ),
+        "only_policy_change": staged.STAGED_POLICY_SPEC.only_policy_change,
+        "stage_one_changed": False,
+        "rejector_cnn_fusion_changed": False,
+        "classifier_cnn_fusion_changed": False,
+        "gate_contract_changed": False,
     }
 
 
@@ -1003,7 +1660,9 @@ def openset_weights_payload(
             },
         },
         "stage_two": {
-            "kind": staged.STAGED_POLICY_KIND,
+            # Stage two remains the untouched q95 additive policy.  Its kind
+            # must never be relabelled with the outer composite q97 kind.
+            "kind": FROZEN_POLICY_KIND,
             "lof_components": [
                 {
                     "branch": branch,
@@ -1090,6 +1749,42 @@ def dual_binding_payload(
     novelty_seeds: Sequence[int],
 ) -> dict[str, Any]:
     """Create the exact fail-closed binding consumed by the dual TS runtime."""
+    expected_frontend_keys = {
+        "version",
+        "patch_length",
+        "patch_count",
+        "target_frac",
+        "packed_length",
+        "uses_frequency_transform",
+    }
+    if not isinstance(frontend, Mapping) or set(frontend) != expected_frontend_keys:
+        raise ValueError("dual binding frontend field set differs")
+    _require_exact_scalar(
+        frontend.get("version"),
+        td_preprocess.PREPROCESS_VERSION,
+        "dual binding frontend.version",
+    )
+    _require_exact_scalar(
+        frontend.get("uses_frequency_transform"),
+        False,
+        "dual binding frontend.uses_frequency_transform",
+    )
+    patch_length = frontend.get("patch_length")
+    patch_count = frontend.get("patch_count")
+    packed_length = frontend.get("packed_length")
+    target_frac = frontend.get("target_frac")
+    if (
+        type(patch_length) is not int
+        or patch_length <= 0
+        or type(patch_count) is not int
+        or patch_count <= 0
+        or type(packed_length) is not int
+        or packed_length != patch_length * patch_count
+        or type(target_frac) is not float
+        or not math.isfinite(target_frac)
+        or not 0.0 < target_frac <= 1.0
+    ):
+        raise ValueError("dual binding frontend geometry/types are invalid")
     digests = {
         "rejector asset": rejector_asset_sha256,
         "classifier asset": classifier_asset_sha256,
@@ -1119,9 +1814,17 @@ def dual_binding_payload(
     }
     if set(staged_artifacts_sha256) != expected_staged:
         raise ValueError("dual binding staged artifact set is incomplete")
-    seeds = [int(seed) for seed in novelty_seeds]
-    if seeds != [20260950, 20260951]:
-        raise ValueError("dual binding requires validation seeds 20260950/20260951")
+    if (
+        type(novelty_seeds) not in (list, tuple)
+        or any(type(seed) is not int for seed in novelty_seeds)
+    ):
+        raise ValueError("dual binding validation seeds must be exact integers")
+    seeds = list(novelty_seeds)
+    if seeds != list(VALIDATION_NOVELTY_SEEDS):
+        raise ValueError(
+            "dual binding requires validation seeds "
+            f"{list(VALIDATION_NOVELTY_SEEDS)}"
+        )
 
     return {
         "schema": DUAL_BINDING_SCHEMA,
@@ -1130,10 +1833,10 @@ def dual_binding_payload(
         "candidate_id": CANDIDATE_ID,
         "frontend": {
             "version": td_preprocess.PREPROCESS_VERSION,
-            "patch_length": int(frontend["patch_length"]),
-            "patch_count": int(frontend["patch_count"]),
-            "target_frac": float(frontend["target_frac"]),
-            "packed_length": int(frontend["packed_length"]),
+            "patch_length": patch_length,
+            "patch_count": patch_count,
+            "target_frac": target_frac,
+            "packed_length": packed_length,
             "uses_frequency_transform": False,
         },
         "execution_order": [
@@ -1179,7 +1882,9 @@ def dual_binding_payload(
             "report_sha256": staged_validation_report_sha256,
             "role": "validate",
             "status": "development_openset_pass",
+            "design_novelty_seed": DESIGN_NOVELTY_SEED,
             "novelty_seeds": seeds,
+            "release_seed_not_spent": RELEASE_SEED_NOT_SPENT,
         },
         "fail_closed": {
             "role_assets_bound_by_sha256": True,
@@ -1353,7 +2058,7 @@ def stage_two_row(
         "combined_raw": combined,
         "score": score,
         # The stage-2 policy's own enrollment q95, recorded for cross-checks;
-        # under staged policy version 2 the survivor DECISION compares the
+        # Under staged policy version 4 the outer q97 composite decision compares the
         # COMPOSITE against the composite threshold.
         "threshold": float(policy.threshold),
     }
@@ -1455,8 +2160,8 @@ def staged_parity_row(
             classes,
             device,
         )
-        # Staged policy version 2: the survivor decision is the COMPOSITE
-        # against the composite q95 threshold.  Both terms come from the
+        # Staged policy version 4: the outer q97 survivor decision is the COMPOSITE
+        # against the composite q97 threshold.  Both terms come from the
         # loaded CompositeSurvivorPolicy itself, so the fixture cannot drift
         # from the real Python path.
         stage_one_raw = np.asarray([stage_one["score"]], dtype=np.float64)
@@ -1723,6 +2428,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     composite, composite_sha = load_composite_state(
         staged_dir, policy
     )
+    bind_report_thresholds_to_loaded_state(
+        staged_metrics, policy, composite
+    )
     staged_hashes = dict(staged_hashes)
     staged_hashes[staged.COMPOSITE_POLICY_FILENAME] = composite_sha
     if staged_hashes != verified_staged_hashes:
@@ -1803,6 +2511,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # These fields are deliberately unreachable from classifier_row.
         lof_components=[],
         policy=policy,
+    )
+
+    # The validation JSON's internally conserved totals are not trusted.
+    # Rebuild the immutable development-selection population and independently
+    # score every known row with the exact loaded runtime state.
+    bind_known_attribution_to_loaded_runtime(
+        staged_metrics,
+        rejector_artifact=rejector_artifact,
+        rejector=rejector,
+        prefilter_dir=prefilter_dir,
+        policy=policy,
+        composite=composite,
+        device=device,
     )
 
     rejector_feature_mean = np.asarray(
@@ -1891,7 +2612,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "release_evidence": False,
         "sealed_release_data_used": 0,
         "consumed_test_rows_used": 0,
-        "release_seed_not_spent": 20260735,
+        "release_seed_not_spent": RELEASE_SEED_NOT_SPENT,
     }
 
     weights = openset_weights_payload(
@@ -2160,7 +2881,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     parity = {
         "schema": PARITY_SCHEMA,
-        "schema_version": 3,
+        "schema_version": 4,
         "status": "staging_not_release",
         "candidate_id": CANDIDATE_ID,
         "contract": weights["contract"],
@@ -2188,6 +2909,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "public_known_label_from_classifier_only": True,
         },
         "policy_version": staged.STAGED_POLICY_VERSION,
+        "policy_schema": int(staged.STAGED_POLICY_SCHEMA),
+        "policy_kind": staged.STAGED_POLICY_KIND,
+        "design_novelty_seed": DESIGN_NOVELTY_SEED,
+        "validation_novelty_seeds": list(VALIDATION_NOVELTY_SEEDS),
+        "release_seed_not_spent": RELEASE_SEED_NOT_SPENT,
         "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
         "staged_threshold": float(composite.threshold),
         "stage_two_threshold": float(policy.threshold),

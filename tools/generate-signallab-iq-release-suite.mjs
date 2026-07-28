@@ -21,8 +21,8 @@
  * 'v2' (default) embeds the frozen v2 object below, exactly as the consumed
  * seed-20260729 run did; 'v3' embeds the staged time-domain protocol printed
  * by evaluate_v3_release_suite.py --print-expected-protocol, loaded verbatim
- * from its pinned fixture (see V3_EXPECTED_PROTOCOL_FIXTURE) and required to
- * agree with RELEASE_SEED.
+ * from its pinned, release-specific fixture (see
+ * V3_EXPECTED_PROTOCOL_FIXTURE) and required to agree with RELEASE_SEED.
  */
 
 import {
@@ -57,6 +57,25 @@ const TSX_PACKAGE = 'tsx@4.20.3';
 const PROTOCOL = 'signallab-matched-length-release-v1';
 const REQUIRED_NODE_VERSION = 'v22.23.1';
 const REQUIRED_NPM_VERSION = '10.9.8';
+const RESERVED_RELEASE_SEED = 20260736;
+const RESERVED_TARGET_PER_CLASS = 192;
+const RESERVED_RELEASE_ROOT = resolve(
+  REPO,
+  'training/artifacts/releases/invariant_fusion_v3_sealed_seed20260736',
+);
+const RESERVED_CANDIDATE_PATH = resolve(
+  REPO,
+  'training/zplane_ab/v2_full_variation/v3_scale/evidence/'
+    + 'v3_4_q97_dual_release_candidate.json',
+);
+// Bound only after the final candidate and protocol fixture are frozen.
+// Null is a deliberate hard refusal, never a wildcard.
+const RESERVED_CANDIDATE_SHA256 = null;
+const V3_EXPECTED_PROTOCOL_FIXTURE_SHA256 = null;
+const CORPUS_GENERATOR_SHA256 =
+  '305418a5bc7bd8f9a49799477f3a457b4c07d0c58b637766989fc9557565371b';
+const PREFIX_DERIVER_SHA256 =
+  'd9383a642d21a59f66f1f9e88fc7ce51ad50893a381985c4f53f2b0da9aec3a3';
 const DEPENDENCY_CONTRACT = Object.freeze({
   signallab: {
     git_commit: '7c8303a0338b0f7c088737f8df2d935fd04bb033',
@@ -169,10 +188,10 @@ const EVALUATION_PROTOCOL = Object.freeze({
  */
 const V3_EXPECTED_PROTOCOL_FIXTURE = resolve(
   HERE,
-  'time-domain-v3-expected-evaluation-protocol-seed20260735.json',
+  'time-domain-v3-expected-evaluation-protocol-v4-q97-seed20260736.json',
 );
 const V3_EVALUATION_VERSION =
-  'time-domain-v3-release-evaluation-v3-dual-fusion';
+  'time-domain-v3-release-evaluation-v4-q97-dual-fusion';
 /**
  * Global seed hygiene mirrored from the sealed evaluators. This guard applies
  * before protocol selection so neither the historical v2 path nor the staged
@@ -223,7 +242,38 @@ function validateReleaseSeed(releaseSeed) {
 }
 
 function loadV3EvaluationProtocol(releaseSeed) {
-  const wrapper = JSON.parse(readFileSync(V3_EXPECTED_PROTOCOL_FIXTURE, 'utf8'));
+  if (!existsSync(V3_EXPECTED_PROTOCOL_FIXTURE)) {
+    throw new Error(
+      'the evaluator-v4/q97 seed-20260736 protocol fixture is not frozen yet: '
+      + `${V3_EXPECTED_PROTOCOL_FIXTURE}. Refusing v3 generation until `
+      + 'evaluate_v3_release_suite.py --print-expected-protocol 20260736 '
+      + 'has produced the reviewed, hash-pinned fixture',
+    );
+  }
+  if (
+    lstatSync(V3_EXPECTED_PROTOCOL_FIXTURE).isSymbolicLink()
+    || !statSync(V3_EXPECTED_PROTOCOL_FIXTURE).isFile()
+  ) {
+    throw new Error(
+      'the v3 protocol fixture must be a regular non-symlink file',
+    );
+  }
+  if (!isSha256Pin(V3_EXPECTED_PROTOCOL_FIXTURE_SHA256)) {
+    throw new Error(
+      'V3_EXPECTED_PROTOCOL_FIXTURE_SHA256 is an unbound fail-closed '
+      + 'placeholder; freeze and independently pin the exact fixture bytes',
+    );
+  }
+  const fixtureBytes = readFileSync(V3_EXPECTED_PROTOCOL_FIXTURE);
+  const fixtureSha256 = createHash('sha256').update(fixtureBytes).digest('hex');
+  if (fixtureSha256 !== V3_EXPECTED_PROTOCOL_FIXTURE_SHA256) {
+    throw new Error(
+      `v3 protocol fixture SHA-256 mismatch: expected `
+      + `${V3_EXPECTED_PROTOCOL_FIXTURE_SHA256}, got ${fixtureSha256}; `
+      + 'fixture JSON was not parsed',
+    );
+  }
+  const wrapper = JSON.parse(fixtureBytes.toString('utf8'));
   const protocol = wrapper?.evaluation_protocol;
   if (protocol?.version !== V3_EVALUATION_VERSION) {
     throw new Error(
@@ -251,7 +301,17 @@ function loadV3EvaluationProtocol(releaseSeed) {
 
 function selectEvaluationProtocol(releaseSeed) {
   validateReleaseSeed(releaseSeed);
-  const choice = (process.env.RELEASE_EVALUATION_PROTOCOL ?? 'v2').trim();
+  const rawChoice = process.env.RELEASE_EVALUATION_PROTOCOL;
+  if (
+    releaseSeed === RESERVED_RELEASE_SEED
+    && (rawChoice === undefined || rawChoice.trim() !== 'v3')
+  ) {
+    throw new Error(
+      `release seed ${RESERVED_RELEASE_SEED} requires explicit `
+      + 'RELEASE_EVALUATION_PROTOCOL=v3; default/v2 generation is forbidden',
+    );
+  }
+  const choice = (rawChoice ?? 'v2').trim();
   if (choice === 'v2') return EVALUATION_PROTOCOL;
   if (choice === 'v3') return loadV3EvaluationProtocol(releaseSeed);
   throw new Error(
@@ -291,6 +351,10 @@ async function sha256(path) {
     stream.on('error', reject);
   });
   return hash.digest('hex');
+}
+
+function isSha256Pin(value) {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 }
 
 function commandVersion(command) {
@@ -486,14 +550,57 @@ function runChecked(command, args, env, description) {
 const releaseRoot = canonicalProspectivePath(required('RELEASE_ROOT'));
 const canonicalLiveCorpus = canonicalProspectivePath(LIVE_CORPUS);
 const releaseSeed = integer('RELEASE_SEED', required('RELEASE_SEED'), 0);
-const evaluationProtocol = selectEvaluationProtocol(releaseSeed);
 const candidatePath = canonicalProspectivePath(required('CANDIDATE_PATH'));
 const candidateSha256 = required('CANDIDATE_SHA256');
 if (!/^[0-9a-f]{64}$/i.test(candidateSha256)) {
   throw new Error('CANDIDATE_SHA256 must be exactly 64 hexadecimal characters');
 }
+const targetPerClass = integer(
+  'RELEASE_TARGET_PER_CLASS',
+  process.env.RELEASE_TARGET_PER_CLASS
+    ?? (releaseSeed === RESERVED_RELEASE_SEED ? '192' : '80'),
+  0,
+);
+if (releaseSeed === RESERVED_RELEASE_SEED) {
+  if (releaseRoot !== RESERVED_RELEASE_ROOT) {
+    throw new Error(
+      `release seed ${RESERVED_RELEASE_SEED} requires RELEASE_ROOT exactly `
+      + RESERVED_RELEASE_ROOT,
+    );
+  }
+  if (candidatePath !== RESERVED_CANDIDATE_PATH) {
+    throw new Error(
+      `release seed ${RESERVED_RELEASE_SEED} requires CANDIDATE_PATH exactly `
+      + RESERVED_CANDIDATE_PATH,
+    );
+  }
+  if (targetPerClass !== RESERVED_TARGET_PER_CLASS) {
+    throw new Error(
+      `release seed ${RESERVED_RELEASE_SEED} requires `
+      + `RELEASE_TARGET_PER_CLASS=${RESERVED_TARGET_PER_CLASS}`,
+    );
+  }
+}
+const evaluationProtocol = selectEvaluationProtocol(releaseSeed);
+if (releaseSeed === RESERVED_RELEASE_SEED) {
+  if (!isSha256Pin(RESERVED_CANDIDATE_SHA256)) {
+    throw new Error(
+      'RESERVED_CANDIDATE_SHA256 is an unbound fail-closed placeholder; '
+      + 'freeze and independently pin the canonical candidate',
+    );
+  }
+  if (candidateSha256.toLowerCase() !== RESERVED_CANDIDATE_SHA256) {
+    throw new Error(
+      `release seed ${RESERVED_RELEASE_SEED} requires CANDIDATE_SHA256 `
+      + RESERVED_CANDIDATE_SHA256,
+    );
+  }
+}
 if (!existsSync(candidatePath) || !statSync(candidatePath).isFile()) {
   throw new Error(`CANDIDATE_PATH must be an existing file: ${candidatePath}`);
+}
+if (releaseSeed === RESERVED_RELEASE_SEED && lstatSync(candidatePath).isSymbolicLink()) {
+  throw new Error('the canonical release-36 candidate may not be a symlink');
 }
 const actualCandidateSha256 = await sha256(candidatePath);
 if (actualCandidateSha256 !== candidateSha256.toLowerCase()) {
@@ -512,11 +619,12 @@ if (
     + JSON.stringify(evaluationProtocol.required_capture_lengths),
   );
 }
-const targetPerClass = integer(
-  'RELEASE_TARGET_PER_CLASS',
-  process.env.RELEASE_TARGET_PER_CLASS ?? '80',
-  evaluationProtocol.minimum_target_per_class,
-);
+if (targetPerClass < evaluationProtocol.minimum_target_per_class) {
+  throw new RangeError(
+    `RELEASE_TARGET_PER_CLASS must be >= `
+    + `${evaluationProtocol.minimum_target_per_class}`,
+  );
+}
 
 if (
   containsPath(canonicalLiveCorpus, releaseRoot)
@@ -537,6 +645,17 @@ if (existsSync(releaseRoot) && readdirSync(releaseRoot).length > 0) {
   throw new Error(`RELEASE_ROOT must be empty: ${releaseRoot}`);
 }
 const signalLabRoot = canonicalProspectivePath(required('SIGNALLAB_ROOT'));
+for (const [name, path, expected] of [
+  ['corpus generator', GENERATOR, CORPUS_GENERATOR_SHA256],
+  ['prefix deriver', PREFIX_DERIVER, PREFIX_DERIVER_SHA256],
+]) {
+  const actual = await sha256(path);
+  if (actual !== expected) {
+    throw new Error(
+      `${name} SHA-256 mismatch: expected ${expected}, got ${actual}`,
+    );
+  }
+}
 const dependencyProvenance = await verifyDependencyRoot(signalLabRoot);
 if (process.version !== REQUIRED_NODE_VERSION) {
   throw new Error(

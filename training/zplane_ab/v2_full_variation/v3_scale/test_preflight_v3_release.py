@@ -1,4 +1,4 @@
-"""Unit suite for the seed-20260735 release preflight.
+"""Unit suite for the seed-20260736 policy-v4/q97 release preflight.
 
 What is under test is the property that makes the preflight worth running at
 all: a pin that does not match disk, a tampered artifact, a missing evaluator,
@@ -15,7 +15,10 @@ Hygiene properties asserted explicitly:
   independent inline reimplementation rather than by calling the function
   under test;
 * the reconstructed generation command is exactly the sealed mechanics
-  re-aimed at seed 20260735 with 192 rows per class, and is never executed;
+  re-aimed at seed 20260736 with 192 rows per class, and is never executed;
+* the q99 failure and q97 pass are immutable hash-pinned design evidence,
+  while every future validation/candidate/browser/package/fixture digest is
+  an explicit fail-closed placeholder rather than a fabricated value;
 * an existing report path is refused before any check runs, and a report can
   never be written under the release tree.
 
@@ -37,6 +40,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -387,10 +391,127 @@ class PrefilterCheckTest(TempDirTestCase):
         self.assertFalse(checks["prefilter.per_length_sha256"]["passed"])
 
 
+class FrozenDesignEvidenceTest(TempDirTestCase):
+    def test_real_q99_failure_and_q97_pass_are_hash_pinned(self) -> None:
+        q99 = _by_name(
+            preflight.check_design_evidence(
+                preflight.DEFAULT_Q99_DESIGN_DIR,
+                preflight.DEFAULT_PINS["q99_design_evidence"],
+                label="q99_design",
+            )
+        )
+        q97 = _by_name(
+            preflight.check_design_evidence(
+                preflight.DEFAULT_Q97_DESIGN_DIR,
+                preflight.DEFAULT_PINS["q97_design_evidence"],
+                label="q97_design",
+            )
+        )
+        self.assertTrue(all(item["passed"] for item in q99.values()), q99)
+        self.assertTrue(all(item["passed"] for item in q97.values()), q97)
+        self.assertIn("q99_design.failed_gate_worst", q99)
+        self.assertNotIn("q97_design.failed_gate_worst", q97)
+
+    def test_tampered_design_report_fails_its_independent_pin(self) -> None:
+        root = Path(self.tmpdir()) / "q97"
+        shutil.copytree(preflight.DEFAULT_Q97_DESIGN_DIR, root)
+        report_path = root / "openset_metrics.json"
+        report = json.loads(report_path.read_text())
+        report["status"] = "design_selection_fail"
+        report_path.write_text(json.dumps(report))
+        checks = _by_name(
+            preflight.check_design_evidence(
+                root,
+                preflight.DEFAULT_PINS["q97_design_evidence"],
+                label="q97_design",
+            )
+        )
+        self.assertFalse(checks["q97_design.report_sha256"]["passed"])
+        self.assertFalse(checks["q97_design.role_status_hygiene"]["passed"])
+
+
+class FutureReleasePinsTest(TempDirTestCase):
+    def test_unknown_future_hashes_and_validation_reasons_fail_closed(self) -> None:
+        checks = _by_name(
+            preflight.check_future_release_pins(preflight.DEFAULT_PINS)
+        )
+        expected = {
+            "future_pin.evaluator",
+            "future_pin.candidate_manifest",
+            "future_pin.validation_evidence",
+            "future_pin.candidate_contract",
+            "future_pin.staged_validation_report",
+            "future_pin.staging_package_manifest",
+            "future_pin.dual_binding",
+            "future_pin.protocol_fixture",
+            "future_pin.browser_asset.classifier",
+            "future_pin.browser_asset.rejector",
+            "future_pin.browser_asset.openset_policy",
+            "future_pin.validation_seed_reason.20260953",
+            "future_pin.validation_seed_reason.20260954",
+        }
+        self.assertTrue(expected.issubset(checks))
+        self.assertTrue(
+            all(not checks[name]["passed"] for name in expected),
+            checks,
+        )
+        self.assertTrue(
+            all(
+                value is None
+                for value in (
+                    preflight.DEFAULT_PINS["v3_evaluator_sha256"],
+                    preflight.DEFAULT_PINS["candidate_manifest_sha256"],
+                    preflight.DEFAULT_PINS["validation_evidence_sha256"],
+                    preflight.DEFAULT_PINS[
+                        "frozen_candidate_contract_sha256"
+                    ],
+                    preflight.DEFAULT_PINS[
+                        "staging_package_manifest_sha256"
+                    ],
+                    preflight.DEFAULT_PINS["dual_binding_sha256"],
+                    preflight.DEFAULT_PINS["v3_protocol_fixture_sha256"],
+                )
+            )
+        )
+        self.assertEqual(
+            preflight.DEFAULT_PINS["candidate_manifest_schema"],
+            "time-domain-v3-dual-release-candidate-v2",
+        )
+        self.assertEqual(
+            preflight.DEFAULT_PINS["candidate_evidence_schema"],
+            "time-domain-v3-decoupled-validation-evidence-v2",
+        )
+        self.assertEqual(
+            preflight.DEFAULT_PINS["candidate_contract_schema"],
+            "time-domain-v3-q97-candidate-v1",
+        )
+        self.assertEqual(
+            preflight.DEFAULT_PINS["browser_openset_schema_version"], 4
+        )
+        self.assertEqual(preflight.DEFAULT_PINS["parity_schema_version"], 4)
+
+    def test_only_exact_lowercase_sha256_is_ready(self) -> None:
+        self.assertTrue(preflight._is_sha256_pin("a" * 64))
+        self.assertFalse(preflight._is_sha256_pin("A" * 64))
+        self.assertFalse(preflight._is_sha256_pin("a" * 63))
+        self.assertFalse(preflight._is_sha256_pin(None))
+
+
 class FrozenPolicyCheckTest(TempDirTestCase):
-    def test_frozen_constants_pass(self) -> None:
+    def test_q97_constants_pass_but_unspent_validation_ledger_fails_closed(
+        self,
+    ) -> None:
         checks = _by_name(preflight.check_frozen_policy(preflight.DEFAULT_PINS))
-        self.assertTrue(all(item["passed"] for item in checks.values()), checks)
+        identity_checks = {
+            name: item
+            for name, item in checks.items()
+            if name != "policy.seed_ledger_constants"
+        }
+        self.assertTrue(
+            all(item["passed"] for item in identity_checks.values()),
+            checks,
+        )
+        self.assertFalse(checks["policy.seed_ledger_constants"]["passed"])
         self.assertIn("policy.import_identity_discipline", checks)
         self.assertIn("policy.seed_ledger_constants", checks)
 
@@ -415,6 +536,21 @@ class FrozenPolicyCheckTest(TempDirTestCase):
 
 
 class EvaluatorSourcesCheckTest(TempDirTestCase):
+    def test_working_evaluator_has_exact_schema4_q97_identity_but_no_final_pin(
+        self,
+    ) -> None:
+        checks = _by_name(
+            preflight.check_evaluator_sources(
+                preflight.DEFAULT_EVALUATOR,
+                preflight.DEFAULT_PINS,
+                {},
+            )
+        )
+        self.assertTrue(checks["sources.v3_evaluator_present"]["passed"])
+        self.assertTrue(checks["sources.v3_evaluator_identity"]["passed"])
+        self.assertFalse(checks["sources.v3_evaluator_sha256"]["passed"])
+        self.assertIsNone(preflight.DEFAULT_PINS["v3_evaluator_sha256"])
+
     def test_missing_v3_evaluator_fails(self) -> None:
         missing = (
             Path(self.tmpdir()) / "no.py"
@@ -426,7 +562,7 @@ class EvaluatorSourcesCheckTest(TempDirTestCase):
             )
         )
         self.assertFalse(checks["sources.v3_evaluator_present"]["passed"])
-        self.assertFalse(checks["sources.dependency_hashes_recorded"]["passed"])
+        self.assertTrue(checks["sources.dependency_hashes_recorded"]["passed"])
         # The pinned v2 evaluator and gate-floor identity still hold.
         self.assertTrue(checks["sources.v2_evaluator_sha256"]["passed"])
         self.assertTrue(checks["sources.gate_floor_consistency"]["passed"])
@@ -450,15 +586,52 @@ class EvaluatorSourcesCheckTest(TempDirTestCase):
         self.assertEqual(
             observed["v3_evaluator_sha256"], preflight._sha256(stub)
         )
-        self.assertEqual(
-            observed["dependency_source_sha256"][
-                "v3_scale/evaluate_v3_release_suite.py"
-            ],
-            preflight._sha256(stub),
-        )
+        self.assertEqual(len(observed["dependency_source_sha256"]), 49)
         self.assertTrue(
             checks["sources.dependency_hashes_recorded"]["passed"]
         )
+        self.assertFalse(checks["sources.static_import_closure"]["passed"])
+
+    def test_exact_49_file_contract_and_static_closure(self) -> None:
+        observed: dict = {}
+        checks = _by_name(
+            preflight.check_evaluator_sources(
+                preflight.DEFAULT_EVALUATOR,
+                preflight.DEFAULT_PINS,
+                observed,
+            )
+        )
+        self.assertEqual(len(preflight.DEPENDENCY_SOURCES), 49)
+        self.assertEqual(
+            set(preflight.DEFAULT_PINS["dependency_source_sha256"]),
+            set(preflight.DEPENDENCY_SOURCE_LABELS),
+        )
+        self.assertTrue(checks["sources.dependency_contract_key_set"]["passed"])
+        self.assertTrue(
+            checks["sources.evaluator_dependency_path_contract"]["passed"]
+        )
+        self.assertTrue(checks["sources.static_import_closure"]["passed"])
+        self.assertFalse(
+            checks["sources.dependency_hashes_pinned"]["passed"],
+            "pre-validation None pins must fail closed",
+        )
+
+    def test_dependency_pin_tamper_and_key_drift_fail(self) -> None:
+        pins = copy.deepcopy(preflight.DEFAULT_PINS)
+        pins["dependency_source_sha256"][
+            "training/zplane_ab/v2_full_variation/v3_scale/"
+            "measure_v3_remaining_gates.py"
+        ] = "0" * 64
+        pins["dependency_source_sha256"]["unexpected.py"] = "0" * 64
+        checks = _by_name(
+            preflight.check_evaluator_sources(
+                preflight.DEFAULT_EVALUATOR, pins, {}
+            )
+        )
+        self.assertFalse(
+            checks["sources.dependency_contract_key_set"]["passed"]
+        )
+        self.assertFalse(checks["sources.dependency_hashes_pinned"]["passed"])
 
     def test_syntax_error_evaluator_is_refused(self) -> None:
         import py_compile
@@ -483,19 +656,83 @@ class EvaluatorSourcesCheckTest(TempDirTestCase):
         self.assertFalse(checks["sources.v2_evaluator_sha256"]["passed"])
 
 
+class HistoricalCorrectionContractTest(TempDirTestCase):
+    def _protocol(self) -> dict:
+        import evaluate_invariant_release_suite as release
+
+        rationale = (
+            "The levels are re-declared for the v3 architecture by the owner "
+            "on 2026-07-28, BEFORE release seed 20260734 was generated."
+        )
+        expected = preflight.DEFAULT_PINS["historical_gate_redeclaration"]
+        gates = {
+            name: {
+                "v2_level": record["v2_level"],
+                "v3_level": record["v3_level"],
+                "owner_decision": rationale,
+            }
+            for name, record in expected["gates"].items()
+        }
+        return {
+            "gates": dict(release.GATE_FLOORS),
+            "historical_gate_redeclaration": {
+                "release_seed": 20260734,
+                "active_for_current_protocol": False,
+                "current_protocol_gate_source": (
+                    "imported_v2_gate_floors_unchanged"
+                ),
+                "gates_redeclared": gates,
+                "historical_claim_correction": copy.deepcopy(
+                    preflight.DEFAULT_PINS["historical_claim_correction"]
+                ),
+            },
+        }
+
+    def test_exact_machine_readable_correction_passes(self) -> None:
+        checks = _by_name(
+            preflight._check_fixture_gate_contract(
+                self._protocol(), preflight.DEFAULT_PINS
+            )
+        )
+        self.assertTrue(
+            checks["generation.v3_fixture_gate_contract"]["passed"],
+            checks,
+        )
+
+    def test_old_every_axis_claim_without_correction_fails(self) -> None:
+        protocol = self._protocol()
+        del protocol["historical_gate_redeclaration"][
+            "historical_claim_correction"
+        ]
+        checks = _by_name(
+            preflight._check_fixture_gate_contract(
+                protocol, preflight.DEFAULT_PINS
+            )
+        )
+        self.assertFalse(
+            checks["generation.v3_fixture_gate_contract"]["passed"]
+        )
+        self.assertIn(
+            "cross-seed/unpaired",
+            checks["generation.v3_fixture_gate_contract"]["detail"],
+        )
+
+
 class SeedLedgerCheckTest(TempDirTestCase):
     FAKE_ROOTS = (
         "fake_sealed_v2_root",
         "fake_sealed_v3_root",
         "fake_sealed_v3_run2_root",
         "fake_sealed_v3_run3_root",
+        "fake_sealed_v3_run4_root",
     )
 
     def _pins_with_fake_sealed(self, releases: Path) -> dict:
         pins = copy.deepcopy(preflight.DEFAULT_PINS)
         pins["consumed_sealed_roots"] = {}
         for root_name, recorded_seed in zip(
-            self.FAKE_ROOTS, (20260729, 20260731, 20260733, 20260734)
+            self.FAKE_ROOTS,
+            (20260729, 20260731, 20260733, 20260734, 20260735),
         ):
             sealed = releases / root_name
             hashes = {}
@@ -515,7 +752,11 @@ class SeedLedgerCheckTest(TempDirTestCase):
     def test_unused_seed_and_intact_references_pass(self) -> None:
         releases = Path(self.tmpdir())
         pins = self._pins_with_fake_sealed(releases)
-        checks = _by_name(preflight.check_seed_ledger(releases, pins))
+        checks = _by_name(
+            preflight.check_seed_ledger(
+                releases, pins, require_canonical=False
+            )
+        )
         self.assertTrue(checks["ledger.release_seed_unused"]["passed"])
         for root_name in self.FAKE_ROOTS:
             self.assertTrue(
@@ -525,8 +766,12 @@ class SeedLedgerCheckTest(TempDirTestCase):
     def test_seed_named_root_fails(self) -> None:
         releases = Path(self.tmpdir())
         pins = self._pins_with_fake_sealed(releases)
-        (releases / "v3_sealed_seed20260735").mkdir()
-        checks = _by_name(preflight.check_seed_ledger(releases, pins))
+        (releases / "v3_sealed_seed20260736").mkdir()
+        checks = _by_name(
+            preflight.check_seed_ledger(
+                releases, pins, require_canonical=False
+            )
+        )
         self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
 
     def test_intent_recording_seed_fails(self) -> None:
@@ -534,21 +779,64 @@ class SeedLedgerCheckTest(TempDirTestCase):
         pins = self._pins_with_fake_sealed(releases)
         _write(
             releases / "innocuous_name" / "RELEASE_INTENT.json",
-            json.dumps({"release_seed": 20260735}).encode(),
+            json.dumps({"release_seed": 20260736}).encode(),
         )
-        checks = _by_name(preflight.check_seed_ledger(releases, pins))
+        checks = _by_name(
+            preflight.check_seed_ledger(
+                releases, pins, require_canonical=False
+            )
+        )
         self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
 
+    def test_nested_intent_recording_seed_fails(self) -> None:
+        releases = Path(self.tmpdir())
+        pins = self._pins_with_fake_sealed(releases)
+        _write(
+            releases / "outer" / "nested" / "RELEASE_INTENT.json",
+            json.dumps({"release_seed": 20260736}).encode(),
+        )
+        checks = _by_name(
+            preflight.check_seed_ledger(
+                releases, pins, require_canonical=False
+            )
+        )
+        self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
+        self.assertIn(
+            "outer/nested/RELEASE_INTENT.json",
+            checks["ledger.release_seed_unused"]["detail"],
+        )
+
+    def test_seed_scan_refuses_symlinks_without_following(self) -> None:
+        releases = Path(self.tmpdir())
+        pins = self._pins_with_fake_sealed(releases)
+        outside = Path(self.tmpdir())
+        _write(
+            outside / "RELEASE_INTENT.json",
+            json.dumps({"release_seed": 20260736}).encode(),
+        )
+        os.symlink(outside, releases / "linked-release")
+        checks = _by_name(
+            preflight.check_seed_ledger(
+                releases, pins, require_canonical=False
+            )
+        )
+        self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
+        self.assertIn("symlink is forbidden", checks["ledger.release_seed_unused"]["detail"])
+
     def test_consumed_v3_root_is_not_flagged_as_seed_use(self) -> None:
-        # Consumed roots through 20260734 exist on disk by design; only the
-        # NEW seed 20260735 may appear in no release root.
+        # Consumed roots through 20260735 exist on disk by design; only the
+        # NEW seed 20260736 may appear in no release root.
         releases = Path(self.tmpdir())
         pins = self._pins_with_fake_sealed(releases)
         _write(
             releases / "old_sealed" / "RELEASE_INTENT.json",
             json.dumps({"release_seed": 20260733}).encode(),
         )
-        checks = _by_name(preflight.check_seed_ledger(releases, pins))
+        checks = _by_name(
+            preflight.check_seed_ledger(
+                releases, pins, require_canonical=False
+            )
+        )
         self.assertTrue(checks["ledger.release_seed_unused"]["passed"])
 
     def test_tampered_sealed_reference_fails(self) -> None:
@@ -556,13 +844,59 @@ class SeedLedgerCheckTest(TempDirTestCase):
         pins = self._pins_with_fake_sealed(releases)
         target = releases / self.FAKE_ROOTS[1] / "RELEASE_EVALUATION.json"
         target.write_bytes(b'{"tampered": true}')
-        checks = _by_name(preflight.check_seed_ledger(releases, pins))
+        checks = _by_name(
+            preflight.check_seed_ledger(
+                releases, pins, require_canonical=False
+            )
+        )
         self.assertFalse(
             checks[f"ledger.consumed_root_intact.{self.FAKE_ROOTS[1]}"]["passed"]
         )
         self.assertTrue(
             checks[f"ledger.consumed_root_intact.{self.FAKE_ROOTS[0]}"]["passed"]
         )
+
+    def test_symlinked_release_root_is_refused_without_traversal(self) -> None:
+        real_releases = Path(self.tmpdir())
+        pins = self._pins_with_fake_sealed(real_releases)
+        link_holder = Path(self.tmpdir())
+        linked_releases = link_holder / "linked-releases"
+        os.symlink(real_releases, linked_releases)
+        checks = _by_name(
+            preflight.check_seed_ledger(
+                linked_releases, pins, require_canonical=False
+            )
+        )
+        self.assertFalse(checks["ledger.releases_dir_identity"]["passed"])
+        self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
+
+    def test_noncanonical_complete_ledger_is_refused_for_release_36(self) -> None:
+        releases = Path(self.tmpdir())
+        pins = self._pins_with_fake_sealed(releases)
+        checks = _by_name(preflight.check_seed_ledger(releases, pins))
+        self.assertFalse(checks["ledger.releases_dir_identity"]["passed"])
+        self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
+
+    def test_canonical_ledger_with_symlinked_ancestor_is_refused(self) -> None:
+        base = Path(self.tmpdir())
+        real_releases = base / "real" / "training" / "artifacts" / "releases"
+        pins = self._pins_with_fake_sealed(real_releases)
+        linked_repo = base / "linked"
+        linked_repo.mkdir()
+        os.symlink(base / "real" / "training", linked_repo / "training")
+        canonical_via_symlink = (
+            linked_repo / "training" / "artifacts" / "releases"
+        )
+        with mock.patch.object(
+            preflight,
+            "DEFAULT_RELEASES_DIR",
+            canonical_via_symlink,
+        ):
+            checks = _by_name(
+                preflight.check_seed_ledger(canonical_via_symlink, pins)
+            )
+        self.assertFalse(checks["ledger.releases_dir_identity"]["passed"])
+        self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
 
     @unittest.skipUnless(
         preflight.DEFAULT_RELEASES_DIR.is_dir(), "real release tree missing"
@@ -698,10 +1032,68 @@ class NodeRuntimeCheckTest(TempDirTestCase):
         self.assertFalse(checks[0][1])
 
 
+class PythonRuntimeContractTest(unittest.TestCase):
+    def test_exact_runtime_passes(self) -> None:
+        checks = _by_name(
+            preflight.check_python_runtime(
+                preflight.DEFAULT_PINS,
+                runtime=preflight.DEFAULT_PINS["python_runtime"],
+                warnings_policy="error",
+            )
+        )
+        self.assertTrue(all(item["passed"] for item in checks.values()), checks)
+
+    def test_every_runtime_identity_mismatch_fails(self) -> None:
+        expected = dict(preflight.DEFAULT_PINS["python_runtime"])
+        for key in expected:
+            with self.subTest(key=key):
+                runtime = dict(expected)
+                runtime[key] = f"wrong-{expected[key]}"
+                checks = _by_name(
+                    preflight.check_python_runtime(
+                        preflight.DEFAULT_PINS,
+                        runtime=runtime,
+                        warnings_policy="error",
+                    )
+                )
+                self.assertFalse(checks[f"runtime.python.{key}"]["passed"])
+
+    def test_extra_runtime_key_and_warning_policy_fail(self) -> None:
+        runtime = dict(preflight.DEFAULT_PINS["python_runtime"])
+        runtime["extra"] = "forbidden"
+        checks = _by_name(
+            preflight.check_python_runtime(
+                preflight.DEFAULT_PINS,
+                runtime=runtime,
+                warnings_policy="default",
+            )
+        )
+        self.assertFalse(checks["runtime.python_contract_key_set"]["passed"])
+        self.assertFalse(checks["runtime.pythonwarnings_error"]["passed"])
+
+
+class GenerationSourceContractTest(unittest.TestCase):
+    def test_seed35_go_preflight_evidence_is_pinned(self) -> None:
+        checks = _by_name(
+            preflight.check_generation_sources(preflight.DEFAULT_PINS)
+        )
+        self.assertTrue(
+            checks["generation.seed35_go_preflight_evidence"]["passed"]
+        )
+
+    def test_seed35_preflight_pin_tamper_fails(self) -> None:
+        pins = copy.deepcopy(preflight.DEFAULT_PINS)
+        pins["seed35_preflight_evidence_sha256"] = "0" * 64
+        checks = _by_name(preflight.check_generation_sources(pins))
+        self.assertFalse(
+            checks["generation.seed35_go_preflight_evidence"]["passed"]
+        )
+
+
 class GenerationCommandTest(TempDirTestCase):
     """The reconstructed one-shot command: right values, never executed."""
 
-    def test_command_matches_sealed_mechanics_for_seed_20260735(self) -> None:
+    def test_prevalidation_placeholders_refuse_command(self) -> None:
         candidate = Path(self.tmpdir()) / "candidate.json"
         candidate.write_text(
             json.dumps(
@@ -713,39 +1105,24 @@ class GenerationCommandTest(TempDirTestCase):
                 }
             )
         )
-        pins = copy.deepcopy(preflight.DEFAULT_PINS)
-        pins["candidate_manifest_sha256"] = preflight._sha256(candidate)
-        generation = preflight.build_generation_command(
-            pins,
-            candidate,
-            preflight.DEFAULT_ISOLATED_ROOT,
-            preflight.DEFAULT_NODE_BIN_DIR,
-        )
-        self.assertTrue(generation["not_run_by_preflight"])
-        environment = generation["environment"]
-        self.assertEqual(environment["RELEASE_SEED"], "20260735")
-        self.assertEqual(environment["RELEASE_EVALUATION_PROTOCOL"], "v3")
-        self.assertEqual(environment["RELEASE_TARGET_PER_CLASS"], "192")
-        self.assertEqual(
-            environment["CANDIDATE_PATH"],
-            str(candidate.resolve()),
-        )
-        self.assertEqual(
-            environment["CANDIDATE_SHA256"],
-            preflight._sha256(candidate),
-        )
-        self.assertEqual(
-            environment["SIGNALLAB_ROOT"],
-            str(preflight.DEFAULT_ISOLATED_ROOT),
-        )
-        self.assertIn(
-            "invariant_fusion_v3_sealed_seed20260735",
-            environment["RELEASE_ROOT"],
-        )
-        self.assertIn(
-            "node tools/generate-signallab-iq-release-suite.mjs",
-            generation["command"],
-        )
+        with self.assertRaisesRegex(
+            ValueError, "candidate path must be exactly"
+        ):
+            preflight.build_generation_command(
+                preflight.DEFAULT_PINS,
+                candidate,
+                preflight.DEFAULT_ISOLATED_ROOT,
+                preflight.DEFAULT_NODE_BIN_DIR,
+            )
+
+    def test_exact_path_still_refuses_unbound_future_pins(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unbound fail-closed"):
+            preflight.build_generation_command(
+                preflight.DEFAULT_PINS,
+                preflight.DEFAULT_CANDIDATE_MANIFEST,
+                preflight.DEFAULT_ISOLATED_ROOT,
+                preflight.DEFAULT_NODE_BIN_DIR,
+            )
 
     def test_module_never_invokes_the_launcher(self) -> None:
         source = Path(preflight.__file__).read_text(encoding="utf-8")
@@ -773,6 +1150,8 @@ class HarnessTest(TempDirTestCase):
                 preflight.DEFAULT_REJECTOR_BUNDLE_DIR
             ),
             "prefilter_root": str(preflight.DEFAULT_PREFILTER_ROOT),
+            "q99_design_dir": str(preflight.DEFAULT_Q99_DESIGN_DIR),
+            "q97_design_dir": str(preflight.DEFAULT_Q97_DESIGN_DIR),
             "releases_dir": str(preflight.DEFAULT_RELEASES_DIR),
             "isolated_root": str(preflight.DEFAULT_ISOLATED_ROOT),
             "evaluator": str(preflight.DEFAULT_EVALUATOR),
@@ -797,6 +1176,8 @@ class HarnessTest(TempDirTestCase):
             classifier_bundle_dir=str(gone / "classifier_bundle"),
             rejector_bundle_dir=str(gone / "rejector_bundle"),
             prefilter_root=str(gone / "prefilter"),
+            q99_design_dir=str(gone / "q99"),
+            q97_design_dir=str(gone / "q97"),
             releases_dir=str(gone / "releases"),
             isolated_root=str(gone / "isolated"),
             evaluator=str(gone / "eval.py"),
@@ -883,6 +1264,28 @@ class HarnessTest(TempDirTestCase):
         self.assertIn("release tree", stderr.getvalue())
         self.assertEqual(list(releases.iterdir()), [])
 
+    def test_override_cannot_hide_output_under_canonical_release_tree(
+        self,
+    ) -> None:
+        canonical = Path(self.tmpdir())
+        fake_override = Path(self.tmpdir())
+        output = canonical / "sub" / "report.json"
+        stderr = io.StringIO()
+        with mock.patch.object(
+            preflight, "DEFAULT_RELEASES_DIR", canonical
+        ), contextlib.redirect_stderr(stderr):
+            status = preflight.main(
+                [
+                    "--releases-dir",
+                    str(fake_override),
+                    "--output",
+                    str(output),
+                ]
+            )
+        self.assertEqual(status, 2)
+        self.assertIn("release tree", stderr.getvalue())
+        self.assertFalse(output.exists())
+
 
 @unittest.skipUnless(
     preflight.DEFAULT_BUNDLE_DIR.is_dir()
@@ -891,9 +1294,9 @@ class HarnessTest(TempDirTestCase):
     "full frozen environment not present",
 )
 class EndToEndTest(TempDirTestCase):
-    """The real frozen environment passes without consuming release data."""
+    """The current pre-validation environment refuses release36 safely."""
 
-    def test_full_preflight_is_go_for_the_frozen_candidate(self) -> None:
+    def test_full_preflight_is_no_go_until_future_chain_is_bound(self) -> None:
         tmp = Path(self.tmpdir())
         output = tmp / "preflight_report.json"
         previous = os.environ.get("PYTHONWARNINGS")
@@ -911,10 +1314,10 @@ class EndToEndTest(TempDirTestCase):
             else:
                 os.environ["PYTHONWARNINGS"] = previous
         text = stdout.getvalue()
-        self.assertEqual(status, 0, text)
+        self.assertEqual(status, 1, text)
         final = text.splitlines()[-1]
-        self.assertTrue(final.startswith("GO:"), final)
-        self.assertIn("safe to spend release seed 20260735 once", final)
+        self.assertTrue(final.startswith("NO-GO:"), final)
+        self.assertIn("do not spend release seed 20260736", final)
         # Exactly one GO / NO-GO line, every check itemised above it.
         go_lines = [
             line
@@ -923,22 +1326,24 @@ class EndToEndTest(TempDirTestCase):
         ]
         self.assertEqual(len(go_lines), 1)
         report = json.loads(output.read_text())
-        self.assertTrue(report["go"])
+        self.assertFalse(report["go"])
         failed = [item["name"] for item in report["checks"] if not item["passed"]]
-        self.assertEqual(failed, [])
+        self.assertIn("future_pin.protocol_fixture", failed)
+        self.assertIn("future_pin.validation_evidence", failed)
+        self.assertIn("future_pin.staging_package_manifest", failed)
+        self.assertIn("policy.seed_ledger_constants", failed)
+        self.assertIn("candidate", failed)
         self.assertGreaterEqual(len(report["checks"]), 40)
-        # The report carries full provenance: the real evaluator's hash both
-        # observed and equal to the redeclaration pin.
+        # The report carries the work-in-progress evaluator hash but refuses
+        # to treat it as final while the exact pin is intentionally unbound.
         self.assertEqual(
             report["observed"]["v3_evaluator_sha256"],
             preflight._sha256(preflight.DEFAULT_EVALUATOR),
         )
-        self.assertEqual(
-            report["observed"]["v3_evaluator_sha256"],
-            preflight.DEFAULT_PINS["v3_evaluator_sha256"],
-        )
+        self.assertIsNone(preflight.DEFAULT_PINS["v3_evaluator_sha256"])
         self.assertIn(
-            "v2_full_variation/evaluate_invariant_release_suite.py",
+            "training/zplane_ab/v2_full_variation/"
+            "evaluate_invariant_release_suite.py",
             report["observed"]["dependency_source_sha256"],
         )
         self.assertEqual(
@@ -954,20 +1359,13 @@ class EndToEndTest(TempDirTestCase):
             path.name for path in preflight.DEFAULT_RELEASES_DIR.iterdir()
         )
         self.assertEqual(releases_before, releases_after)
-        # The exact one-shot command is reconstructed but never executed.
-        generation = report["generation_command"]
-        self.assertTrue(generation["not_run_by_preflight"])
-        self.assertEqual(
-            generation["candidate_manifest_sha256"],
-            preflight.DEFAULT_PINS["candidate_manifest_sha256"],
-        )
-        self.assertIn(
-            "generate-signallab-iq-release-suite.mjs", generation["command"]
-        )
+        # The exact command is not reconstructed until the candidate manifest
+        # exists and its independent final SHA-256 is pinned.
+        self.assertNotIn("generation_command", report)
         release_root = (
             preflight.REPO
             / "training/artifacts/releases"
-            / "invariant_fusion_v3_sealed_seed20260735"
+            / "invariant_fusion_v3_sealed_seed20260736"
         )
         self.assertFalse(release_root.exists())
 

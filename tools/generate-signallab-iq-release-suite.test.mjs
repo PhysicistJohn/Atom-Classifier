@@ -15,6 +15,15 @@ import test from 'node:test';
 
 const REPO = resolve(import.meta.dirname, '..');
 const SCRIPT = join(REPO, 'tools/generate-signallab-iq-release-suite.mjs');
+const RELEASE36_ROOT = join(
+  REPO,
+  'training/artifacts/releases/invariant_fusion_v3_sealed_seed20260736',
+);
+const RELEASE36_CANDIDATE = join(
+  REPO,
+  'training/zplane_ab/v2_full_variation/v3_scale/evidence/'
+    + 'v3_4_q97_dual_release_candidate.json',
+);
 const HASH = createHash('sha256').update(readFileSync(SCRIPT)).digest('hex');
 const TEST_SIGNALLAB_ROOT =
   process.env.ATOMOS_RELEASE_TEST_SIGNALLAB_ROOT?.trim();
@@ -121,19 +130,77 @@ test('refuses an unknown RELEASE_EVALUATION_PROTOCOL before any output', () => {
   assert.equal(existsSync(root), false);
 });
 
-test('v3 protocol refuses a release seed the fixture did not predeclare', () => {
-  const root = join(
-    tmpdir(),
-    `atomos-release-v3-seed-mismatch-${process.pid}-${Date.now()}`,
-  );
+test('v3 fails closed while the seed-20260736 evaluator-v4 fixture is absent', () => {
   const result = run({
-    RELEASE_ROOT: root,
+    RELEASE_ROOT: RELEASE36_ROOT,
     RELEASE_EVALUATION_PROTOCOL: 'v3',
-    RELEASE_SEED: '20260728',
+    RELEASE_SEED: '20260736',
+    RELEASE_TARGET_PER_CLASS: '192',
+    CANDIDATE_PATH: RELEASE36_CANDIDATE,
+    CANDIDATE_SHA256: '0'.repeat(64),
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /predeclares seed 20260735/);
-  assert.equal(existsSync(root), false);
+  assert.match(
+    result.stderr,
+    /evaluator-v4\/q97 seed-20260736 protocol fixture is not frozen yet/,
+  );
+  assert.match(
+    result.stderr,
+    /--print-expected-protocol 20260736/,
+  );
+  assert.equal(existsSync(RELEASE36_ROOT), false);
+});
+
+test('seed 20260736 refuses default and explicit v2 before any output', () => {
+  for (const protocol of [undefined, 'v2']) {
+    const result = run({
+      RELEASE_ROOT: RELEASE36_ROOT,
+      RELEASE_SEED: '20260736',
+      RELEASE_TARGET_PER_CLASS: '192',
+      CANDIDATE_PATH: RELEASE36_CANDIDATE,
+      CANDIDATE_SHA256: '0'.repeat(64),
+      ...(protocol === undefined
+        ? { RELEASE_EVALUATION_PROTOCOL: '' }
+        : { RELEASE_EVALUATION_PROTOCOL: protocol }),
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /requires explicit RELEASE_EVALUATION_PROTOCOL=v3/);
+    assert.equal(existsSync(RELEASE36_ROOT), false);
+  }
+});
+
+test('seed 20260736 reserves exact root, candidate path, and target 192', () => {
+  const cases = [
+    {
+      RELEASE_ROOT: join(tmpdir(), `wrong-release36-root-${process.pid}`),
+      CANDIDATE_PATH: RELEASE36_CANDIDATE,
+      RELEASE_TARGET_PER_CLASS: '192',
+      pattern: /requires RELEASE_ROOT exactly/,
+    },
+    {
+      RELEASE_ROOT: RELEASE36_ROOT,
+      CANDIDATE_PATH: SCRIPT,
+      RELEASE_TARGET_PER_CLASS: '192',
+      pattern: /requires CANDIDATE_PATH exactly/,
+    },
+    {
+      RELEASE_ROOT: RELEASE36_ROOT,
+      CANDIDATE_PATH: RELEASE36_CANDIDATE,
+      RELEASE_TARGET_PER_CLASS: '191',
+      pattern: /requires RELEASE_TARGET_PER_CLASS=192/,
+    },
+  ];
+  for (const { pattern, ...extra } of cases) {
+    const result = run({
+      RELEASE_SEED: '20260736',
+      RELEASE_EVALUATION_PROTOCOL: 'v3',
+      CANDIDATE_SHA256: '0'.repeat(64),
+      ...extra,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, pattern);
+    assert.equal(existsSync(RELEASE36_ROOT), false);
+  }
 });
 
 test('v2 and v3 both refuse consumed seed 20260735 before any output', () => {
@@ -187,18 +254,20 @@ test('v2 and v3 preserve all older consumed, model, and band refusals', () => {
   }
 });
 
-test('v3 protocol fixture is the evaluator-printed object, self-consistent', () => {
-  // The fixture is captured from
+test('consumed seed-20260735 fixture remains immutable historical evidence', () => {
+  // This historical fixture was captured from
   //   evaluate_v3_release_suite.py --print-expected-protocol 20260735
-  // (command recorded inside the fixture itself). Node tests never shell out
-  // to Python; the sealed evaluator's own intent-equality check is the
-  // final cross-language backstop.
-  const wrapper = JSON.parse(
-    readFileSync(
-      join(REPO, 'tools/time-domain-v3-expected-evaluation-protocol-seed20260735.json'),
-      'utf8',
-    ),
+  // and must not be rewritten for release 20260736.
+  const fixturePath = join(
+    REPO,
+    'tools/time-domain-v3-expected-evaluation-protocol-seed20260735.json',
   );
+  const fixtureBytes = readFileSync(fixturePath);
+  assert.equal(
+    createHash('sha256').update(fixtureBytes).digest('hex'),
+    '40ef572beeabd18c38e55fdc5001dbfb0365dcd81dac5ff6ea1b95ceca163f7e',
+  );
+  const wrapper = JSON.parse(fixtureBytes.toString('utf8'));
   assert.equal(wrapper.release_seed, 20260735);
   const protocol = wrapper.evaluation_protocol;
   assert.equal(
@@ -290,10 +359,44 @@ test('v3 protocol fixture is the evaluator-printed object, self-consistent', () 
   }
 });
 
-// There is intentionally no v3 intent-generation integration against the
-// seed-20260735 fixture: that seed is consumed and both protocol modes must
-// refuse it. Restore the integration only with a fixture for an untouched
-// release seed.
+test('launcher selects only the future versioned seed-20260736 fixture', () => {
+  const source = readFileSync(SCRIPT, 'utf8');
+  const futureName =
+    'time-domain-v3-expected-evaluation-protocol-v4-q97-seed20260736.json';
+  assert.match(source, new RegExp(futureName.replaceAll('.', '\\.')));
+  assert.match(
+    source,
+    /time-domain-v3-release-evaluation-v4-q97-dual-fusion/,
+  );
+  assert.equal(existsSync(join(REPO, 'tools', futureName)), false);
+  const fixtureDeclaration = source.match(
+    /const V3_EXPECTED_PROTOCOL_FIXTURE = resolve\([\s\S]*?\n\);/,
+  )?.[0];
+  assert.ok(fixtureDeclaration);
+  assert.doesNotMatch(
+    fixtureDeclaration,
+    /seed20260735\.json/,
+  );
+  assert.match(source, /const V3_EXPECTED_PROTOCOL_FIXTURE_SHA256 = null;/);
+  assert.match(source, /const RESERVED_CANDIDATE_SHA256 = null;/);
+  assert.ok(
+    source.indexOf("createHash('sha256').update(fixtureBytes)")
+      < source.indexOf("JSON.parse(fixtureBytes.toString('utf8'))"),
+    'fixture bytes must be hash-verified before JSON.parse',
+  );
+  assert.match(
+    source,
+    /305418a5bc7bd8f9a49799477f3a457b4c07d0c58b637766989fc9557565371b/,
+  );
+  assert.match(
+    source,
+    /d9383a642d21a59f66f1f9e88fc7ce51ad50893a381985c4f53f2b0da9aec3a3/,
+  );
+});
+
+// There is intentionally no v3 intent-generation integration yet:
+// seed 20260735 is consumed, and the seed-20260736 evaluator-v4 fixture does
+// not exist until the validation/candidate chain is complete and reviewed.
 
 test('predeclares evaluation choices in intent before corpus generation', {
   skip: TEST_SIGNALLAB_ROOT

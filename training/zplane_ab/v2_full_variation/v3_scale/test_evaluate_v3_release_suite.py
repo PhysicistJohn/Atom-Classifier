@@ -29,6 +29,7 @@ N32768 prefix-gated case.
 from __future__ import annotations
 
 import contextlib
+import copy
 import hashlib
 import json
 import shutil
@@ -52,6 +53,7 @@ for _path in (TRAINING, ZPAB, V2, HERE):
 
 import evaluate_invariant_release_suite as release  # noqa: E402
 import evaluate_v3_release_suite as evaluator  # noqa: E402
+import export_v3_browser_weights as browser_export  # noqa: E402
 import fit_v3_openset as openset_base  # noqa: E402
 import fit_v3_openset_staged as staged  # noqa: E402
 import noise_prefilter  # noqa: E402
@@ -115,6 +117,15 @@ def _mini_protocol_patches() -> list[Any]:
         ),
         mock.patch.object(
             evaluator, "SCALE_MIN_PER_CLASS", MINI_SCALE_MIN_PER_CLASS
+        ),
+        mock.patch.object(
+            evaluator, "EXPECTED_RELEASE_SEED", MINI_RELEASE_SEED
+        ),
+        mock.patch.object(
+            evaluator, "ENFORCE_CANONICAL_Q97_EVIDENCE", False
+        ),
+        mock.patch.object(
+            staged, "RELEASE_SEED_NEVER_SPENT_HERE", MINI_RELEASE_SEED
         ),
         mock.patch.object(release, "REQUIRED_CAPTURE_LENGTHS", MINI_LENGTHS),
         mock.patch.object(release, "MATCHED_CAPTURE_LENGTH", MINI_MATCHED),
@@ -253,6 +264,7 @@ class MiniFixture:
             "staged": target / "staged",
             "prefilters": target / "prefilters",
             "frozen": target / "frozen_candidate_contract.json",
+            "design": target / "q97_design_report.json",
             "evidence": target / "validation_evidence.json",
             "manifest": target / "release_candidate_manifest.json",
             "classifier_browser": target / evaluator.CLASSIFIER_BROWSER_ASSET,
@@ -270,6 +282,15 @@ class MiniFixture:
                 paths[f"{role}_fusion"]
             )
             _write_json(bundle_manifest_path, bundle_manifest)
+            _write_json(
+                paths[f"{role}_browser"],
+                browser_export.build_payload(
+                    {
+                        "dir": paths[f"{role}_bundle"],
+                        "manifest": bundle_manifest,
+                    }
+                ),
+            )
         staged_metrics_path = paths["staged"] / "openset_metrics.json"
         staged_metrics = json.loads(staged_metrics_path.read_text(encoding="utf-8"))
         staged_metrics["fusion"]["directory"] = str(paths["rejector_fusion"])
@@ -282,6 +303,8 @@ class MiniFixture:
         )
         frozen["rejector_fusion_4k"]["directory"] = str(paths["rejector_fusion"])
         frozen["stage_one_noise_prefilter"]["directory"] = str(paths["prefilters"])
+        frozen["q97_design_evidence"]["path"] = str(paths["design"])
+        frozen["q97_design_evidence"]["sha256"] = _sha256(paths["design"])
         _write_json(paths["frozen"], frozen)
 
         evidence = json.loads(paths["evidence"].read_text(encoding="utf-8"))
@@ -298,12 +321,21 @@ class MiniFixture:
         binding["roles"]["classifier"][
             "runtime_bundle_manifest_sha256"
         ] = _sha256(paths["classifier_bundle"] / "bundle_manifest.json")
+        binding["roles"]["classifier"]["asset_sha256"] = _sha256(
+            paths["classifier_browser"]
+        )
         binding["roles"]["rejector"][
             "runtime_bundle_manifest_sha256"
         ] = _sha256(paths["rejector_bundle"] / "bundle_manifest.json")
+        binding["roles"]["rejector"]["asset_sha256"] = _sha256(
+            paths["rejector_browser"]
+        )
         binding["openset_policy"][
             "fitted_rejector_runtime_bundle_manifest_sha256"
         ] = _sha256(paths["rejector_bundle"] / "bundle_manifest.json")
+        binding["openset_policy"]["rejector_asset_sha256"] = _sha256(
+            paths["rejector_browser"]
+        )
         binding["openset_policy"][
             "staged_validation_report_sha256"
         ] = _sha256(staged_metrics_path)
@@ -315,6 +347,14 @@ class MiniFixture:
         binding_asset.update(_record(paths["binding"]))
         package["dual_binding"] = dict(binding_asset)
         for role in ("classifier", "rejector"):
+            asset_name = (
+                evaluator.CLASSIFIER_BROWSER_ASSET
+                if role == "classifier"
+                else evaluator.REJECTOR_BROWSER_ASSET
+            )
+            asset_record = package["assets"][asset_name]
+            asset_record.update(_record(paths[f"{role}_browser"]))
+            package["roles"][role]["asset"] = dict(asset_record)
             package["roles"][role][
                 "source_bundle_manifest_sha256"
             ] = _sha256(paths[f"{role}_bundle"] / "bundle_manifest.json")
@@ -355,6 +395,7 @@ class MiniFixture:
             ("openset_policy", "openset_browser"),
         ):
             manifest["browser_assets"][role]["path"] = str(paths[key])
+            manifest["browser_assets"][role]["sha256"] = _sha256(paths[key])
         manifest["staging_package_manifest"].update(
             {
                 "path": str(paths["package"]),
@@ -540,6 +581,9 @@ class MiniFixture:
             name: _sha256(evaluator._source_path(name))
             for name in evaluator.BUNDLE_ASSEMBLY_SOURCE_HARD_CONTRACT
         }
+        fusion_metrics = json.loads(
+            (self.fusion_dir / "dev_metrics.json").read_text(encoding="utf-8")
+        )
         manifest = {
             "kind": evaluator.BUNDLE_KIND,
             "schema": evaluator.BUNDLE_SCHEMA,
@@ -549,14 +593,25 @@ class MiniFixture:
             "release_evidence": False,
             "sealed_release_data_used": 0,
             "consumed_test_rows_used": 0,
+            "not_compatible_with_schema_ids": [],
             "assets": assets,
-            "classification": {"classes": list(MINI_CLASSES)},
+            "classification": {
+                "classes": list(MINI_CLASSES),
+                "distance": "squared_euclidean",
+                "label": "argmin over prototypes",
+                "embedding": "centered_fusion",
+            },
             "frontend": {
                 "version": "invariant-patch-time-domain-v1",
+                "estimator_version": (
+                    evaluator.td_preprocess.ESTIMATOR_VERSION
+                ),
                 "patch_length": PATCH_LENGTH,
                 "patch_count": PATCH_COUNT,
                 "target_frac": TARGET_FRAC,
                 "packed_length": PATCH_LENGTH * PATCH_COUNT,
+                "feature_count": N_FEATURES,
+                "uses_frequency_transform": False,
                 "source_sha256": {
                     "training/time_domain_geometry.py": _sha256(
                         evaluator._source_path("time_domain_geometry.py")
@@ -570,6 +625,8 @@ class MiniFixture:
                     ),
                 },
             },
+            "architecture": fusion_metrics["architecture"],
+            "parameter_count": fusion_metrics["parameter_count"],
             "fusion": {
                 "alpha_real": 0.2,
                 "alpha_complex": 0.2,
@@ -578,9 +635,18 @@ class MiniFixture:
                 "eps": 1e-12,
                 "kind": "centered_invariant_fusion",
             },
+            "feature_standardization": {
+                "epsilon": 1e-8,
+                "rule": "(raw_float32 - mean) / std, cast to float32",
+            },
             "rejection": {
                 "state": "unset",
                 "fitted": False,
+                "runtime_behaviour": (
+                    "known/unknown decisions require the separately validated "
+                    "staged v3 policy fitted against this exact rejector fusion"
+                ),
+                "external_staged_policy_required_for_abstention": True,
                 "required_contract": {
                     "policy_schema": 1,
                     "policy_kind": (
@@ -594,6 +660,10 @@ class MiniFixture:
                     "cannot_change_closed_label": True,
                     "density_fit_population": "training only",
                     "rank_and_threshold_population": "enrollment only",
+                    "scope": "stage-one survivors only",
+                    "must_be_fit_against": "this exact fusion assembly",
+                    "this_bundle_supplies_known_unknown_decision": True,
+                    "this_bundle_supplies_public_known_label": False,
                 },
             },
             "self_verification": {
@@ -607,7 +677,11 @@ class MiniFixture:
                     self.fusion_dir / "dev_metrics.json"
                 ),
                 "assembly_source_sha256": assembly_sources,
+                "assembly_seed": fusion_metrics["seed"],
             },
+            "release_blockers": [
+                "synthetic mini candidate requires its staged policy",
+            ],
         }
         _write_json(directory / "bundle_manifest.json", manifest)
 
@@ -633,6 +707,25 @@ class MiniFixture:
         manifest["runtime_role"] = "accepted_known_classifier"
         manifest["provenance"]["source_dev_metrics_sha256"] = _sha256(
             self.classifier_fusion_dir / "dev_metrics.json"
+        )
+        manifest["provenance"]["assembly_seed"] = json.loads(
+            (
+                self.classifier_fusion_dir / "dev_metrics.json"
+            ).read_text(encoding="utf-8")
+        )["seed"]
+        manifest["rejection"]["runtime_behaviour"] = (
+            "run only after the role-bound rejector accepts the capture, and "
+            "use only this bundle's nearest-prototype winner as the public "
+            "known label"
+        )
+        manifest["rejection"]["required_contract"].update(
+            {
+                "must_be_fit_against": "known_unknown_rejector",
+                "this_bundle_supplies_known_unknown_decision": False,
+                "this_bundle_supplies_public_known_label": True,
+                "classifier_runs_only_after_rejector_acceptance": True,
+                "must_not_be_fit_against_this_classifier": True,
+            }
         )
         _write_json(manifest_path, manifest)
 
@@ -714,6 +807,7 @@ class MiniFixture:
             "release_evidence": False,
             "sealed_release_data_used": 0,
             "consumed_test_rows_used": 0,
+            "release_seed_20260736_used": False,
             "additive_only": False,
             "changes_closed_label": True,
             "gates_before_classification": True,
@@ -732,6 +826,7 @@ class MiniFixture:
                 "kind": staged.STAGED_POLICY_KIND,
                 "schema": staged.STAGED_POLICY_SCHEMA,
                 "staged_policy_version": staged.STAGED_POLICY_VERSION,
+                "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
             },
             "fusion": {
                 "directory": str(self.fusion_dir),
@@ -744,7 +839,16 @@ class MiniFixture:
             },
             "stage_two": {"threshold": float(self.policy.threshold)},
             "composite": {"threshold": None},  # filled with the prefilters
-            "seeds": {"novelty_seeds": [20260947, 20260948]},
+            "seeds": {
+                "novelty_seeds": list(evaluator.VALIDATION_NOVELTY_SEEDS),
+                "design_novelty_seed": evaluator.DESIGN_NOVELTY_SEED,
+                "default_validation_novelty_seeds": list(
+                    evaluator.VALIDATION_NOVELTY_SEEDS
+                ),
+                "release_seed_not_spent": evaluator.EXPECTED_RELEASE_SEED,
+                "novelty_rows_used_to_choose_the_stage_one_operating_point": 0,
+                "novelty_rows_used_to_choose_the_composite_threshold": 0,
+            },
             "source_sha256": sources,
         }
         self._staged_metrics_template = metrics
@@ -799,6 +903,10 @@ class MiniFixture:
             },
             threshold_provenance={
                 "population": noise_prefilter.ENROLLMENT_SPLIT,
+                "policy": noise_prefilter.BUDGET_POLICY,
+                "known_false_positive_budget": (
+                    staged.STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET
+                ),
                 "training_rows_used_for_threshold": 0,
                 "selection_rows_used_for_threshold": 0,
                 "novelty_rows_used_for_threshold": 0,
@@ -810,7 +918,7 @@ class MiniFixture:
         set_sha = noise_prefilter.prefilter_set_sha256(self.prefilter_dir)
         self._staged_metrics_template["stage_one"]["set_sha256"] = set_sha
 
-        # The composite survivor policy (staged policy version 2), fit with
+        # The composite survivor policy (staged policy version 4), fit with
         # the real fitting code against the real loaded gate.  The synthetic
         # enrollment stage-1 features force at least one gated enrollment row
         # so the calibration is a strict survivor subset.
@@ -846,9 +954,7 @@ class MiniFixture:
         self._staged_metrics_template["artifacts"][
             staged.COMPOSITE_POLICY_FILENAME
         ] = _sha256(composite_path)
-        self._staged_metrics_template["composite"]["threshold"] = float(
-            self.composite.threshold
-        )
+        self._staged_metrics_template["composite"] = self.composite.provenance()
         _write_json(
             self.staged_dir / "openset_metrics.json",
             self._staged_metrics_template,
@@ -865,17 +971,62 @@ class MiniFixture:
         self.frozen_contract_path = (
             self.candidate_root / "frozen_candidate_contract.json"
         )
+        self.design_report_path = (
+            self.candidate_root / "q97_design_report.json"
+        )
+        design_report = copy.deepcopy(self._staged_metrics_template)
+        design_report.update(
+            {
+                "status": "design_selection_pass",
+                "role": "design",
+                "gates_are_evidence": False,
+                "all_pass": True,
+            }
+        )
+        design_report["seeds"]["novelty_seeds"] = [
+            evaluator.DESIGN_NOVELTY_SEED
+        ]
+        _write_json(self.design_report_path, design_report)
         generic_prefilter_sha = "7" * 64
         frozen_contract = {
             "schema": evaluator.CANDIDATE_CONTRACT_SCHEMA,
             "status": "frozen_before_validation",
             "candidate_id": evaluator.CANDIDATE_ID,
             "architecture": {
+                "frontend": "invariant-patch-time-domain-v1",
+                "execution_order": [
+                    "stage_one_noise_gate",
+                    "rejector_known_unknown",
+                    "classifier_known_label",
+                ],
                 "intentional_dual_fusion": True,
                 "known_label_source": "classifier_fusion_8k_regularized",
                 "known_unknown_source": "rejector_fusion_4k_frozen_policy",
                 "stage_one_short_circuit": True,
+                "open_set_decision_changes_closed_label": True,
+                "stage_one_causal_prefix_rule": {
+                    "4096": 4096,
+                    "8192": 8192,
+                    "16384": 16384,
+                    "32768": 16384,
+                },
+                "uses_frequency_transform": False,
             },
+            "q97_policy": evaluator.q97_policy_contract_block(),
+            "q97_design_evidence": {
+                "path": str(self.design_report_path),
+                "sha256": _sha256(self.design_report_path),
+                "role": "design",
+                "status": "design_selection_pass",
+                "novelty_seed": evaluator.DESIGN_NOVELTY_SEED,
+                "source_sha256": design_report["source_sha256"][
+                    "fit_v3_openset_staged.py"
+                ],
+                "commit": "mini-design-evidence",
+            },
+            "source_transition_intent": (
+                evaluator.source_transition_intent_block()
+            ),
             "classifier_fusion_8k_regularized": {
                 "directory": str(self.classifier_fusion_dir),
                 "directory_sha256": classifier_artifact.directory_sha256,
@@ -919,14 +1070,16 @@ class MiniFixture:
             },
             "validation": {
                 "role": "validate",
-                "novelty_seeds_consumed_once": [20260947, 20260948],
+                "novelty_seeds_consumed_once": list(
+                    evaluator.VALIDATION_NOVELTY_SEEDS
+                ),
                 "report": str(staged_metrics_path),
                 "report_sha256": _sha256(staged_metrics_path),
                 "gates_are_evidence": True,
                 "all_pass": True,
                 "sealed_release_data_used": 0,
                 "consumed_test_rows_used": 0,
-                "release_seed_20260735_used": False,
+                "release_seed_20260736_used": False,
             },
             "validated_rejector": {
                 "fusion_directory_sha256": rejector_artifact.directory_sha256,
@@ -943,9 +1096,18 @@ class MiniFixture:
                 "canonical_behavioral_hash": prefilter_set_sha,
                 "changes_candidate_behavior": False,
             },
+            "source_transition_evidence": (
+                evaluator.ordered_source_transition_contract_block()
+            ),
         }
         _write_json(self.validation_evidence_path, evidence)
 
+        stage_one = staged.load_stage_one(
+            staged.load_prefilter_module(),
+            staged.load_posedegen_module(),
+            self.prefilter_dir,
+            required_lengths=MINI_STAGE_ONE_LENGTHS,
+        )
         browser_records: dict[str, dict[str, Any]] = {}
         for role, file_name in (
             ("classifier", evaluator.CLASSIFIER_BROWSER_ASSET),
@@ -964,17 +1126,49 @@ class MiniFixture:
                 else evaluator.BROWSER_FUSION_SCHEMA_VERSION
             )
             status = evaluator.STAGING_STATUS
-            payload = {
-                "schema": schema,
-                "schema_version": schema_version,
-                "status": status,
-                "role": role,
-            }
-            if role != "openset_policy":
-                payload["runtime_role"] = (
-                    "accepted_known_classifier"
+            if role == "openset_policy":
+                payload = json.loads(
+                    evaluator.openset_export.json_bytes(
+                        evaluator.openset_export.openset_weights_payload(
+                            stage_one.models,
+                            noise_prefilter.prefilter_set_sha256(
+                                self.prefilter_dir
+                            ),
+                            self.lof_components,
+                            self.policy,
+                            self.composite,
+                            {
+                                "version": (
+                                    "invariant-patch-time-domain-v1"
+                                ),
+                                "patch_length": PATCH_LENGTH,
+                                "patch_count": PATCH_COUNT,
+                                "target_frac": TARGET_FRAC,
+                                "packed_length": (
+                                    PATCH_LENGTH * PATCH_COUNT
+                                ),
+                                "uses_frequency_transform": False,
+                            },
+                            {"fixture": "mini-candidate"},
+                        ),
+                        compact=True,
+                    )
+                )
+            else:
+                bundle_dir = (
+                    self.classifier_bundle_dir
                     if role == "classifier"
-                    else "known_unknown_rejector"
+                    else self.rejector_bundle_dir
+                )
+                payload = browser_export.build_payload(
+                    {
+                        "dir": bundle_dir,
+                        "manifest": json.loads(
+                            (
+                                bundle_dir / "bundle_manifest.json"
+                            ).read_text(encoding="utf-8")
+                        ),
+                    }
                 )
             _write_json(path, payload)
             browser_records[role] = {
@@ -1049,7 +1243,13 @@ class MiniFixture:
                     "report_sha256": _sha256(staged_metrics_path),
                     "role": "validate",
                     "status": "development_openset_pass",
-                    "novelty_seeds": [20260947, 20260948],
+                    "novelty_seeds": list(
+                        evaluator.VALIDATION_NOVELTY_SEEDS
+                    ),
+                    "design_novelty_seed": evaluator.DESIGN_NOVELTY_SEED,
+                    "release_seed_not_spent": (
+                        evaluator.EXPECTED_RELEASE_SEED
+                    ),
                 },
                 "fail_closed": {
                     "role_assets_bound_by_sha256": True,
@@ -1636,6 +1836,10 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
         ):
             self.assertIn(key, report)
         self.assertTrue(report["release_evidence"])
+        self.assertEqual(report["schema"], 4)
+        self.assertEqual(
+            report["evaluation_version"], evaluator.EVALUATION_VERSION
+        )
         self.assertFalse(report["development_data_loaded"])
         self.assertFalse(report["retraining_performed"])
         self.assertFalse(report["recalibration_performed"])
@@ -1643,6 +1847,7 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
         for key, expected in (
             ("additive_only", False),
             ("changes_closed_label", True),
+            ("open_set_decision_changes_closed_label", True),
             ("gates_before_classification", True),
         ):
             self.assertEqual(contract[key], expected)
@@ -1651,10 +1856,20 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
             noise_prefilter.ARCHITECTURE_CONTRACT_CHANGE,
         )
         self.assertEqual(
-            contract["staged_policy_version"], staged.STAGED_POLICY_VERSION
+            contract["staged_policy_version"],
+            evaluator.EXPECTED_STAGED_POLICY_VERSION,
         )
         self.assertEqual(
-            contract["staged_policy_schema"], staged.STAGED_POLICY_SCHEMA
+            contract["staged_policy_schema"],
+            evaluator.EXPECTED_STAGED_POLICY_SCHEMA,
+        )
+        self.assertEqual(
+            contract["staged_policy_kind"],
+            evaluator.EXPECTED_STAGED_POLICY_KIND,
+        )
+        self.assertEqual(contract["composite_threshold_quantile"], 0.97)
+        self.assertEqual(
+            contract["policy_hygiene"], evaluator.EXPECTED_POLICY_HYGIENE
         )
         self.assertEqual(
             contract["survivor_score"], staged.COMPOSITE_SURVIVOR_SCORE
@@ -1795,6 +2010,24 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
                 entry["owner_decision"],
                 evaluator.HISTORICAL_V3_GATE_REDECLARATION_RATIONALE,
             )
+        correction = expected["historical_claim_correction"]
+        self.assertEqual(
+            correction["schema"],
+            evaluator.HISTORICAL_CLAIM_CORRECTION_SCHEMA,
+        )
+        self.assertTrue(correction["original_text_preserved_verbatim"])
+        self.assertEqual(correction["comparison_design"], "cross_seed_unpaired")
+        self.assertFalse(correction["same_rows_or_same_novelty_draw"])
+        self.assertEqual(correction["v2_failed_gate_count"], 8)
+        self.assertEqual(
+            correction["historical_claimed_v2_failed_gate_count"], 6
+        )
+        self.assertFalse(
+            correction["every_identically_measured_axis_claim_supported"]
+        )
+        self.assertFalse(
+            correction["all_six_gates_claim_supported_as_complete_count"]
+        )
         self.assertIn(
             "re-declared for the v3 architecture by the owner on 2026-07-28",
             evaluator.HISTORICAL_V3_GATE_REDECLARATION_RATIONALE,
@@ -1846,6 +2079,42 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
             covered["unstaged_control"]["threshold"],
             float(self.candidate.stage_two_threshold),
         )
+
+    def test_inactive_stage_one_uses_the_exact_active_attribution_schema(self):
+        score = np.asarray(
+            [
+                self.candidate.threshold - 0.01,
+                self.candidate.threshold + 0.01,
+                self.candidate.threshold + 0.02,
+            ],
+            dtype=np.float64,
+        )
+        inactive = evaluator._staged_scores(
+            self.candidate,
+            [],
+            np.zeros((3, 1), dtype=np.float32),
+            np.zeros((3, 1), dtype=np.float32),
+            np.zeros(3, dtype=np.int64),
+            score,
+            self.device,
+            capture_length=128,
+            population="unit-inactive",
+        )
+        inactive_by_stage = inactive["false_unknown_by_stage"]
+        active_by_stage = self.report["open_staged_per_length"]["256"][
+            "known_false_unknown_by_stage"
+        ]
+        self.assertEqual(set(inactive_by_stage), set(active_by_stage))
+        self.assertNotIn("rejected_by_stage_one_only", inactive_by_stage)
+        self.assertEqual(inactive_by_stage["rejected_by_stage_one_total"], 0)
+        self.assertEqual(
+            inactive_by_stage["stage_one_also_rejected_by_unstaged_control"],
+            0,
+        )
+        self.assertEqual(inactive_by_stage["staged_rejected_total"], 2)
+        self.assertEqual(inactive_by_stage["rejected_by_stage_two_only"], 2)
+        self.assertEqual(inactive_by_stage["attribution_partition_total"], 2)
+        self.assertTrue(inactive_by_stage["attribution_partition_exact"])
 
     def test_length_above_max_fitted_is_gated_through_the_causal_prefix(self):
         """N512 has no fitted bundle; the N256 bundle gates its 256-prefixes.
@@ -2210,6 +2479,21 @@ class SuiteTamperTests(unittest.TestCase):
         ):
             evaluator.load_v3_release_suite(root, self.candidate)
 
+    def test_intent_with_a_tampered_historical_correction_is_refused(self):
+        root = self._copy_suite()
+
+        def mutate(intent):
+            correction = intent["evaluation_protocol"][
+                "historical_gate_redeclaration"
+            ]["historical_claim_correction"]
+            correction["v2_failed_gate_count"] = 6
+
+        self._mutate_intent(root, mutate)
+        with self.assertRaisesRegex(
+            ValueError, "no matching historical_gate_redeclaration block"
+        ):
+            evaluator.load_v3_release_suite(root, self.candidate)
+
     def test_wrong_candidate_sha_is_refused(self):
         root = self._copy_suite()
 
@@ -2238,11 +2522,6 @@ class SuiteTamperTests(unittest.TestCase):
 
         def mutate(intent):
             intent["release_seed"] = 20260729
-            intent["evaluation_protocol"] = (
-                evaluator.expected_evaluation_protocol(
-                    777004, MINI_STAGE_ONE_LENGTHS
-                )
-            )
             intent["evaluation_protocol"]["novelty"]["seed"] = 20260729
 
         self._mutate_intent(root, mutate)
@@ -2345,6 +2624,78 @@ class CandidateTamperTests(unittest.TestCase):
         manifest["staging_package_manifest"]["sha256"] = _sha256(package_path)
         _write_json(manifest_path, manifest)
 
+    @staticmethod
+    def _mutate_browser_asset(root: Path, role: str, mutate) -> None:
+        """Mutate one deployable asset and consistently rebind every hash."""
+        names = {
+            "classifier": evaluator.CLASSIFIER_BROWSER_ASSET,
+            "rejector": evaluator.REJECTOR_BROWSER_ASSET,
+            "openset_policy": evaluator.OPENSET_BROWSER_ASSET,
+        }
+        asset_name = names[role]
+        asset_path = root / asset_name
+        payload = json.loads(asset_path.read_text(encoding="utf-8"))
+        mutate(payload)
+        _write_json(asset_path, payload)
+
+        binding_path = root / evaluator.DUAL_BINDING_ASSET
+        binding = json.loads(binding_path.read_text(encoding="utf-8"))
+        if role in {"classifier", "rejector"}:
+            binding["roles"][role]["asset_sha256"] = _sha256(asset_path)
+            if role == "rejector":
+                binding["openset_policy"]["rejector_asset_sha256"] = (
+                    _sha256(asset_path)
+                )
+        else:
+            binding["openset_policy"]["asset_sha256"] = _sha256(asset_path)
+        _write_json(binding_path, binding)
+
+        package_path = root / "staging_package_manifest.json"
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+        asset_record = package["assets"][asset_name]
+        asset_record.update(_record(asset_path))
+        if role in {"classifier", "rejector"}:
+            package["roles"][role]["asset"] = dict(asset_record)
+        else:
+            package["openset_policy"].update(asset_record)
+        binding_record = package["assets"][evaluator.DUAL_BINDING_ASSET]
+        binding_record.update(_record(binding_path))
+        package["dual_binding"] = dict(binding_record)
+        _write_json(package_path, package)
+
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["browser_assets"][role]["sha256"] = _sha256(asset_path)
+        manifest["dual_binding"]["sha256"] = _sha256(binding_path)
+        manifest["staging_package_manifest"]["sha256"] = _sha256(
+            package_path
+        )
+        _write_json(manifest_path, manifest)
+
+    @staticmethod
+    def _mutate_evidence(root: Path, mutate) -> None:
+        evidence_path = root / "validation_evidence.json"
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        mutate(evidence)
+        _write_json(evidence_path, evidence)
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["validation_evidence"]["sha256"] = _sha256(evidence_path)
+        _write_json(manifest_path, manifest)
+
+    @classmethod
+    def _mutate_contract(cls, root: Path, mutate) -> None:
+        contract_path = root / "frozen_candidate_contract.json"
+        contract = json.loads(contract_path.read_text(encoding="utf-8"))
+        mutate(contract)
+        _write_json(contract_path, contract)
+        cls._mutate_evidence(
+            root,
+            lambda evidence: evidence["candidate_contract"].__setitem__(
+                "sha256", _sha256(contract_path)
+            ),
+        )
+
     def test_pristine_candidate_loads_and_reports_stage_one_domain(self):
         candidate = self._load(self._copy_candidate())
         self.assertEqual(candidate.stage_one_lengths, MINI_STAGE_ONE_LENGTHS)
@@ -2422,11 +2773,29 @@ class CandidateTamperTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "policy version mismatch"):
             self._load(root)
 
+    def test_staged_q97_quantile_mutation_is_refused(self):
+        root = self._copy_candidate()
+        metrics_path = root / "staged" / "openset_metrics.json"
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        metrics["composite"]["threshold_quantile"] = 0.99
+        _write_json(metrics_path, metrics)
+        with self.assertRaisesRegex(ValueError, "threshold_quantile"):
+            self._load(root)
+
+    def test_staged_validation_seed_mutation_is_refused(self):
+        root = self._copy_candidate()
+        metrics_path = root / "staged" / "openset_metrics.json"
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        metrics["seeds"]["novelty_seeds"] = [20260953, 20260956]
+        _write_json(metrics_path, metrics)
+        with self.assertRaisesRegex(ValueError, "novelty_seeds"):
+            self._load(root)
+
     def test_a_missing_composite_npz_is_refused(self):
         root = self._copy_candidate()
         (root / "staged" / staged.COMPOSITE_POLICY_FILENAME).unlink()
         with self.assertRaisesRegex(
-            ValueError, "composite-policy .version-2. validation artifact"
+            ValueError, "composite-policy .schema-4/q97. validation artifact"
         ):
             self._load(root)
 
@@ -2508,6 +2877,39 @@ class CandidateTamperTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "old or unknown schema"):
             self._load(root)
 
+    def test_q97_contract_policy_mutation_is_refused_after_rebinding(self):
+        root = self._copy_candidate()
+        self._mutate_contract(
+            root,
+            lambda contract: contract["q97_policy"].__setitem__(
+                "threshold_quantile", 0.99
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "policy identity/hygiene"):
+            self._load(root)
+
+    def test_q97_contract_transition_order_mutation_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_contract(
+            root,
+            lambda contract: contract["source_transition_intent"][
+                "transitions"
+            ][1].__setitem__("order", 1),
+        )
+        with self.assertRaisesRegex(ValueError, "transition order/seed"):
+            self._load(root)
+
+    def test_validation_transition_endpoint_mutation_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_evidence(
+            root,
+            lambda evidence: evidence["source_transition_evidence"][
+                "transitions"
+            ][0].__setitem__("to_sha256", "f" * 64),
+        )
+        with self.assertRaisesRegex(ValueError, "endpoints/order"):
+            self._load(root)
+
     def test_validation_evidence_byte_tamper_is_refused(self):
         root = self._copy_candidate()
         path = root / "validation_evidence.json"
@@ -2555,6 +2957,17 @@ class CandidateTamperTests(unittest.TestCase):
             lambda binding: binding.__setitem__("candidate_id", "wrong"),
         )
         with self.assertRaisesRegex(ValueError, "identity/execution order"):
+            self._load(root)
+
+    def test_binding_validation_design_seed_tamper_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_binding(
+            root,
+            lambda binding: binding["validation"].__setitem__(
+                "design_novelty_seed", 20260956
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "validation record differs"):
             self._load(root)
 
     def test_package_candidate_id_cross_link_tamper_is_refused(self):
@@ -2731,6 +3144,51 @@ class CandidateTamperTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "runtime_role differs"):
             self._load(root)
 
+    def test_browser_frontend_geometry_mutation_is_refused_after_rebinding(self):
+        root = self._copy_candidate()
+        self._mutate_browser_asset(
+            root,
+            "classifier",
+            lambda payload: payload["frontend"].__setitem__(
+                "patch_length", 32
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "exact runtime-bundle export"):
+            self._load(root)
+
+    def test_browser_branch_geometry_mutation_is_refused_after_rebinding(self):
+        root = self._copy_candidate()
+        self._mutate_browser_asset(
+            root,
+            "rejector",
+            lambda payload: payload["real"]["config"].__setitem__(
+                "patch_length", 32
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "exact runtime-bundle export"):
+            self._load(root)
+
+    def test_browser_lof_width_mutation_is_refused_after_rebinding(self):
+        root = self._copy_candidate()
+
+        def shrink_real_lof(payload):
+            component = next(
+                item
+                for item in payload["stage_two"]["lof_components"]
+                if item["branch"] == "real"
+            )
+            component["mean"] = component["mean"][:2]
+            component["scale"] = component["scale"][:2]
+            component["reference"] = [
+                row[:2] for row in component["reference"]
+            ]
+
+        self._mutate_browser_asset(root, "openset_policy", shrink_real_lof)
+        with self.assertRaisesRegex(
+            ValueError, "exact frozen staged-policy export"
+        ):
+            self._load(root)
+
     def test_browser_openset_schema_version_is_enforced_after_rebinding(self):
         root = self._copy_candidate()
         path = root / evaluator.OPENSET_BROWSER_ASSET
@@ -2742,6 +3200,47 @@ class CandidateTamperTests(unittest.TestCase):
         manifest["browser_assets"]["openset_policy"]["sha256"] = _sha256(path)
         _write_json(manifest_path, manifest)
         with self.assertRaisesRegex(ValueError, "schema/version/status differs"):
+            self._load(root)
+
+    def test_browser_q97_quantile_mutation_is_refused(self):
+        root = self._copy_candidate()
+        path = root / evaluator.OPENSET_BROWSER_ASSET
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["composite"]["threshold_quantile"] = 0.99
+        _write_json(path, payload)
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["browser_assets"]["openset_policy"]["sha256"] = _sha256(path)
+        _write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(ValueError, "threshold_quantile differs"):
+            self._load(root)
+
+    def test_browser_q97_hygiene_mutation_is_refused(self):
+        root = self._copy_candidate()
+        path = root / evaluator.OPENSET_BROWSER_ASSET
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["composite"]["novelty_rows_used_for_threshold"] = 1
+        _write_json(path, payload)
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["browser_assets"]["openset_policy"]["sha256"] = _sha256(path)
+        _write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(
+            ValueError, "novelty_rows_used_for_threshold differs"
+        ):
+            self._load(root)
+
+    def test_browser_stage_two_kind_mutation_is_refused(self):
+        root = self._copy_candidate()
+        path = root / evaluator.OPENSET_BROWSER_ASSET
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["stage_two"]["kind"] = evaluator.EXPECTED_STAGED_POLICY_KIND
+        _write_json(path, payload)
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["browser_assets"]["openset_policy"]["sha256"] = _sha256(path)
+        _write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(ValueError, "stage-two policy kind differs"):
             self._load(root)
 
     def test_candidate_browser_record_alias_is_refused(self):
@@ -2791,25 +3290,25 @@ class CandidateTamperTests(unittest.TestCase):
             self._load(root)
 
 
-class PostValidationLedgerTransitionTests(unittest.TestCase):
-    """Only the exact seed-spending bookkeeping transition is admissible."""
+class OrderedLedgerTransitionTests(unittest.TestCase):
+    """Only the ordered q97 design/validation bookkeeping chain is admissible."""
 
-    def test_exact_transition_is_ast_verified_and_reported(self):
-        transition = evaluator.POST_VALIDATION_LEDGER_TRANSITION
+    def test_exact_design_transition_is_ast_verified_and_reported(self):
+        transition = evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS[0]
         checked, transitions = evaluator._verify_source_contract(
             {
                 str(transition["source"]): str(
-                    transition["validated_sha256"]
+                    transition["from_sha256"]
                 )
             },
             (str(transition["source"]),),
             origin=str(transition["origin"]),
         )
         name = str(transition["source"])
-        self.assertEqual(checked[name], transition["current_sha256"])
+        self.assertEqual(checked[name], transition["to_sha256"])
         self.assertEqual(
             transitions[name]["admission"],
-            "exact_post_validation_seed_ledger_transition",
+            "exact_ordered_q97_seed_ledger_transition_chain",
         )
         self.assertEqual(
             transitions[name]["normalized_ast_sha256"],
@@ -2819,25 +3318,61 @@ class PostValidationLedgerTransitionTests(unittest.TestCase):
             transitions[name]["candidate_inference_behavior_changed"]
         )
         self.assertEqual(
-            transitions[name]["consumed_validation_seeds"],
-            [20260950, 20260951],
+            transitions[name]["ordered_transition_ids"],
+            ["predesign_to_postdesign"],
         )
         self.assertEqual(
-            transitions[name]["next_clean_novelty_seed"], 20260952
+            transitions[name]["consumed_novelty_seeds"],
+            [evaluator.DESIGN_NOVELTY_SEED],
         )
+        self.assertEqual(transitions[name]["next_clean_novelty_seed"], 20260953)
 
     def test_transition_is_not_accepted_for_another_origin(self):
-        transition = evaluator.POST_VALIDATION_LEDGER_TRANSITION
+        transition = evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS[0]
         with self.assertRaisesRegex(ValueError, "source drift"):
             evaluator._verify_source_contract(
                 {
                     str(transition["source"]): str(
-                        transition["validated_sha256"]
+                        transition["from_sha256"]
                     )
                 },
                 (str(transition["source"]),),
                 origin="an untrusted source record",
             )
+
+    def test_postvalidation_transition_placeholders_fail_closed(self):
+        with self.assertRaisesRegex(ValueError, "unbound"):
+            evaluator._validated_ordered_source_transitions()
+
+    def test_transition_order_mutation_is_refused_before_hash_admission(self):
+        mutated = copy.deepcopy(evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS)
+        mutated[1]["order"] = 1
+        with mock.patch.object(
+            evaluator, "ORDERED_STAGED_SOURCE_TRANSITIONS", tuple(mutated)
+        ):
+            with self.assertRaisesRegex(ValueError, "order/identity"):
+                evaluator._validated_ordered_source_transitions(
+                    required_through_order=1
+                )
+
+    def test_transition_seed_mutation_is_refused(self):
+        mutated = copy.deepcopy(evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS)
+        mutated[0]["consumed_novelty_seeds"] = (20260956,)
+        with mock.patch.object(
+            evaluator, "ORDERED_STAGED_SOURCE_TRANSITIONS", tuple(mutated)
+        ):
+            with self.assertRaisesRegex(ValueError, "another seed"):
+                evaluator._validated_ordered_source_transitions(
+                    required_through_order=1
+                )
+
+    def test_transition_commit_phase_alias_is_refused(self):
+        transition = copy.deepcopy(
+            evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS[0]
+        )
+        transition["from_commit"] = transition["evidence_commit"]
+        with self.assertRaisesRegex(ValueError, "aliases distinct phases"):
+            evaluator._verify_git_transition_binding(transition)
 
 
 class ProtocolAndHelperIdentityTests(unittest.TestCase):
@@ -2851,9 +3386,30 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
         self.assertIs(evaluator.FIVE_SHOT_K, release.FIVE_SHOT_K)
         self.assertEqual(evaluator.HIGH_SNR_DB, release.HIGH_SNR_DB)
 
+    def test_q97_browser_policy_and_parity_schemas_are_v4(self):
+        self.assertEqual(evaluator.BROWSER_OPENSET_SCHEMA_VERSION, 4)
+        self.assertEqual(evaluator.PARITY_SCHEMA_VERSION, 4)
+        self.assertTrue(evaluator.ENFORCE_CANONICAL_Q97_EVIDENCE)
+
+    def test_historical_owner_text_mutation_is_refused(self):
+        with mock.patch.object(
+            evaluator,
+            "HISTORICAL_V3_GATE_REDECLARATION_RATIONALE",
+            evaluator.HISTORICAL_V3_GATE_REDECLARATION_RATIONALE + " mutated",
+        ):
+            with self.assertRaisesRegex(ValueError, "original verbatim"):
+                evaluator.historical_claim_correction_block()
+
+    def test_imported_policy_identity_mutation_is_refused(self):
+        with mock.patch.object(staged, "STAGED_POLICY_SCHEMA", 3):
+            with self.assertRaisesRegex(ValueError, "identity/seed hygiene"):
+                evaluator.expected_evaluation_protocol(
+                    evaluator.EXPECTED_RELEASE_SEED, (4096,)
+                )
+
     def test_expected_protocol_reuses_v2_rules_and_updates_v3_fields(self):
         protocol = evaluator.expected_evaluation_protocol(
-            20260735, (4096, 8192, 16384)
+            20260736, (4096, 8192, 16384)
         )
         v2 = release.EXPECTED_EVALUATION_PROTOCOL
         self.assertEqual(protocol["version"], evaluator.EVALUATION_VERSION)
@@ -2875,7 +3431,7 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
         self.assertEqual(
             protocol["length_observation_rule"], v2["length_observation_rule"]
         )
-        self.assertEqual(protocol["novelty"]["seed"], 20260735)
+        self.assertEqual(protocol["novelty"]["seed"], 20260736)
         self.assertEqual(
             protocol["novelty"]["seed_derivation"],
             v2["novelty"]["seed_derivation"],
@@ -2905,15 +3461,18 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
         )
         self.assertFalse(protocol["open_set"]["additive_only"])
         self.assertTrue(protocol["open_set"]["changes_closed_label"])
-        # The composite (staged policy version 2) is predeclared: version,
+        self.assertTrue(
+            protocol["open_set"]["open_set_decision_changes_closed_label"]
+        )
+        # The composite (staged policy version 4) is predeclared: version,
         # survivor score, threshold rule and the staged score axis text.
         self.assertEqual(
             protocol["open_set"]["staged_policy_schema"],
-            staged.STAGED_POLICY_SCHEMA,
+            evaluator.EXPECTED_STAGED_POLICY_SCHEMA,
         )
         self.assertEqual(
             protocol["open_set"]["staged_policy_version"],
-            staged.STAGED_POLICY_VERSION,
+            evaluator.EXPECTED_STAGED_POLICY_VERSION,
         )
         self.assertEqual(
             protocol["open_set"]["survivor_score"],
@@ -2923,7 +3482,25 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
             "enrollment stage-1 survivors",
             protocol["open_set"]["unknown_threshold_rule"],
         )
-        self.assertIn("q0.95", protocol["open_set"]["unknown_threshold_rule"])
+        self.assertEqual(
+            protocol["open_set"]["staged_policy_kind"],
+            evaluator.EXPECTED_STAGED_POLICY_KIND,
+        )
+        self.assertEqual(
+            protocol["open_set"]["composite_threshold_quantile"], 0.97
+        )
+        self.assertEqual(
+            protocol["open_set"]["policy_hygiene"],
+            evaluator.EXPECTED_POLICY_HYGIENE,
+        )
+        self.assertEqual(
+            protocol["open_set"]["design_novelty_seed"], 20260955
+        )
+        self.assertEqual(
+            protocol["open_set"]["validation_novelty_seeds"],
+            [20260953, 20260954],
+        )
+        self.assertIn("q0.97", protocol["open_set"]["unknown_threshold_rule"])
         self.assertIn("COMPOSITE", protocol["open_set"]["score_axis"])
         self.assertIn(
             "composite survivor policy", protocol["novelty"]["calibration"]
@@ -2939,12 +3516,15 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
             20260732,
             20260733,
             20260734,
+            20260735,
             20260942,
             20261001,
         ):
             with self.assertRaises(ValueError):
                 evaluator.expected_evaluation_protocol(seed, (4096,))
-        evaluator.expected_evaluation_protocol(20260735, (4096,))
+        evaluator.expected_evaluation_protocol(20260736, (4096,))
+        with self.assertRaises(ValueError):
+            evaluator.expected_evaluation_protocol(20260737, (4096,))
 
     def test_novelty_seed_derivation_matches_v2_formula(self):
         for family in release.NOVELTY_FAMILIES:
@@ -2956,7 +3536,7 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
             evaluator._novelty_seed(1, "not-a-family")
 
     def test_validate_release_seed(self):
-        self.assertEqual(evaluator.validate_release_seed(20260735), 20260735)
+        self.assertEqual(evaluator.validate_release_seed(20260736), 20260736)
         for seed in (
             20260729,
             20260730,
@@ -2964,6 +3544,7 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
             20260732,
             20260733,
             20260734,
+            20260735,
             20260900,
             20260999,
             20261000,
@@ -2971,6 +3552,8 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
         ):
             with self.assertRaises(ValueError):
                 evaluator.validate_release_seed(seed)
+        with self.assertRaisesRegex(ValueError, "frozen for untouched"):
+            evaluator.validate_release_seed(20260737)
 
     def test_the_consumed_v3_seed_refusal_names_the_frozen_failure(self):
         with self.assertRaisesRegex(ValueError, "HANDOFF 25"):
@@ -2979,13 +3562,27 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
             evaluator.validate_release_seed(20260733)
         with self.assertRaisesRegex(ValueError, "historical"):
             evaluator.validate_release_seed(20260734)
+        with self.assertRaisesRegex(ValueError, "149/1309"):
+            evaluator.validate_release_seed(20260735)
 
     def test_default_candidate_directories_are_the_frozen_candidate(self):
         parser = evaluator.build_parser()
         args = parser.parse_args([])
         self.assertEqual(
             Path(args.candidate_manifest).name,
-            "v3_dual_release_candidate.json",
+            "v3_4_q97_dual_release_candidate.json",
+        )
+        self.assertEqual(
+            evaluator.DEFAULT_CANDIDATE_CONTRACT.name,
+            "v3_q97_candidate_contract.json",
+        )
+        self.assertEqual(
+            evaluator.CANDIDATE_CONTRACT_SCHEMA,
+            "time-domain-v3-q97-candidate-v1",
+        )
+        self.assertEqual(
+            evaluator.CANDIDATE_ID,
+            "v3.4-q97-decoupled-8k-classifier-4k-rejector",
         )
         self.assertEqual(
             Path(args.classifier_bundle_dir).name,
@@ -3005,8 +3602,8 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
         )
         self.assertEqual(
             Path(args.staged_dir).name,
-            "staged_validate_decoupled_rejector4k_classifier8k_budget001_"
-            "seeds20260950_20260951",
+            "staged_validate_v34_q97_decoupled_rejector4k_classifier8k_"
+            "budget001_seeds20260953_20260954",
         )
         self.assertEqual(
             Path(args.prefilter_dir).parent.name,
@@ -3023,6 +3620,365 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
             self.assertEqual(value["mtime_ns"], 2**60)
             with self.assertRaises(ValueError):
                 release._read_json(path)
+
+
+class V4AdmissionHardeningTests(unittest.TestCase):
+    def _dependency_fixture(self, root: Path):
+        paths = {}
+        hashes = {}
+        for index, key in enumerate(evaluator.TRANSITIVE_DEPENDENCY_PATHS):
+            path = root / f"dependency-{index}.py"
+            path.write_text(f"# {key}\n", encoding="utf-8")
+            paths[key] = path
+            hashes[key] = _sha256(path)
+        return paths, hashes
+
+    def test_transitive_dependency_contract_is_the_exact_reviewed_49(self):
+        self.assertEqual(len(evaluator.TRANSITIVE_DEPENDENCY_PATHS), 49)
+        self.assertIn(
+            "training/zplane_ab/v2_full_variation/v3_scale/"
+            "measure_v3_remaining_gates.py",
+            evaluator.TRANSITIVE_DEPENDENCY_PATHS,
+        )
+        self.assertEqual(
+            set(evaluator.EXPECTED_TRANSITIVE_DEPENDENCY_SHA256),
+            set(evaluator.TRANSITIVE_DEPENDENCY_PATHS),
+        )
+
+    def test_exact_dependency_and_runtime_contract_admits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, hashes = self._dependency_fixture(Path(tmp))
+            report = evaluator._admit_transitive_execution_contract(
+                canonical_release_candidate=True,
+                device=torch.device("cpu"),
+                dependency_paths=paths,
+                expected_sha256=hashes,
+            )
+        self.assertTrue(report["passes"])
+        self.assertEqual(report["dependency_file_count"], 49)
+        self.assertEqual(
+            report["runtime_identity"],
+            evaluator.EXPECTED_EVALUATOR_RUNTIME_IDENTITY,
+        )
+
+    def test_dependency_key_hash_symlink_and_runtime_mismatches_fail_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, hashes = self._dependency_fixture(root)
+            missing = dict(hashes)
+            missing.pop(next(iter(missing)))
+            with self.assertRaisesRegex(ValueError, "hash keys"):
+                evaluator._admit_transitive_execution_contract(
+                    canonical_release_candidate=True,
+                    device=torch.device("cpu"),
+                    dependency_paths=paths,
+                    expected_sha256=missing,
+                )
+            wrong = dict(hashes)
+            wrong[next(iter(wrong))] = "0" * 64
+            with self.assertRaisesRegex(ValueError, "hash mismatch"):
+                evaluator._admit_transitive_execution_contract(
+                    canonical_release_candidate=True,
+                    device=torch.device("cpu"),
+                    dependency_paths=paths,
+                    expected_sha256=wrong,
+                )
+            key = next(iter(paths))
+            target = paths[key]
+            link = root / "dependency-link.py"
+            link.symlink_to(target)
+            linked = dict(paths)
+            linked[key] = link
+            with self.assertRaisesRegex(ValueError, "non-symlink"):
+                evaluator._admit_transitive_execution_contract(
+                    canonical_release_candidate=True,
+                    device=torch.device("cpu"),
+                    dependency_paths=linked,
+                    expected_sha256=hashes,
+                )
+            runtime = dict(evaluator.EXPECTED_EVALUATOR_RUNTIME_IDENTITY)
+            runtime["python"] = "3.9.7"
+            with self.assertRaisesRegex(ValueError, "runtime_identity"):
+                evaluator._admit_transitive_execution_contract(
+                    canonical_release_candidate=True,
+                    device=torch.device("cpu"),
+                    dependency_paths=paths,
+                    expected_sha256=hashes,
+                    expected_runtime=runtime,
+                )
+
+    def test_unbound_canonical_dependency_hashes_fail_closed(self):
+        with self.assertRaisesRegex(ValueError, "SHA-256"):
+            evaluator._admit_transitive_execution_contract(
+                canonical_release_candidate=True,
+                device=torch.device("cpu"),
+            )
+
+    def test_json_scalar_admission_rejects_bool_and_integer_aliases_broadly(self):
+        boolean_fields = (
+            "all_pass",
+            "development_only",
+            "gates_before_classification",
+            "passes",
+            "release_seed_20260736_used",
+        )
+        for field in boolean_fields:
+            for alias in (0, 1, 0.0, 1.0, "false", None):
+                with self.subTest(field=field, alias=alias):
+                    with self.assertRaisesRegex(ValueError, "JSON boolean"):
+                        evaluator._validate_json_scalar_types({field: alias})
+        integer_fields = (
+            "schema_version",
+            "release_seed",
+            "row_count",
+            "capture_length",
+        )
+        for field in integer_fields:
+            for alias in (False, True, 4.0, "4", None):
+                with self.subTest(field=field, alias=alias):
+                    with self.assertRaisesRegex(ValueError, "JSON integer"):
+                        evaluator._validate_json_scalar_types({field: alias})
+        for field in (
+            "novelty_seeds",
+            "novelty_seeds_consumed_once",
+            "capture_lengths",
+            "row_counts",
+        ):
+            for alias in (False, True, 4.0, "4", None):
+                with self.subTest(field=field, alias=alias):
+                    with self.assertRaisesRegex(ValueError, "JSON integer"):
+                        evaluator._validate_json_scalar_types(
+                            {field: [alias]}
+                        )
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaisesRegex(ValueError, "finite JSON number"):
+                evaluator._validate_json_scalar_types({"threshold": value})
+        for alias in (False, True, 0, "0.0", None, float("nan")):
+            with self.subTest(float_alias=alias):
+                with self.assertRaisesRegex(ValueError, "finite JSON number"):
+                    evaluator._require_finite_json_float(
+                        alias, field="threshold"
+                    )
+        for alias in (False, True, 4.0, "4", None):
+            with self.subTest(schema_alias=alias):
+                with self.assertRaises(ValueError):
+                    evaluator._require_exact_json_value(
+                        alias, 4, field="schema"
+                    )
+
+    def test_dynamic_integer_maps_and_real_integer_names_reject_aliases(self):
+        for collection in ("counts", "row_counts"):
+            for alias in (False, True, 4.0, "4", None):
+                with self.subTest(collection=collection, alias=alias):
+                    with self.assertRaisesRegex(ValueError, "JSON integer"):
+                        evaluator._validate_json_scalar_types(
+                            {collection: {"known": alias}}
+                        )
+        integer_fields = (
+            "targetPerClass",
+            "minimum_target_per_class",
+            "staged_policy_schema",
+            "release_seed_not_spent",
+            "clean_validation_seeds_from",
+            "known_classes",
+            "bytesPerComplexSample",
+            "sealed_release_data_used",
+            "consumed_test_rows_exposed",
+            "downstream_rows_evaluated",
+            "stage_two_rows_scored_staged",
+        )
+        for field in integer_fields:
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(ValueError, "JSON integer"):
+                    evaluator._validate_json_scalar_types({field: 4.0})
+        for payload in (
+            {"seeds": {"known": 4.0}},
+            {"seeds": {"known": 4.0, "note": "mixed"}},
+            {"seeds": {"known": True, "ledger": "explanatory"}},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaisesRegex(ValueError, "JSON integer"):
+                    evaluator._validate_json_scalar_types(payload)
+
+    def test_strict_scalar_reader_accepts_real_frozen_json_shapes(self):
+        paths = (
+            evaluator.V2
+            / "artifacts/invariant_patch/v3_scale/"
+            "staged_design_v34_q97_rejector4k_budget001_seed20260955/"
+            "openset_metrics.json",
+            evaluator.V2
+            / "artifacts/invariant_patch/v3_scale/"
+            "noise_prefilter_fit20261001_budget001/noise_prefilter_fit.json",
+            evaluator.TRAINING
+            / "artifacts/releases/invariant_fusion_v3_sealed_seed20260735/"
+            "RELEASE_INTENT.json",
+            evaluator.TRAINING
+            / "artifacts/releases/invariant_fusion_v3_sealed_seed20260735/"
+            "RELEASE_MANIFEST.json",
+            evaluator.TRAINING
+            / "artifacts/releases/invariant_fusion_v3_sealed_seed20260735/"
+            "RELEASE_EVALUATION.json",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertIsInstance(
+                    evaluator._read_candidate_json(path),
+                    dict,
+                )
+
+    def test_transition_one_recomputes_every_configured_endpoint(self):
+        digest_fields = (
+            "from_sha256",
+            "to_sha256",
+            "normalized_ast_sha256",
+            "full_index_diff_sha256",
+            "evidence_report_sha256",
+        )
+        commit_fields = (
+            "from_commit",
+            "evidence_commit",
+            "to_commit",
+        )
+        for field in digest_fields + commit_fields:
+            mutated = copy.deepcopy(
+                evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS
+            )
+            mutated[0][field] = (
+                "0" * 64 if field in digest_fields else "0" * 40
+            )
+            with self.subTest(field=field), mock.patch.object(
+                evaluator,
+                "ORDERED_STAGED_SOURCE_TRANSITIONS",
+                tuple(mutated),
+            ):
+                with self.assertRaises(ValueError):
+                    evaluator._validated_ordered_source_transitions(
+                        required_through_order=1
+                    )
+
+    def test_deployment_classifier_spy_sees_only_accepted_rows(self):
+        candidate = mock.Mock()
+        candidate.classifier_fusion_artifact.prototypes = np.asarray(
+            [[0.0], [10.0]], dtype=np.float32
+        )
+        packed = np.arange(10, dtype=np.float32).reshape(5, 2)
+        features = np.arange(15, dtype=np.float32).reshape(5, 3)
+        rejected = np.asarray([True, False, True, False, False])
+        control = np.asarray([1, 0, 1, 1, 0], dtype=np.int64)
+        seen = []
+
+        def spy(_candidate, accepted_packed, accepted_features, _device):
+            seen.append(
+                (accepted_packed.copy(), accepted_features.copy())
+            )
+            return accepted_features, {
+                "fusion": np.asarray([[0.0], [10.0], [0.0]], dtype=np.float32)
+            }
+
+        with mock.patch.object(evaluator, "_embed_classifier", side_effect=spy):
+            labels, report = evaluator._deployment_classifier_labels(
+                candidate,
+                packed,
+                features,
+                rejected,
+                control,
+                torch.device("cpu"),
+            )
+        self.assertEqual(len(seen), 1)
+        np.testing.assert_array_equal(seen[0][0], packed[~rejected])
+        np.testing.assert_array_equal(seen[0][1], features[~rejected])
+        np.testing.assert_array_equal(labels, [-1, 0, -1, 1, 0])
+        self.assertEqual(report["classifier_batch_rows"], 3)
+        self.assertEqual(report["rejected_rows_never_submitted"], 2)
+
+    def test_attribution_counts_rates_partition_and_overlap_are_exact(self):
+        gated = np.asarray([True, False, False, True])
+        staged_score = np.asarray([1.1, 1.1, 0.1, 0.2])
+        unstaged_score = np.asarray([0.9, 0.1, 0.8, 0.7])
+        report = {
+            "rows": 4,
+            "staged_threshold": 0.5,
+            "unstaged_threshold": 0.5,
+            "staged_false_unknown_rate": 0.75,
+            "stage_one_gate_rate": 0.5,
+            "stage_two_false_unknown_rate_marginal": 0.25,
+            "stage_two_false_unknown_rate_among_survivors": 0.5,
+            "unstaged_false_unknown_rate": 0.75,
+            "staged_rejected_total": 3,
+            "rejected_by_stage_one_total": 2,
+            "stage_one_also_rejected_by_unstaged_control": 2,
+            "rejected_by_stage_two_only": 1,
+            "attribution_partition_total": 3,
+            "attribution_partition_exact": True,
+            "attribution": "unit",
+        }
+        evaluator._assert_attribution_conservation(
+            report,
+            gated=gated,
+            staged_score=staged_score,
+            unstaged_score=unstaged_score,
+            staged_threshold=0.5,
+            unstaged_threshold=0.5,
+        )
+        for field in (
+            "rows",
+            "staged_threshold",
+            "unstaged_threshold",
+            "staged_rejected_total",
+            "rejected_by_stage_one_total",
+            "stage_one_also_rejected_by_unstaged_control",
+            "rejected_by_stage_two_only",
+            "attribution_partition_total",
+            "attribution_partition_exact",
+            "staged_false_unknown_rate",
+            "stage_one_gate_rate",
+            "stage_two_false_unknown_rate_marginal",
+            "stage_two_false_unknown_rate_among_survivors",
+            "unstaged_false_unknown_rate",
+        ):
+            mutated = dict(report)
+            mutated[field] = (
+                False
+                if field == "attribution_partition_exact"
+                else 99.0
+                if field in {"staged_threshold", "unstaged_threshold"}
+                else 99
+            )
+            with self.subTest(field=field):
+                with self.assertRaises((AssertionError, ValueError)):
+                    evaluator._assert_attribution_conservation(
+                        mutated,
+                        gated=gated,
+                        staged_score=staged_score,
+                        unstaged_score=unstaged_score,
+                        staged_threshold=0.5,
+                        unstaged_threshold=0.5,
+                    )
+
+    def test_frozen_architecture_is_time_domain_no_fft_and_exactly_ordered(self):
+        self.assertEqual(
+            evaluator.EXPECTED_FROZEN_ARCHITECTURE,
+            {
+                "frontend": "invariant-patch-time-domain-v1",
+                "execution_order": [
+                    "stage_one_noise_gate",
+                    "rejector_known_unknown",
+                    "classifier_known_label",
+                ],
+                "intentional_dual_fusion": True,
+                "known_label_source": "classifier_fusion_8k_regularized",
+                "known_unknown_source": "rejector_fusion_4k_frozen_policy",
+                "stage_one_short_circuit": True,
+                "open_set_decision_changes_closed_label": True,
+                "stage_one_causal_prefix_rule": {
+                    "4096": 4096,
+                    "8192": 8192,
+                    "16384": 16384,
+                    "32768": 16384,
+                },
+                "uses_frequency_transform": False,
+            },
+        )
 
 
 if __name__ == "__main__":

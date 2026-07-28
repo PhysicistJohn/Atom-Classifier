@@ -40,7 +40,7 @@ export const TIME_DOMAIN_FUSION_V3_SCHEMA =
 export const TIME_DOMAIN_FUSION_V3_SCHEMA_VERSION = 1 as const;
 
 /**
- * Explicit responsibilities used by the decoupled v3.3 runtime. The field is
+ * Explicit responsibilities used by the decoupled v3.4/q97 runtime. The field is
  * optional at this low-level loader so the frozen legacy single-fusion asset
  * remains loadable; the dual-fusion composition requires one exact role on
  * each of its two assets.

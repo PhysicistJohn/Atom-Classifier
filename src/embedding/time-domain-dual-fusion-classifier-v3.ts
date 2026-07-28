@@ -1,5 +1,5 @@
 /**
- * Explicit decoupled v3.3 time-domain classifier:
+ * Explicit decoupled v3.4/q97 time-domain classifier:
  *
  *   raw I/Q
  *     -> stage-1 noise gate
@@ -53,9 +53,11 @@ export const TIME_DOMAIN_DUAL_FUSION_BINDING_SCHEMA =
   'atomos.v3.time-domain-dual-fusion.binding' as const;
 export const TIME_DOMAIN_DUAL_FUSION_BINDING_SCHEMA_VERSION = 1 as const;
 export const TIME_DOMAIN_DUAL_FUSION_CANDIDATE_ID =
-  'v3.3-decoupled-8k-classifier-4k-rejector' as const;
+  'v3.4-q97-decoupled-8k-classifier-4k-rejector' as const;
+export const TIME_DOMAIN_DUAL_FUSION_DESIGN_SEED = 20260955 as const;
 export const TIME_DOMAIN_DUAL_FUSION_VALIDATION_SEEDS =
-  Object.freeze([20260950, 20260951] as const);
+  Object.freeze([20260953, 20260954] as const);
+export const TIME_DOMAIN_DUAL_FUSION_RELEASE_SEED = 20260736 as const;
 
 export const TIME_DOMAIN_DUAL_FUSION_REJECTOR_ASSET =
   'time-domain-v3-rejector-weights.json' as const;
@@ -121,7 +123,9 @@ export interface TimeDomainDualFusionValidationBindingV3 {
   report_sha256: string;
   role: 'validate';
   status: 'development_openset_pass';
-  novelty_seeds: [20260950, 20260951];
+  design_novelty_seed: typeof TIME_DOMAIN_DUAL_FUSION_DESIGN_SEED;
+  novelty_seeds: [20260953, 20260954];
+  release_seed_not_spent: typeof TIME_DOMAIN_DUAL_FUSION_RELEASE_SEED;
 }
 
 export interface TimeDomainDualFusionFailClosedBindingV3 {
@@ -391,6 +395,11 @@ export function loadTimeDomainDualFusionBindingV3(
     'development_openset_pass',
     'binding.validation.status',
   );
+  exactLiteral(
+    validationRaw.design_novelty_seed,
+    TIME_DOMAIN_DUAL_FUSION_DESIGN_SEED,
+    'binding.validation.design_novelty_seed',
+  );
   if (
     !Array.isArray(validationRaw.novelty_seeds)
     || validationRaw.novelty_seeds.length
@@ -402,9 +411,14 @@ export function loadTimeDomainDualFusionBindingV3(
   ) {
     throw new RangeError(
       'binding.validation.novelty_seeds must be the frozen one-shot '
-      + 'validation pair [20260950, 20260951]',
+      + 'validation pair [20260953, 20260954]',
     );
   }
+  exactLiteral(
+    validationRaw.release_seed_not_spent,
+    TIME_DOMAIN_DUAL_FUSION_RELEASE_SEED,
+    'binding.validation.release_seed_not_spent',
+  );
   const validation: TimeDomainDualFusionValidationBindingV3 = {
     report_sha256: sha256(
       validationRaw.report_sha256,
@@ -412,7 +426,9 @@ export function loadTimeDomainDualFusionBindingV3(
     ),
     role: 'validate',
     status: 'development_openset_pass',
+    design_novelty_seed: TIME_DOMAIN_DUAL_FUSION_DESIGN_SEED,
     novelty_seeds: [...TIME_DOMAIN_DUAL_FUSION_VALIDATION_SEEDS],
+    release_seed_not_spent: TIME_DOMAIN_DUAL_FUSION_RELEASE_SEED,
   };
 
   const failClosedRaw = record(
