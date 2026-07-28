@@ -169,7 +169,7 @@ const EVALUATION_PROTOCOL = Object.freeze({
  */
 const V3_EXPECTED_PROTOCOL_FIXTURE = resolve(
   HERE,
-  'time-domain-v3-expected-evaluation-protocol-seed20260731.json',
+  'time-domain-v3-expected-evaluation-protocol-seed20260733.json',
 );
 const V3_EVALUATION_VERSION = 'time-domain-v3-release-evaluation-v1';
 /**
@@ -179,6 +179,15 @@ const V3_EVALUATION_VERSION = 'time-domain-v3-release-evaluation-v1';
  */
 const V3_CONSUMED_RELEASE_SEEDS = Object.freeze({
   20260729: 'consumed sealed v2 release suite (evidence rule 2)',
+  20260731:
+    'consumed sealed v3.0 release suite (HANDOFF 25: 22/23 gates, known '
+    + 'false-unknown failure frozen; evidence rules 2 and 4)',
+  20260730:
+    'development model/fusion seed; reusing it as a release seed would '
+    + 'collide the model and release namespaces (HANDOFF 25 note)',
+  20260732:
+    'development model seed; reusing it as a release seed would collide '
+    + 'the model and release namespaces (HANDOFF 25 note: use 20260733)',
 });
 const V3_REFUSED_RELEASE_SEED_BANDS = Object.freeze([
   [20260900, 20260999, 'development novelty seed namespace'],

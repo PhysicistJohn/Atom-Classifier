@@ -46,13 +46,22 @@ additive for the rows it sees and the closed label is asserted unchanged.
 Predeclared v3 semantics, all bound into the sealed ``evaluation_protocol``
 object the release intent must embed (see ``expected_evaluation_protocol``):
 
-1. **Open-set gates score the staged decision axis.**  Stage-2 scores are
-   enrollment ranks in ``[0, 1)``; a stage-1-gated row is placed at
-   ``1 + softsign(stage-1 log-odds)`` in ``(1, 2)``, above every ungated row,
-   so ``score > threshold`` is exactly the staged decision (asserted row by
-   row by the staged module's own equivalence check).  The known
-   false-unknown gate therefore counts BOTH stages, and the per-length open
-   reports attribute every rejected known row to the stage that rejected it.
+1. **Open-set gates score the staged decision axis, staged policy version 2
+   (the composite survivor score).**  Stage-2 scores are enrollment ranks in
+   ``[0, 1)``; a stage-1 SURVIVOR is scored by the composite
+   ``max(stage2_enrollment_rank, stage1_score_enrollment_rank)``, where the
+   stage-1 rank is the enrollment-survivor empirical rank of the stage-1
+   log-odds (searchsorted-left, the stage-2 convention); a stage-1-gated row
+   is placed at ``1 + softsign(stage-1 log-odds)`` in ``(1, 2)``, above every
+   survivor.  The staged unknown threshold is the frozen q95 of the composite
+   over enrollment survivors, loaded verbatim from the staged artifact's
+   composite policy npz, so ``score > threshold`` is exactly the staged
+   decision (asserted row by row by the staged module's own equivalence
+   check).  This evaluator REFUSES a staged artifact whose recorded staged
+   policy version is not the one this evaluator implements.  The known
+   false-unknown gate counts BOTH stages, and the per-length open reports
+   attribute every rejected known row to the stage that rejected it.  The
+   additive control arm keeps the stage-2 policy's own untouched threshold.
 2. **Stage-1 applies on its fitted per-length domain, extended upward by the
    causal-prefix rule.**  The pose-degeneracy features are length dependent,
    so the candidate carries one fitted bundle per capture length and no
@@ -177,20 +186,24 @@ DEFAULT_FUSION_DIR = (
     V2 / "artifacts" / "invariant_patch" / "v3_scale"
     / "v3_fusion_multilength_seed20260730"
 )
-#: The passing prefix-rule validation artifact (clean seeds 20260942/20260943,
-#: sweep 4096/8192/16384/32768).  Its stage-2 npz bytes are bit-identical to
-#: the earlier ``staged_validate_seed20260730`` run's; it exists because the
-#: causal-prefix-rule change to ``fit_v3_openset_staged.py`` made that earlier
-#: artifact's recorded source hash permanently stale for the source-drift
-#: check below, and because the sealed suite's N32768 length must be validated
-#: under the exact rule this evaluator applies.
+#: The staged-policy-version-2 (composite survivor) validation artifact this
+#: evaluator expects: the single validation run on untouched seeds
+#: 20260947/20260948 writes here.  Until that run exists this default fails
+#: loudly (FileNotFoundError, or the policy-version refusal below against any
+#: older artifact) -- the version-1 artifacts
+#: ``staged_validate_prefixrule_seed20260730`` (sealed at 20260731) and
+#: ``staged_validate_budget001_seed20260730`` (v3.1, frozen fail) are
+#: consumed evidence and can no longer be candidates.
 DEFAULT_STAGED_DIR = (
     V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "staged_validate_prefixrule_seed20260730"
+    / "staged_validate_composite_budget001_seed20260730"
 )
+#: The tightened stage-1 gate: the 0.01 enrollment-budget threshold set.
+#: Coefficients are bit-identical to the 0.02 set; only the operating points
+#: differ (HANDOFF 25's sanctioned path).
 DEFAULT_PREFILTER_DIR = (
     V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "noise_prefilter_fit20261001" / "bundles"
+    / "noise_prefilter_fit20261001_budget001" / "bundles"
 )
 
 BUNDLE_KIND = "v3-time-domain-centered-invariant-fusion"
@@ -199,12 +212,26 @@ BUNDLE_SCHEMA_VERSION = 1
 BUNDLE_MANIFEST_NAME = "bundle_manifest.json"
 BUNDLE_SELF_VERIFICATION_TOLERANCE = 1e-6
 
-#: Release seeds this evaluator refuses outright.  20260729 is the consumed
-#: sealed v2 suite; the two bands are the development novelty namespace and
-#: the prefilter fit-only band, which are development evidence, not release
-#: seeds.
+#: Release seeds this evaluator refuses outright.  20260729 and 20260731 are
+#: the consumed sealed suites; 20260730/20260732 are development MODEL seeds
+#: whose reuse as release seeds would collide the two namespaces (HANDOFF 25:
+#: use 20260733 for the next release); the two bands are the development
+#: novelty namespace and the prefilter fit-only band, which are development
+#: evidence, not release seeds.
 CONSUMED_RELEASE_SEEDS = {
     20260729: "consumed sealed v2 release suite (evidence rule 2)",
+    20260731: (
+        "consumed sealed v3.0 release suite (HANDOFF 25: 22/23 gates, known "
+        "false-unknown failure frozen; evidence rules 2 and 4)"
+    ),
+    20260730: (
+        "development model/fusion seed; reusing it as a release seed would "
+        "collide the model and release namespaces (HANDOFF 25 note)"
+    ),
+    20260732: (
+        "development model seed; reusing it as a release seed would collide "
+        "the model and release namespaces (HANDOFF 25 note: use 20260733)"
+    ),
 }
 REFUSED_RELEASE_SEED_BANDS = (
     (20260900, 20260999, "development novelty seed namespace"),
@@ -231,9 +258,11 @@ SWEEP_REJECTOR_RULE = (
 )
 KNOWN_FUR_ACCOUNTING = (
     "counts both stages: a known row gated by the stage-1 noise prefilter and "
-    "a known row above the frozen stage-2 threshold are both false-unknown, "
-    "and every per-length open report attributes each rejected known row to "
-    "the stage that rejected it"
+    "a known survivor whose COMPOSITE score exceeds the frozen staged "
+    "threshold (q95 of the composite over enrollment survivors) are both "
+    "false-unknown, and every per-length open report attributes each rejected "
+    "known row to the stage that rejected it. The additive control arm uses "
+    "the stage-2 policy's own untouched threshold"
 )
 
 #: Source files whose current bytes MUST equal the hash the frozen artifacts
@@ -393,15 +422,27 @@ def expected_evaluation_protocol(
     )
     protocol["novelty"]["n_each_per_length"] = int(NOVELTY_N_EACH_PER_LENGTH)
     protocol["novelty"]["calibration"] = (
-        "none; frozen per-length stage-1 noise-prefilter bundles and the "
-        "frozen stage-2 branch-LOF ensemble, geometry blend, and enrollment "
-        "q95 threshold are loaded verbatim"
+        "none; frozen per-length stage-1 noise-prefilter bundles, the frozen "
+        "stage-2 branch-LOF ensemble and geometry blend, and the frozen "
+        "composite survivor policy (enrollment-survivor stage-1 rank "
+        "calibration and its q95 composite threshold) are loaded verbatim"
     )
     protocol["open_set"] = {
         "architecture": staged.STAGED_POLICY_KIND,
+        "staged_policy_schema": int(staged.STAGED_POLICY_SCHEMA),
+        "staged_policy_version": staged.STAGED_POLICY_VERSION,
         "additive_only": False,
         "changes_closed_label": True,
         "gates_before_classification": True,
+        "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
+        "unknown_threshold_rule": (
+            "the staged unknown threshold is the frozen "
+            f"q{float(staged.COMPOSITE_THRESHOLD_QUANTILE)} of the composite "
+            "over enrollment stage-1 survivors, fit on enrollment only and "
+            "loaded verbatim from the staged artifact; the additive control "
+            "arm keeps the stage-2 policy's own untouched enrollment "
+            "threshold"
+        ),
         "stage_one_capture_lengths": [int(length) for length in domain],
         "stage_one_max_fitted_length": max_fitted,
         "stage_one_prefix_gated_lengths": prefix_gated,
@@ -444,13 +485,17 @@ class V3Candidate:
     posedegen: Any
     prefilter_module: Any
     rejector: Any  # openset_base.Rejector
+    composite: Any  # staged.CompositeSurvivorPolicy
     classes: tuple[str, ...]
     patch_length: int
     patch_count: int
     target_frac: float
     feature_mean: np.ndarray
     feature_std: np.ndarray
+    #: The STAGED decision threshold: the composite policy's frozen q95.
     threshold: float
+    #: The stage-2 policy's own untouched threshold (the additive control).
+    stage_two_threshold: float
     source_report: dict[str, Any]
 
 
@@ -611,6 +656,34 @@ def load_candidate(
                 f"expected {expected!r}; only a passing validation run may "
                 "supply the frozen stage-2 state"
             )
+    # The staged POLICY VERSION must be the one this evaluator implements: a
+    # version-1 artifact (survivor score = stage-2 rank alone) must not be
+    # scored with composite semantics, nor the reverse.
+    architecture = staged_metrics.get("architecture", {})
+    for key, expected in (
+        ("kind", staged.STAGED_POLICY_KIND),
+        ("schema", staged.STAGED_POLICY_SCHEMA),
+        ("staged_policy_version", staged.STAGED_POLICY_VERSION),
+    ):
+        if architecture.get(key) != expected:
+            raise ValueError(
+                "staged policy version mismatch: the staged artifact records "
+                f"architecture.{key}={architecture.get(key)!r}, but this "
+                f"evaluator implements {expected!r}.  A staged artifact may "
+                "only be evaluated under the policy version that validated it"
+            )
+    # --- the frozen composite survivor policy -------------------------------
+    composite_path = staged_metrics_path.parent / staged.COMPOSITE_POLICY_FILENAME
+    if not composite_path.is_file():
+        raise ValueError(
+            f"staged artifact carries no {staged.COMPOSITE_POLICY_FILENAME}; "
+            "a composite-policy (version-2) validation artifact is required"
+        )
+    composite = staged.load_composite_policy(
+        composite_path, expected_stage_two_threshold=policy.threshold
+    )
+    staged_hashes = dict(staged_hashes)
+    staged_hashes[staged.COMPOSITE_POLICY_FILENAME] = _sha256(composite_path)
     if staged_metrics.get("artifacts") != staged_hashes:
         raise ValueError(
             "staged artifact npz bytes differ from the hashes its own report "
@@ -626,6 +699,13 @@ def load_candidate(
     if float(staged_metrics["stage_two"]["threshold"]) != float(policy.threshold):
         raise ValueError(
             "loaded stage-2 threshold differs from the staged artifact record"
+        )
+    if float(staged_metrics["composite"]["threshold"]) != float(
+        composite.threshold
+    ):
+        raise ValueError(
+            "loaded composite threshold differs from the staged artifact "
+            "record"
         )
 
     # --- the stage-1 prefilter set ------------------------------------------
@@ -771,6 +851,7 @@ def load_candidate(
         posedegen=posedegen,
         prefilter_module=prefilter_module,
         rejector=rejector,
+        composite=composite,
         classes=classes,
         patch_length=int(frontend["patch_length"]),
         patch_count=int(frontend["patch_count"]),
@@ -781,7 +862,8 @@ def load_candidate(
         feature_std=np.asarray(
             bundle["arrays"]["feature_std.npy"], dtype=np.float32
         ),
-        threshold=float(policy.threshold),
+        threshold=float(composite.threshold),
+        stage_two_threshold=float(policy.threshold),
         source_report={
             "enforced": checked,
             "recorded_only": recorded_only,
@@ -813,7 +895,10 @@ def candidate_provenance(candidate: V3Candidate) -> dict[str, Any]:
         "stage_one_capture_lengths": [
             int(length) for length in candidate.stage_one_lengths
         ],
-        "stage_two_threshold": candidate.threshold,
+        "staged_policy_version": staged.STAGED_POLICY_VERSION,
+        "staged_threshold": candidate.threshold,
+        "stage_two_threshold": candidate.stage_two_threshold,
+        "composite": candidate.composite.provenance(),
         "source_sha256": candidate.source_report,
     }
 
@@ -1304,14 +1389,18 @@ def _staged_scores(
 
     On a fitted length this is ``fit_v3_openset_staged.score_staged``
     verbatim: stage 1 gates, downstream is never computed for gated rows
-    inside this pass, and the staged/unstaged survivor agreement is asserted.
-    On a length ABOVE the longest fitted length the causal-prefix rule
-    applies: stage-1 features are computed on each capture's first
-    max-fitted-length samples (``staged.stage_one_prefix_captures``) and the
-    gate scores them with that length's bundle; everything downstream is the
-    covered path unchanged.  On a length BELOW the smallest fitted length the
-    gate cannot fire and the staged score IS the additive score, which is
-    recorded rather than hidden.
+    inside this pass, survivors are scored on the COMPOSITE axis against the
+    frozen composite threshold, and the staged/unstaged survivor agreement of
+    the stage-2 SUB-score is asserted.  On a length ABOVE the longest fitted
+    length the causal-prefix rule applies: stage-1 features are computed on
+    each capture's first max-fitted-length samples
+    (``staged.stage_one_prefix_captures``) and the gate scores them with that
+    length's bundle; everything downstream is the covered path unchanged.  On
+    a length BELOW the smallest fitted length the gate cannot fire and no
+    stage-1 score exists, so the composite degenerates to the stage-2 rank
+    alone: the staged score IS the additive score, still thresholded at the
+    single frozen staged (composite) threshold, which is recorded rather than
+    hidden.
     """
     rows = int(len(packed))
     threshold = candidate.threshold
@@ -1337,12 +1426,16 @@ def _staged_scores(
             stage_features,
             device,
             capture_length=length,
+            composite=candidate.composite,
         )
         agreement = staged.subset_agreement(outcome, unstaged_score)
         gated = np.asarray(outcome.gated, dtype=bool)
         staged_score = np.asarray(outcome.staged_score, dtype=np.float64)
         by_stage = staged.known_false_unknown_by_stage(
-            outcome, unstaged_score, threshold
+            outcome,
+            unstaged_score,
+            threshold,
+            candidate.stage_two_threshold,
         )
     else:
         gated = np.zeros(rows, dtype=bool)
@@ -1352,26 +1445,32 @@ def _staged_scores(
             "max_abs_difference": 0.0,
             "exact": True,
             "note": (
-                "stage 1 inactive below the smallest fitted length; "
-                "staged == additive"
+                "stage 1 inactive below the smallest fitted length; no "
+                "stage-1 score exists, so the composite degenerates to the "
+                "stage-2 rank and staged == additive on the score axis"
             ),
         }
         rejected = staged_score > threshold
+        unstaged_rejected = staged_score > candidate.stage_two_threshold
         by_stage = {
             "rows": rows,
+            "staged_threshold": float(threshold),
+            "unstaged_threshold": float(candidate.stage_two_threshold),
             "staged_false_unknown_rate": float(np.mean(rejected)),
             "stage_one_gate_rate": 0.0,
             "stage_two_false_unknown_rate_marginal": float(np.mean(rejected)),
             "stage_two_false_unknown_rate_among_survivors": float(
                 np.mean(rejected)
             ),
-            "unstaged_false_unknown_rate": float(np.mean(rejected)),
+            "unstaged_false_unknown_rate": float(np.mean(unstaged_rejected)),
             "rejected_by_stage_one_only": 0,
             "rejected_by_stage_two_only": int(np.count_nonzero(rejected)),
             "attribution": (
                 "this capture length is below the smallest fitted stage-1 "
                 "length, so no bundle's fitted length is a causal prefix of "
-                "it; every row flowed to the additive stage-2 path"
+                "it; every row flowed to the additive stage-2 path and the "
+                "composite degenerates to the stage-2 rank, thresholded at "
+                "the staged (composite) threshold"
             ),
         }
     prediction = np.asarray(unstaged_prediction, dtype=np.int64).copy()
@@ -1493,11 +1592,21 @@ def _open_report(
         ),
         "shorter_observation_rule": novelty_provenance["prefix_rule"],
         "score": (
-            "staged axis: frozen stage-1 noise prefilter gates, survivors "
-            "carry the frozen enrollment-ranked branch-LOF + geometry blend; "
-            "gated rows are placed above every ungated row"
+            "staged axis, policy version "
+            f"{staged.STAGED_POLICY_VERSION}: frozen stage-1 noise prefilter "
+            "gates; survivors carry the COMPOSITE "
+            f"{staged.COMPOSITE_SURVIVOR_SCORE} over the frozen "
+            "enrollment-ranked branch-LOF + geometry blend and the "
+            "enrollment-survivor stage-1 rank; gated rows are placed above "
+            "every survivor"
         ),
+        "staged_policy_version": staged.STAGED_POLICY_VERSION,
         "threshold": float(threshold),
+        "threshold_rule": (
+            "frozen q95 of the composite over enrollment stage-1 survivors, "
+            "loaded verbatim; the unstaged control below uses the stage-2 "
+            "policy's own untouched threshold"
+        ),
         "recalibration_performed": False,
         "stage_one_active": bool(known["stage_one_active"]),
         "stage_one_feature_length": known["stage_one_feature_length"],
@@ -1550,10 +1659,11 @@ def _open_report(
                 )
                 for name in NOVELTY_FAMILIES
             },
+            "threshold": float(candidate.stage_two_threshold),
             "known_false_unknown_rate": float(
                 np.mean(
                     np.asarray(known["unstaged_score"], dtype=np.float64)
-                    > threshold
+                    > candidate.stage_two_threshold
                 )
             ),
             **{
@@ -1562,14 +1672,15 @@ def _open_report(
                         np.asarray(
                             novelty[name]["unstaged_score"], dtype=np.float64
                         )
-                        > threshold
+                        > candidate.stage_two_threshold
                     )
                 )
                 for name in NOVELTY_FAMILIES
             },
             "role": (
-                "verification control: the additive path over the same rows; "
-                "never a gate input"
+                "verification control: the additive path over the same rows "
+                "against the stage-2 policy's own untouched threshold; never "
+                "a gate input"
             ),
         },
         "known_score_quantiles": {
@@ -1945,6 +2056,9 @@ def evaluate_release(
                 noise_prefilter.ARCHITECTURE_CONTRACT_CHANGE
             ),
             "staged_policy_kind": staged.STAGED_POLICY_KIND,
+            "staged_policy_schema": int(staged.STAGED_POLICY_SCHEMA),
+            "staged_policy_version": staged.STAGED_POLICY_VERSION,
+            "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
             "staged_score_note": staged.STAGED_SCORE_NOTE,
             "known_false_unknown_accounting": KNOWN_FUR_ACCOUNTING,
             "stage_one_capture_lengths": [
@@ -1984,6 +2098,8 @@ def evaluate_release(
                 "enrollment ranks)",
                 "frozen stage-2 policy (geometry blend, enrollment q95 "
                 "threshold)",
+                "frozen composite survivor policy (enrollment-survivor "
+                "stage-1 rank calibration, q95 composite threshold)",
             ],
         },
         "closed_per_length": closed_by_length,
@@ -2065,7 +2181,38 @@ def evaluate_release(
 # ---------------------------------------------------------------------------
 
 
+def expected_protocol_for_prefilter_set(
+    release_seed: int,
+    prefilter_dir: Path,
+) -> dict[str, Any]:
+    """The predeclared protocol, from the fitted stage-1 set alone.
+
+    The protocol object is a function of the release seed, the fitted stage-1
+    lengths and this module's frozen constants -- nothing else about the
+    candidate enters it.  Deriving the lengths from the prefilter set (each
+    bundle re-validated by ``staged.load_stage_one``, including coverage of
+    every sealed capture length) lets the launcher fixture be pinned BEFORE
+    the composite validation artifact exists, without weakening anything: at
+    evaluation time the full candidate is loaded and the intent protocol is
+    recomputed against it, so a fixture generated from a different prefilter
+    set than the sealed candidate's fails loudly before any gate is scored.
+    """
+    stage_one = staged.load_stage_one(
+        staged.load_prefilter_module(),
+        staged.load_posedegen_module(),
+        Path(prefilter_dir),
+        required_lengths=REQUIRED_CAPTURE_LENGTHS,
+    )
+    return expected_evaluation_protocol(release_seed, stage_one.lengths)
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    if args.print_expected_protocol is not None:
+        protocol = expected_protocol_for_prefilter_set(
+            int(args.print_expected_protocol), Path(args.prefilter_dir)
+        )
+        print(json.dumps(protocol, indent=2, sort_keys=True, allow_nan=False))
+        return {"expected_evaluation_protocol": protocol}
     device = resolve_device(args.device)
     candidate = load_candidate(
         bundle_dir=Path(args.bundle_dir),
@@ -2074,12 +2221,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         prefilter_dir=Path(args.prefilter_dir),
         device=device,
     )
-    if args.print_expected_protocol is not None:
-        protocol = expected_evaluation_protocol(
-            int(args.print_expected_protocol), candidate.stage_one_lengths
-        )
-        print(json.dumps(protocol, indent=2, sort_keys=True, allow_nan=False))
-        return {"expected_evaluation_protocol": protocol}
     if args.release_root is None:
         raise ValueError(
             "--release-root is required unless --print-expected-protocol is "
@@ -2143,7 +2284,9 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "print the exact evaluation_protocol object the release intent "
             "must embed for the given seed, then exit without touching any "
-            "release root"
+            "release root. Needs only --prefilter-dir (the stage-1 lengths); "
+            "the full candidate is not loaded, and the evaluation itself "
+            "recomputes and enforces this object against the real candidate"
         ),
     )
     return parser

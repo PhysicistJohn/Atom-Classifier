@@ -30,8 +30,10 @@ interface FixtureRow {
     predicted_class_label: string;
     squared_prototype_distances: number[];
     score: number;
-    rejected: boolean;
   } | null;
+  stage_one_survivor_rank: number | null;
+  composite_score: number | null;
+  staged_threshold: number;
   staged_score: number;
   rejected_stage: 1 | 2 | null;
   decision_label: string;

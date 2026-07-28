@@ -12,8 +12,31 @@ import unittest
 import numpy as np
 
 import export_v3_openset_browser_assets as exporter
+import fit_v3_openset_staged as staged
 import noise_prefilter
 from known_only_patch_openset import KnownOnlyLOFOpenSet
+
+
+def synthetic_composite(
+    stage_two_threshold: float = 0.9,
+    survivors: int = 24,
+    gated: int = 3,
+) -> staged.CompositeSurvivorPolicy:
+    rng = np.random.default_rng(23)
+    composite_calibration = np.sort(rng.uniform(0.0, 0.999, size=survivors))
+    return staged.CompositeSurvivorPolicy(
+        stage_one_calibration_raw=np.sort(rng.normal(size=survivors)),
+        composite_calibration_raw=composite_calibration,
+        threshold=float(
+            np.quantile(
+                composite_calibration, staged.COMPOSITE_THRESHOLD_QUANTILE
+            )
+        ),
+        stage_two_threshold=float(stage_two_threshold),
+        enrollment_rows=survivors + gated,
+        enrollment_gated_rows=gated,
+        enrollment_capture_length=16384,
+    )
 
 
 def synthetic_prefilter(threshold: float = 1.0) -> noise_prefilter.NoisePrefilter:
@@ -132,11 +155,13 @@ class ContractKeys(unittest.TestCase):
             geometry_calibration_raw = np.sort(rng.normal(size=(24,)))
             combined_calibration_raw = np.sort(rng.normal(size=(24,)))
 
+        composite = synthetic_composite(stage_two_threshold=0.9)
         payload = exporter.openset_weights_payload(
             prefilters,
             "0" * 64,
             components,
             PolicyStub(),
+            composite,
             {"patch_length": 64, "patch_count": 16, "target_frac": 0.5,
              "packed_length": 1024},
             {"development_only": True},
@@ -153,6 +178,57 @@ class ContractKeys(unittest.TestCase):
         self.assertEqual(payload["stage_two"]["policy"]["geometry_weight"], 0.2)
         self.assertEqual(
             payload["stage_two"]["policy"]["threshold_quantile"], 0.95
+        )
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(
+            payload["stage_two"]["kind"], staged.STAGED_POLICY_KIND
+        )
+
+
+class CompositePayload(unittest.TestCase):
+    def test_payload_mirrors_the_npz_spelling_and_constants(self) -> None:
+        composite = synthetic_composite()
+        payload = exporter.composite_policy_payload(composite)
+        self.assertEqual(payload["schema"], staged.STAGED_POLICY_SCHEMA)
+        self.assertEqual(payload["kind"], staged.STAGED_POLICY_KIND)
+        self.assertEqual(
+            payload["policy_version"], staged.STAGED_POLICY_VERSION
+        )
+        self.assertEqual(
+            payload["survivor_score"], staged.COMPOSITE_SURVIVOR_SCORE
+        )
+        self.assertEqual(
+            payload["threshold_quantile"],
+            float(staged.COMPOSITE_THRESHOLD_QUANTILE),
+        )
+        self.assertEqual(payload["threshold"], composite.threshold)
+        self.assertEqual(
+            payload["stage_two_threshold"], composite.stage_two_threshold
+        )
+        np.testing.assert_array_equal(
+            payload["stage_one_calibration_raw"],
+            composite.stage_one_calibration_raw,
+        )
+        np.testing.assert_array_equal(
+            payload["composite_calibration_raw"],
+            composite.composite_calibration_raw,
+        )
+        self.assertEqual(
+            payload["enrollment_rows"],
+            payload["enrollment_gated_rows"]
+            + len(payload["stage_one_calibration_raw"]),
+        )
+        # The stored threshold is exactly the frozen quantile of the stored
+        # calibration, which is what both loaders (Python and TypeScript)
+        # recompute and verify.
+        self.assertEqual(
+            payload["threshold"],
+            float(
+                np.quantile(
+                    np.asarray(payload["composite_calibration_raw"]),
+                    staged.COMPOSITE_THRESHOLD_QUANTILE,
+                )
+            ),
         )
 
 

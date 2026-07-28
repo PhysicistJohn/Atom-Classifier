@@ -1,10 +1,27 @@
-"""Preflight for the one-shot v3 sealed release run on seed 20260731.
+"""Preflight for the one-shot v3 sealed release run on seed 20260733.
 
 This script runs WITHOUT any release suite and consumes nothing: no corpus is
 read, no seed is drawn, no novelty realization is generated, and nothing is
 written under ``training/artifacts/releases``.  It exists so the orchestrator
 can prove, immediately before spending the unspent release seed, that every
 frozen input of the one-shot run is exactly what the evidence trail says it is.
+
+Seed 20260731 was spent on 2026-07-27 (HANDOFF 25: 22/23 gates passed and the
+``open_known_false_unknown_worst_length`` failure at N32768 is frozen).  This
+preflight now guards the SECOND sealed attempt, seed 20260733 (20260732 is
+already a development MODEL seed -- the namespace hazard HANDOFF 25 records --
+so it is skipped).  The candidate differences it must pin, per the composite
+design record:
+
+* the stage-1 prefilter set is the TIGHTENED 0.01 enrollment-budget refit
+  (``noise_prefilter_fit20261001_budget001``): coefficients bit-identical to
+  the 0.02 set, threshold only;
+* the staged artifact must validate the COMPOSITE survivor-score policy
+  (stage-2 rank maxed with the stage-1 score's enrollment-survivor rank,
+  unknown threshold re-fit at q95 of the composite on enrollment survivors)
+  under an explicit policy version, on the fresh validation novelty seeds
+  20260947/20260948 with design seed 20260946;
+* the launcher's pinned v3 protocol fixture must predeclare seed 20260733.
 
 What it verifies, each as an itemised PASS/FAIL check:
 
@@ -17,31 +34,39 @@ What it verifies, each as an itemised PASS/FAIL check:
 * the staged noise prefilter: fit-report schema, the per-length bundle hashes
   and the set hash, the architecture-contract keys (``additive_only`` false,
   ``changes_closed_label`` true, ``gates_before_classification`` true), the
-  fitting-seed hygiene, loadability of every per-length model, and that the
-  recorded gate floors equal the frozen development floors;
+  fitting-seed hygiene, loadability of every per-length model, that the
+  recorded gate floors equal the frozen development floors, and that every
+  per-length operating point declares the tightened 0.01 known-false-positive
+  budget;
+* the staged validation artifact: policy version, passing validate-role
+  status on the declared fresh novelty seeds, its recorded prefilter binding,
+  and its stage-2 npz hashes against disk;
 * the frozen open-set policy constants in ``v3_time_domain_openset`` and the
   import-identity discipline of ``fit_v3_openset`` / ``fit_v3_openset_staged``
   (gates imported, never re-typed);
 * evaluator sources: the v2 release evaluator still matches its recorded
   release SHA, the v3 release evaluator exists and byte-compiles, and every
   dependency source file hashes cleanly (all recorded in the report);
-* the on-disk seed ledger: no release root exists for seed 20260731 and the
-  consumed sealed v2 root is intact (its three JSON hashes match section 7 of
-  HANDOFF.md), so the schema reference has not drifted;
+* the on-disk seed ledger: no release root exists for seed 20260733 and both
+  consumed sealed roots -- v2 seed 20260729 (HANDOFF section 7) and v3 seed
+  20260731 (HANDOFF section 25) -- are intact, preserved as negative
+  evidence;
 * the isolated generation source root from HANDOFF section 6: SignalLab and
   Atom-DSP source-tree digests (same walk as the launcher: skip
   ``node_modules``, ``dist`` and ``RELEASE_SOURCE_PROVENANCE.json``, refuse
   symlinks), package-lock hashes, the built ``dist/index.js`` /
   ``dist/index.d.ts`` hashes, and the ``@atomos/dsp`` symlink resolution;
-* the launcher / corpus generator / prefix deriver hashes and the Node, npm,
-  npx and tsx pins.
+* the launcher / corpus generator / prefix deriver hashes, the Node, npm,
+  npx and tsx pins, and the launcher's pinned v3 protocol fixture for seed
+  20260733 (present, hash-pinned, predeclaring the right seed, and actually
+  referenced by the launcher source).
 
 At the end it prints every check itemised and then a single GO / NO-GO line.
 Exit status 0 means GO, 1 means NO-GO, 2 means the preflight itself was
 invoked unusably (for example an output path that already exists).
 
 It also RECONSTRUCTS, and never runs, the exact generation command the
-orchestrator should use for seed 20260731; the command is printed and stored
+orchestrator should use for seed 20260733; the command is printed and stored
 in the report so the one-shot run cannot be improvised.
 
 The Apple Accelerate spurious-IEEE-flag pattern applies here exactly as in
@@ -88,23 +113,29 @@ REPORT_SCHEMA = "v3-release-preflight-v1"
 # ---------------------------------------------------------------------------
 
 DEFAULT_PINS: dict[str, Any] = {
-    "release_seed": 20260731,
+    "release_seed": 20260733,
     "sealed_seed": 20260729,
+    # 20260732 is deliberately skipped: it is already a development MODEL
+    # seed (HANDOFF 25 records the namespace hazard explicitly).
+    "skipped_model_seed": 20260732,
     "target_per_class": 192,
     # HANDOFF 6: evaluator SHA recorded in the sealed v2 result.
     "v2_evaluator_sha256": (
         "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541"
     ),
     # HANDOFF 6: frozen generation source hashes.  The launcher pin was
-    # deliberately advanced from the sealed-v2 bytes (552ada69...) after the
-    # launcher gained RELEASE_EVALUATION_PROTOCOL selection: 'v2' (default)
-    # still embeds the byte-identical historical protocol object, and 'v3'
-    # embeds the staged protocol from the pinned fixture printed by
+    # deliberately advanced twice: first from the sealed-v2 bytes
+    # (552ada69...) when the launcher gained RELEASE_EVALUATION_PROTOCOL
+    # selection, then from the sealed-v3 bytes (461508ee..., recorded in the
+    # consumed seed-20260731 RELEASE_INTENT/MANIFEST) when its pinned v3
+    # protocol fixture was re-aimed at seed 20260733 and seed 20260731 joined
+    # the consumed-seed refusal list.  'v2' (default) still embeds the
+    # byte-identical historical protocol object, and 'v3' embeds the staged
+    # protocol from the pinned fixture printed by
     # evaluate_v3_release_suite.py --print-expected-protocol (which itself
-    # refuses any suite whose intent protocol differs).  The v2 bytes remain
-    # recorded in the consumed seed-20260729 RELEASE_INTENT/MANIFEST.
+    # refuses any suite whose intent protocol differs).
     "launcher_sha256": (
-        "461508ee5b39a3cdfe7b7fce6fd3b229e45ec013477b90edb2373850e9fe969f"
+        "2773701b81ba9c89cee36a0bfa7be1e49cd2be1e83ce47a3d69b68e0ebac37fe"
     ),
     "corpus_generator_sha256": (
         "305418a5bc7bd8f9a49799477f3a457b4c07d0c58b637766989fc9557565371b"
@@ -141,19 +172,34 @@ DEFAULT_PINS: dict[str, Any] = {
             "fc6933a4c7e7d9aeaa2ca22043f6e22b2333671c08b81b1cd35b29a7de08c980"
         ),
     },
-    # HANDOFF 7: the consumed sealed v2 root, preserved as negative evidence
-    # and used by the v3 evaluator only as a read-only schema reference.
-    "sealed_root_name": "invariant_fusion_v2_sealed_seed20260729",
-    "sealed_json_sha256": {
-        "RELEASE_INTENT.json": (
-            "62040f8edd81bdda0cd99eb6f1b89af41c7c28d33c62ed2a58d977f591b49d9c"
-        ),
-        "RELEASE_MANIFEST.json": (
-            "a710f2139aab7c52399936be2bb45ba009ff90e73cdbab36848e4391267694d3"
-        ),
-        "RELEASE_EVALUATION.json": (
-            "dfb815d604aeb234480dcbbe1712d08d6bba3a81c53fdb490c0707b8b3ce8e1b"
-        ),
+    # The consumed sealed roots, preserved as negative evidence: the v2 root
+    # (HANDOFF 7, still the evaluator's read-only schema reference) and the
+    # v3 seed-20260731 root (HANDOFF 25, the frozen 22/23 failure this
+    # candidate answers).  A drifted hash here means the frozen evidence was
+    # touched, which is a NO-GO regardless of everything else.
+    "consumed_sealed_roots": {
+        "invariant_fusion_v2_sealed_seed20260729": {
+            "RELEASE_INTENT.json": (
+                "62040f8edd81bdda0cd99eb6f1b89af41c7c28d33c62ed2a58d977f591b49d9c"
+            ),
+            "RELEASE_MANIFEST.json": (
+                "a710f2139aab7c52399936be2bb45ba009ff90e73cdbab36848e4391267694d3"
+            ),
+            "RELEASE_EVALUATION.json": (
+                "dfb815d604aeb234480dcbbe1712d08d6bba3a81c53fdb490c0707b8b3ce8e1b"
+            ),
+        },
+        "invariant_fusion_v3_sealed_seed20260731": {
+            "RELEASE_INTENT.json": (
+                "996040b4cb4963b5a00f82d27dbc62c0609e0f83a0081c78951dd457ff99e786"
+            ),
+            "RELEASE_MANIFEST.json": (
+                "c70831d82568932a75fbdc28a7af3331f28d94b6cf1858030f6eb8294b3c5da0"
+            ),
+            "RELEASE_EVALUATION.json": (
+                "f408748f9c292090ecb8f93dc7b9d13eb95eb573fe0bf678ef9fd76cbfea58e5"
+            ),
+        },
     },
     # Frozen open-set policy (v3_time_domain_openset, HANDOFF 15.2/20).
     "frozen_policy": {
@@ -164,14 +210,45 @@ DEFAULT_PINS: dict[str, Any] = {
         "geometry_weight": 0.20,
         "threshold_quantile": 0.95,
     },
+    # Version 2 of the staged policy: the composite survivor score
+    # (fit_v3_openset_staged.STAGED_POLICY_VERSION/KIND, HANDOFF 25 follow-up).
     "staged_policy_kind": (
-        "v3_staged_noise_prefilter_then_known_only_lof_geometry"
+        "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry"
     ),
-    # Staged prefilter provenance (HANDOFF 20).
+    "staged_policy_schema": 2,
+    # Staged prefilter provenance (HANDOFF 20, tightened per the sealed
+    # 20260731 failure): the 0.01 enrollment-budget refit.  Coefficients are
+    # bit-identical to the 0.02 set; only the per-length operating points
+    # moved.  The fit report predates the seed-20260731 sealed run, so the
+    # release seed it recorded as not-spent is 20260731, not this preflight's
+    # 20260733; both facts are pinned separately.
     "prefilter_version": "noise-prefilter-v1",
     "prefilter_lengths": (4096, 8192, 16384),
     "prefilter_fitting_seed": 20261001,
     "prefilter_fitting_namespace": (20261000, 20261999),
+    "prefilter_known_false_positive_budget": 0.01,
+    "prefilter_recorded_release_seed": 20260731,
+    # The staged validation artifact for the composite candidate (evidence
+    # protocol for the seed-20260733 attempt): a passing validate-role run of
+    # the composite policy on the FRESH validation novelty seeds, designed on
+    # the fresh design seed.  ``staged_policy_version`` is the sibling
+    # module's frozen constant and is REQUIRED to match both the module and
+    # the artifact; a None pin fails the check loudly rather than skipping.
+    "staged_design_novelty_seed": 20260946,
+    "staged_validation_novelty_seeds": (20260947, 20260948),
+    "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+    # The launcher's pinned v3 expected-protocol fixture for this seed.
+    # Pinned after verifying the fixture's evaluation_protocol object is
+    # byte-equal to a fresh
+    # ``evaluate_v3_release_suite.py --print-expected-protocol 20260733``
+    # (composite policy version, staged score axis, q95-on-composite text)
+    # and that the launcher reads exactly this file.
+    "v3_protocol_fixture_name": (
+        "time-domain-v3-expected-evaluation-protocol-seed20260733.json"
+    ),
+    "v3_protocol_fixture_sha256": (
+        "329ca67eb3c44ae15912f81a8c35d9f5df7fd10ba0871d9cb5009cc0bec9bcff"
+    ),
     # Bundle schema identity (export_v3_fusion_runtime).
     "bundle_schema": "atomos.v3.time-domain-invariant-fusion.runtime-bundle",
     "bundle_schema_version": 1,
@@ -188,7 +265,13 @@ DEFAULT_BUNDLE_DIR = (
     V2 / "artifacts/invariant_patch/v3_scale/v3_runtime_bundle_seed20260730"
 )
 DEFAULT_PREFILTER_ROOT = (
-    V2 / "artifacts/invariant_patch/v3_scale/noise_prefilter_fit20261001"
+    V2
+    / "artifacts/invariant_patch/v3_scale/noise_prefilter_fit20261001_budget001"
+)
+DEFAULT_STAGED_DIR = (
+    V2
+    / "artifacts/invariant_patch/v3_scale"
+    / "staged_validate_composite_budget001_seed20260730"
 )
 DEFAULT_RELEASES_DIR = TRAINING / "artifacts/releases"
 DEFAULT_ISOLATED_ROOT = Path(
@@ -580,7 +663,12 @@ def check_prefilter(prefilter_root: Path, pins: Mapping[str, Any]) -> list[Check
         fitting_seed == pins["prefilter_fitting_seed"]
         and list(seeds.get("fitting_seed_namespace", ()))
         == list(pins["prefilter_fitting_namespace"])
-        and seeds.get("release_seed_not_spent") == pins["release_seed"]
+        # The fit predates the seed-20260731 sealed run, so the report
+        # records THAT seed as the not-yet-spent release seed; what matters
+        # for this preflight is that the record matches the pinned history
+        # and that the fitting seed itself is still admissible.
+        and seeds.get("release_seed_not_spent")
+        == pins["prefilter_recorded_release_seed"]
         and seeds.get("sealed_seed_not_read") == pins["sealed_seed"]
         and npf.validate_fitting_seed(int(fitting_seed)) == int(fitting_seed)
     )
@@ -593,6 +681,29 @@ def check_prefilter(prefilter_root: Path, pins: Mapping[str, Any]) -> list[Check
             "novelty namespace and the release seed"
             if seed_ok
             else f"seeds record {seeds!r}",
+        )
+    )
+    budget = float(pins["prefilter_known_false_positive_budget"])
+    bad = []
+    per_length = report.get("per_length", {})
+    if sorted(int(key) for key in per_length) != sorted(
+        int(value) for value in pins["prefilter_lengths"]
+    ):
+        bad.append(f"per_length keys {sorted(per_length)}")
+    for key in sorted(per_length):
+        recorded = per_length[key].get("in_sample_fitting_noise", {}).get(
+            "known_false_positive_budget"
+        )
+        if recorded is None or float(recorded) != budget:
+            bad.append(f"N{key}: budget {recorded!r}")
+    checks.append(
+        (
+            "prefilter.tightened_budget",
+            not bad,
+            f"every per-length operating point declares the {budget} "
+            "enrollment known-false-positive budget"
+            if not bad
+            else "; ".join(bad),
         )
     )
     bad = []
@@ -638,6 +749,195 @@ def check_prefilter(prefilter_root: Path, pins: Mapping[str, Any]) -> list[Check
             floors_ok,
             f"{floors}" if floors_ok else f"recorded {floors!r}",
         )
+    )
+    return checks
+
+
+def check_staged_artifact(
+    staged_dir: Path,
+    prefilter_root: Path,
+    pins: Mapping[str, Any],
+) -> list[Check]:
+    """The composite staged validation artifact the sealed run will load.
+
+    Everything here is a property that, if wrong, would make the one-shot run
+    either refuse to start or -- worse -- validate a different candidate than
+    the one the dev evidence supports: the policy version, the passing
+    validate-role status on the declared FRESH novelty seeds, the binding to
+    the tightened prefilter set, the stage-2/LOF/composite npz hashes against
+    disk, and the composite policy's own loadability (which re-verifies the
+    q95 threshold from the stored calibration and refuses any other policy
+    version).
+    """
+    import fit_v3_openset_staged as staged
+    import noise_prefilter as npf
+
+    checks: list[Check] = []
+    staged_dir = Path(staged_dir)
+    report = _read_json(staged_dir / "openset_metrics.json")
+
+    expected_version = pins["staged_policy_version"]
+    if not isinstance(expected_version, str) or not expected_version:
+        return [
+            (
+                "staged.policy_version",
+                False,
+                "pins.staged_policy_version is not pinned; refusing to treat "
+                "an unpinned staged artifact as GO",
+            )
+        ]
+    recorded_version = report.get("architecture", {}).get(
+        "staged_policy_version"
+    )
+    version_ok = (
+        recorded_version == expected_version
+        and staged.STAGED_POLICY_VERSION == expected_version
+        and report.get("composite", {}).get("policy_version")
+        == expected_version
+        and report.get("architecture", {}).get("kind")
+        == pins["staged_policy_kind"]
+        and int(report.get("architecture", {}).get("schema", -1))
+        == int(pins["staged_policy_schema"])
+    )
+    checks.append(
+        (
+            "staged.policy_version",
+            version_ok,
+            f"artifact validates {expected_version} "
+            f"(kind {pins['staged_policy_kind']}, schema "
+            f"{pins['staged_policy_schema']}); module constant agrees"
+            if version_ok
+            else (
+                f"artifact records {recorded_version!r} / "
+                f"{report.get('architecture', {}).get('kind')!r}, module "
+                f"{staged.STAGED_POLICY_VERSION!r}, pin {expected_version!r}"
+            ),
+        )
+    )
+
+    status_ok = (
+        report.get("status") == "development_openset_pass"
+        and report.get("role") == "validate"
+        and report.get("gates_are_evidence") is True
+        and report.get("release_evidence") is False
+        and int(report.get("sealed_release_data_used", -1)) == 0
+        and int(report.get("consumed_test_rows_used", -1)) == 0
+    )
+    checks.append(
+        (
+            "staged.validation_status",
+            status_ok,
+            "development_openset_pass, role validate, gates are evidence, "
+            "zero sealed/consumed rows"
+            if status_ok
+            else (
+                f"status={report.get('status')!r}, role={report.get('role')!r}, "
+                f"gates_are_evidence={report.get('gates_are_evidence')!r}"
+            ),
+        )
+    )
+
+    seeds = report.get("seeds", {})
+    seeds_ok = (
+        sorted(int(seed) for seed in seeds.get("novelty_seeds", ()))
+        == sorted(int(seed) for seed in pins["staged_validation_novelty_seeds"])
+        and int(seeds.get("design_novelty_seed", -1))
+        == int(pins["staged_design_novelty_seed"])
+    )
+    checks.append(
+        (
+            "staged.evidence_seeds",
+            seeds_ok,
+            f"validated on fresh seeds "
+            f"{sorted(pins['staged_validation_novelty_seeds'])}, designed on "
+            f"{pins['staged_design_novelty_seed']}"
+            if seeds_ok
+            else f"seeds record {seeds!r}",
+        )
+    )
+
+    recorded_prefilter = report.get("stage_one", {})
+    bundles_dir = Path(prefilter_root) / "bundles"
+    prefilter_ok = False
+    prefilter_detail = ""
+    try:
+        actual_set = npf.prefilter_set_sha256(bundles_dir)
+        recorded_dir = recorded_prefilter.get("directory")
+        prefilter_ok = (
+            recorded_dir is not None
+            and Path(str(recorded_dir)).resolve() == bundles_dir.resolve()
+            and recorded_prefilter.get("set_sha256") == actual_set
+        )
+        prefilter_detail = (
+            f"staged artifact bound to {bundles_dir} (set "
+            f"{str(recorded_prefilter.get('set_sha256'))[:16]}...)"
+            if prefilter_ok
+            else (
+                f"artifact records dir={recorded_dir!r} set="
+                f"{recorded_prefilter.get('set_sha256')!r}; disk set "
+                f"{actual_set}"
+            )
+        )
+    except Exception as error:  # noqa: BLE001 - a refused set is a finding
+        prefilter_detail = f"{type(error).__name__}: {error}"
+    checks.append(
+        ("staged.prefilter_binding", prefilter_ok, prefilter_detail)
+    )
+
+    recorded_artifacts = report.get("artifacts", {})
+    expected_names = {
+        "v3_open_policy_stage_two.npz",
+        "v3_branch_lof_components.npz",
+        staged.COMPOSITE_POLICY_FILENAME,
+    }
+    bad = []
+    if set(recorded_artifacts) != expected_names:
+        bad.append(f"recorded artifacts {sorted(recorded_artifacts)}")
+    for name in sorted(recorded_artifacts):
+        path = staged_dir / name
+        if not path.is_file():
+            bad.append(f"{name} missing")
+            continue
+        actual = _sha256(path)
+        if actual != recorded_artifacts[name]:
+            bad.append(
+                f"{name}: expected {recorded_artifacts[name]}, observed "
+                f"{actual}"
+            )
+    checks.append(
+        (
+            "staged.npz_sha256",
+            not bad,
+            f"{len(expected_names)} npz artifacts match the report"
+            if not bad
+            else "; ".join(bad),
+        )
+    )
+
+    composite_ok = False
+    composite_detail = ""
+    try:
+        composite = staged.load_composite_policy(
+            staged_dir / staged.COMPOSITE_POLICY_FILENAME
+        )
+        recorded_threshold = report.get("composite", {}).get("threshold")
+        composite_ok = (
+            recorded_threshold is not None
+            and float(recorded_threshold) == float(composite.threshold)
+        )
+        composite_detail = (
+            f"composite policy loads (threshold {composite.threshold:.6f} "
+            "re-verified as the frozen quantile of the stored calibration)"
+            if composite_ok
+            else (
+                f"report threshold {recorded_threshold!r} vs npz "
+                f"{composite.threshold!r}"
+            )
+        )
+    except Exception as error:  # noqa: BLE001 - a refused policy is a finding
+        composite_detail = f"{type(error).__name__}: {error}"
+    checks.append(
+        ("staged.composite_policy_loads", composite_ok, composite_detail)
     )
     return checks
 
@@ -705,17 +1005,39 @@ def check_frozen_policy(pins: Mapping[str, Any]) -> list[Check]:
         )
     )
     ledger_ok = (
-        int(openset_base.RELEASE_SEED_NEVER_SPENT_HERE) == pins["release_seed"]
+        int(staged.RELEASE_SEED_NEVER_SPENT_HERE) == pins["release_seed"]
         and int(staged.SEALED_RELEASE_SEED) == pins["sealed_seed"]
+        # The base module's constant predates the seed-20260731 sealed run;
+        # that seed must now be recorded as CONSUMED by the staged ledger.
+        and sorted(staged.CONSUMED_SEALED_RELEASE_SEEDS)
+        == [20260729, 20260731]
+        and int(openset_base.RELEASE_SEED_NEVER_SPENT_HERE)
+        in staged.CONSUMED_SEALED_RELEASE_SEEDS
         and sorted(staged.SPENT_NOVELTY_SEEDS)
-        == [20260938, 20260939, 20260940, 20260941]
+        == [
+            20260938,
+            20260939,
+            20260940,
+            20260941,
+            20260942,
+            20260943,
+            20260944,
+            20260945,
+        ]
+        and int(staged.PROPOSED_DESIGN_NOVELTY_SEED)
+        == int(pins["staged_design_novelty_seed"])
+        and tuple(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS)
+        == tuple(pins["staged_validation_novelty_seeds"])
     )
     checks.append(
         (
             "policy.seed_ledger_constants",
             ledger_ok,
             f"release seed {pins['release_seed']} unreachable from the fit "
-            "modules; spent novelty seeds 20260938-20260941"
+            "modules; sealed 20260729/20260731 consumed; spent novelty seeds "
+            "20260938-20260945; fresh design/validation seeds "
+            f"{pins['staged_design_novelty_seed']}/"
+            f"{list(pins['staged_validation_novelty_seeds'])}"
             if ledger_ok
             else "module seed ledger no longer matches the HANDOFF ledger",
         )
@@ -842,25 +1164,29 @@ def check_seed_ledger(releases_dir: Path, pins: Mapping[str, Any]) -> list[Check
             else "; ".join(problems),
         )
     )
-    sealed_root = releases_dir / str(pins["sealed_root_name"])
-    bad = []
-    for name, expected in sorted(pins["sealed_json_sha256"].items()):
-        path = sealed_root / name
-        if not path.is_file():
-            bad.append(f"{name} missing")
-            continue
-        actual = _sha256(path)
-        if actual != expected:
-            bad.append(f"{name}: expected {expected}, observed {actual}")
-    checks.append(
-        (
-            "ledger.sealed_v2_reference_intact",
-            not bad,
-            "consumed sealed v2 root JSONs match HANDOFF section 7"
-            if not bad
-            else "; ".join(bad),
+    for root_name, expected_hashes in sorted(
+        pins["consumed_sealed_roots"].items()
+    ):
+        sealed_root = releases_dir / str(root_name)
+        bad = []
+        for name, expected in sorted(expected_hashes.items()):
+            path = sealed_root / name
+            if not path.is_file():
+                bad.append(f"{name} missing")
+                continue
+            actual = _sha256(path)
+            if actual != expected:
+                bad.append(f"{name}: expected {expected}, observed {actual}")
+        checks.append(
+            (
+                f"ledger.consumed_root_intact.{root_name}",
+                not bad,
+                "consumed sealed root JSONs match the pinned negative "
+                "evidence"
+                if not bad
+                else "; ".join(bad),
+            )
         )
-    )
     return checks
 
 
@@ -978,6 +1304,60 @@ def check_generation_sources(pins: Mapping[str, Any]) -> list[Check]:
             else "launcher no longer pins the recorded runtime",
         )
     )
+
+    # The launcher's pinned v3 expected-protocol fixture for this seed: it
+    # must exist, hash to the pin, predeclare exactly this release seed, and
+    # be the file the launcher actually reads.  The sealed evaluator's own
+    # intent-equality check remains the final backstop; this catches a stale
+    # or missing fixture BEFORE the one-shot run is attempted.
+    fixture_name = str(pins["v3_protocol_fixture_name"])
+    fixture_path = REPO / "tools" / fixture_name
+    expected_fixture_sha = pins["v3_protocol_fixture_sha256"]
+    if not fixture_path.is_file():
+        checks.append(
+            (
+                "generation.v3_protocol_fixture",
+                False,
+                f"{fixture_path} is missing; regenerate it with "
+                "evaluate_v3_release_suite.py --print-expected-protocol "
+                f"{pins['release_seed']}",
+            )
+        )
+    elif not isinstance(expected_fixture_sha, str):
+        checks.append(
+            (
+                "generation.v3_protocol_fixture",
+                False,
+                "pins.v3_protocol_fixture_sha256 is not pinned; refusing to "
+                "treat an unpinned fixture as GO",
+            )
+        )
+    else:
+        wrapper = _read_json(fixture_path)
+        protocol = wrapper.get("evaluation_protocol", {})
+        fixture_sha = _sha256(fixture_path)
+        fixture_ok = (
+            fixture_sha == expected_fixture_sha
+            and int(wrapper.get("release_seed", -1)) == int(pins["release_seed"])
+            and int(protocol.get("novelty", {}).get("seed", -1))
+            == int(pins["release_seed"])
+            and fixture_name in text
+        )
+        checks.append(
+            (
+                "generation.v3_protocol_fixture",
+                fixture_ok,
+                f"{fixture_name} predeclares seed {pins['release_seed']} and "
+                f"hashes to the pin; launcher references it"
+                if fixture_ok
+                else (
+                    f"sha {fixture_sha} vs pin {expected_fixture_sha}; "
+                    f"wrapper seed {wrapper.get('release_seed')!r}, novelty "
+                    f"seed {protocol.get('novelty', {}).get('seed')!r}, "
+                    f"referenced={fixture_name in text}"
+                ),
+            )
+        )
     return checks
 
 
@@ -1058,9 +1438,10 @@ def build_generation_command(
     isolated_root: Path,
     node_bin_dir: Path,
 ) -> dict[str, Any]:
-    """The exact one-shot launcher invocation for seed 20260731.
+    """The exact one-shot launcher invocation for seed 20260733.
 
-    Reconstructed from the v2 ``RELEASE_INTENT.json`` and the launcher CLI.
+    Reconstructed from the consumed seed-20260731 ``RELEASE_INTENT.json`` and
+    the launcher CLI: identical mechanics, re-aimed at the new untouched seed.
     The candidate file is the runtime bundle's manifest: it embeds the SHA-256
     of every other bundle asset, so pinning it pins the entire candidate.
     This function only formats strings; nothing is executed.
@@ -1080,6 +1461,7 @@ def build_generation_command(
         "PATH": path_env,
         "RELEASE_ROOT": str(release_root),
         "RELEASE_SEED": str(pins["release_seed"]),
+        "RELEASE_EVALUATION_PROTOCOL": "v3",
         "RELEASE_TARGET_PER_CLASS": str(pins["target_per_class"]),
         "CANDIDATE_PATH": str(manifest_path),
         "CANDIDATE_SHA256": candidate_sha,
@@ -1102,9 +1484,11 @@ def build_generation_command(
             "launcher refuses any other value.",
             "RELEASE_TARGET_PER_CLASS=192 keeps the metadata-only no-alias "
             "scale subset safely above 20 rows per class.",
-            "The launcher freezes evaluation_protocol.novelty.seed at "
-            "20260729; the v3 evaluator must declare how it derives novelty "
-            "seeds before this intent is written.",
+            "RELEASE_EVALUATION_PROTOCOL=v3 embeds the staged protocol from "
+            f"the pinned fixture {pins['v3_protocol_fixture_name']}, which "
+            "must predeclare exactly this release seed; the sealed evaluator "
+            "refuses any suite whose intent protocol differs from its own "
+            "expected object.",
         ],
     }
 
@@ -1135,6 +1519,7 @@ def run_preflight(
     fusion_dir = Path(args.fusion_dir)
     bundle_dir = Path(args.bundle_dir)
     prefilter_root = Path(args.prefilter_root)
+    staged_dir = Path(args.staged_dir)
     releases_dir = Path(args.releases_dir)
     isolated_root = Path(args.isolated_root)
     evaluator_path = Path(args.evaluator)
@@ -1149,6 +1534,10 @@ def run_preflight(
         lambda: check_bundle_self_verification(bundle_dir),
     )
     run_group("prefilter", lambda: check_prefilter(prefilter_root, pins))
+    run_group(
+        "staged",
+        lambda: check_staged_artifact(staged_dir, prefilter_root, pins),
+    )
     run_group("policy", lambda: check_frozen_policy(pins))
     run_group(
         "sources",
@@ -1191,6 +1580,7 @@ def run_preflight(
             "fusion_dir": str(fusion_dir),
             "bundle_dir": str(bundle_dir),
             "prefilter_root": str(prefilter_root),
+            "staged_dir": str(staged_dir),
             "releases_dir": str(releases_dir),
             "isolated_root": str(isolated_root),
             "evaluator": str(evaluator_path),
@@ -1241,6 +1631,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fusion-dir", default=str(DEFAULT_FUSION_DIR))
     parser.add_argument("--bundle-dir", default=str(DEFAULT_BUNDLE_DIR))
     parser.add_argument("--prefilter-root", default=str(DEFAULT_PREFILTER_ROOT))
+    parser.add_argument("--staged-dir", default=str(DEFAULT_STAGED_DIR))
     parser.add_argument("--releases-dir", default=str(DEFAULT_RELEASES_DIR))
     parser.add_argument("--isolated-root", default=str(DEFAULT_ISOLATED_ROOT))
     parser.add_argument("--evaluator", default=str(DEFAULT_EVALUATOR))

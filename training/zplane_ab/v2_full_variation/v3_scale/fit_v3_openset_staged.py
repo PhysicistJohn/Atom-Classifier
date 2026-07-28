@@ -107,9 +107,35 @@ the sealed evaluator gates it.  Every other uncovered sweep length is still
 refused.
 
 One consequence is worth stating plainly: **no novelty seed took part in
-choosing the stage-1 operating point.**  This module does not even extract
-stage-1 features for the training or enrollment populations, which is the
-strongest available evidence that it cannot have fitted anything on them.
+choosing the stage-1 operating point.**  This module does not extract stage-1
+features for the training population at all, which is the strongest available
+evidence that it cannot have fitted anything on it.  Enrollment stage-1
+features ARE extracted, for exactly one purpose introduced by staged policy
+version 2 below: the composite survivor rank and its q95 threshold are, like
+every other rank and threshold in this chain, calibrated on enrollment only.
+
+STAGED POLICY VERSION 2: THE COMPOSITE SURVIVOR SCORE (HANDOFF 25 follow-up)
+============================================================================
+The sealed seed-20260731 run (policy version 1) froze one failure: known
+false-unknown 0.10237 vs the 0.10 ceiling at N32768, with the stage-1 gate
+realising ~2.4x its dev budget.  The v3.1 candidate (same policy, stage-1
+budget tightened 0.02 -> 0.01) fixed known FUR on dev (0.0566) and broke the
+noise AUROC floor (worst cell 0.7957 vs 0.80, seeds 20260944/20260945,
+frozen): tightening the gate pushes noise into stage 2, whose own noise axis
+is weak (~0.60 standalone).  Stage-1's continuous log-odds separates that
+noise at 0.978 AUROC in-sample and was previously DISCARDED below the gate.
+
+Policy version 2 keeps the tightened 0.01 gate and uses that discarded score
+without moving the gate: for stage-1 survivors the open-set score becomes the
+COMPOSITE ``max(stage2_enrollment_rank, stage1_score_enrollment_rank)``,
+where the stage-1 rank is the empirical enrollment rank of the stage-1
+log-odds, fit on ENROLLMENT SURVIVORS only with the same searchsorted-left
+convention stage 2 uses.  Gated rows keep the version-1 axis,
+``1 + softsign(stage-1 log-odds)`` in (1, 2), above every survivor.  The
+staged unknown threshold is re-fit at the SAME frozen quantile (q95) of the
+composite over enrollment survivors -- enrollment only, as ever.  The
+prefilter coefficients and thresholds, the LOF ensemble, the blend weights
+and every stage-2 internal are untouched.
 
 The imports are lazy and loud: an absent or non-conforming module stops the run
 before any data is touched rather than silently degrading to the unstaged
@@ -150,6 +176,7 @@ from openset_eval import NOVELTY  # noqa: E402
 from v3_time_domain_openset import (  # noqa: E402
     FROZEN_GEOMETRY_FEATURE,
     FROZEN_POLICY_KIND,
+    empirical_rank,
 )
 
 
@@ -210,27 +237,56 @@ SPENT_NOVELTY_SEEDS: dict[int, str] = {
         "scoring (HANDOFF 19.1)"
     ),
     20260941: "pose-degeneracy blend-weight design (HANDOFF 19.2)",
+    20260942: (
+        "validated the staged v3.0 policy (HANDOFF 20.2) and its "
+        "causal-prefix-rule revalidation; that policy was then sealed at "
+        "release seed 20260731"
+    ),
+    20260943: (
+        "validated the staged v3.0 policy (HANDOFF 20.2) and its "
+        "causal-prefix-rule revalidation; that policy was then sealed at "
+        "release seed 20260731"
+    ),
+    20260944: (
+        "validated the v3.1 tightened-budget candidate (stage-1 budget 0.01): "
+        "frozen FAIL, worst noise AUROC cell 0.7957 vs the 0.80 floor"
+    ),
+    20260945: (
+        "validated the v3.1 tightened-budget candidate (stage-1 budget 0.01): "
+        "frozen FAIL, worst noise AUROC cell 0.7957 vs the 0.80 floor"
+    ),
 }
 
-# 20260729 is the consumed sealed v2 release suite.  20260731 is the unspent
-# release seed and cannot be reached from this module at all.
+# Consumed sealed release suites (evidence rule 2): never re-run, never fit,
+# calibrated, selected or debugged against.  20260733 is the next untouched
+# release seed and cannot be reached from this module at all; 20260731 -- the
+# base module's constant, which predates the seed-20260731 sealed run -- stays
+# refused through the base validator as well.
+CONSUMED_SEALED_RELEASE_SEEDS: dict[int, str] = {
+    20260729: "consumed sealed v2 release suite",
+    20260731: (
+        "consumed sealed v3.0 release suite (HANDOFF 25: 22/23 gates, known "
+        "false-unknown failure frozen)"
+    ),
+}
 SEALED_RELEASE_SEED = 20260729
-RELEASE_SEED_NEVER_SPENT_HERE = base.RELEASE_SEED_NEVER_SPENT_HERE
+RELEASE_SEED_NEVER_SPENT_HERE = 20260733
 
-# 20260942 onward are clean and are the validation evidence for this work.
-FIRST_CLEAN_NOVELTY_SEED = 20260942
-PROPOSED_DESIGN_NOVELTY_SEED = 20260942
-DEFAULT_VALIDATION_NOVELTY_SEEDS = (20260943, 20260944)
+# 20260946 onward are clean.  The composite (policy version 2) design draws
+# 20260946; 20260947/20260948 stay untouched for its single validation run.
+FIRST_CLEAN_NOVELTY_SEED = 20260946
+PROPOSED_DESIGN_NOVELTY_SEED = 20260946
+DEFAULT_VALIDATION_NOVELTY_SEEDS = (20260947, 20260948)
 
 ROLES = ("design", "validate")
 
 SEED_LEDGER_NOTE = (
     "Novelty seeds are consumable evidence. "
     f"{sorted(SPENT_NOVELTY_SEEDS)} are spent and are refused in both roles; "
-    f"{SEALED_RELEASE_SEED} is the consumed sealed suite and "
-    f"{RELEASE_SEED_NEVER_SPENT_HERE} is the unspent release seed, and neither "
-    f"is a development novelty seed. {FIRST_CLEAN_NOVELTY_SEED} onward are "
-    "clean: --role design draws its declared design seed (proposed "
+    f"{sorted(CONSUMED_SEALED_RELEASE_SEEDS)} are consumed sealed suites and "
+    f"{RELEASE_SEED_NEVER_SPENT_HERE} is the next untouched release seed, and "
+    f"none of them is a development novelty seed. {FIRST_CLEAN_NOVELTY_SEED} "
+    "onward are clean: --role design draws its declared design seed (proposed "
     f"{PROPOSED_DESIGN_NOVELTY_SEED}) and --role validate draws untouched seeds "
     f"(default {list(DEFAULT_VALIDATION_NOVELTY_SEEDS)}) that the design seed "
     "may not overlap. Making any staged-system choice against the validation "
@@ -331,8 +387,72 @@ STAGE_ONE_SCORE_OFFSET = 1.0
 # on that assertion and the report records whether it was exactly 0.
 SUBSET_SCORING_TOLERANCE = 1e-6
 
-STAGED_POLICY_SCHEMA = 1
-STAGED_POLICY_KIND = "v3_staged_noise_prefilter_then_known_only_lof_geometry"
+# ---------------------------------------------------------------------------
+# STAGED POLICY -- FROZEN CONSTANTS.  Version 2: the composite survivor score.
+#
+# Every artifact this module emits states the policy version it validates, and
+# the sealed evaluator refuses a staged artifact whose recorded version is not
+# the one below.  History, so a reader of version N can find what changed:
+#
+#   1  "v3_staged_noise_prefilter_then_known_only_lof_geometry": survivors
+#      scored by the stage-2 enrollment rank alone; staged threshold = the
+#      stage-2 policy's own enrollment q95.  Sealed at release seed 20260731;
+#      failure frozen (known FUR 0.10237 vs 0.10 at N32768).  The v3.1
+#      variant (same policy, stage-1 budget 0.02 -> 0.01) froze a dev FAIL:
+#      noise AUROC worst cell 0.7957 vs 0.80 (seeds 20260944/20260945).
+#   2  (this file) survivors scored by the COMPOSITE
+#      max(stage2_enrollment_rank, stage1_score_enrollment_rank); the staged
+#      unknown threshold is re-fit at the SAME frozen quantile on the
+#      composite over enrollment stage-1 survivors.  The stage-1 gate (0.01
+#      enrollment budget set), prefilter coefficients, LOF ensemble, blend
+#      weights and every stage-2 internal are untouched.
+# ---------------------------------------------------------------------------
+STAGED_POLICY_SCHEMA = 2
+STAGED_POLICY_VERSION = "v3-staged-openset-policy-v2-composite-survivor"
+STAGED_POLICY_KIND = (
+    "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry"
+)
+STAGED_POLICY_VERSION_HISTORY = {
+    "1": (
+        "v3_staged_noise_prefilter_then_known_only_lof_geometry: survivor "
+        "score = stage-2 enrollment rank; threshold = stage-2 enrollment q95. "
+        "Sealed seed 20260731, known-FUR failure frozen; 0.01-budget variant "
+        "(v3.1) froze a noise-AUROC dev failure on seeds 20260944/20260945"
+    ),
+    "2": (
+        "composite survivor score max(stage2_enrollment_rank, "
+        "stage1_score_enrollment_rank); staged threshold = q95 of the "
+        "composite on enrollment stage-1 survivors; gate, prefilter "
+        "coefficients, LOF ensemble, blend weights and stage-2 internals "
+        "untouched"
+    ),
+}
+
+#: The survivor score, stated once.  ``stage1_score_enrollment_rank`` is the
+#: empirical enrollment rank (searchsorted-left over a sorted calibration, the
+#: same :func:`v3_time_domain_openset.empirical_rank` convention stage 2 uses)
+#: of the stage-1 logistic log-odds, with the calibration fit on ENROLLMENT
+#: STAGE-1 SURVIVORS only.
+COMPOSITE_SURVIVOR_SCORE = (
+    "max(stage2_enrollment_rank, stage1_score_enrollment_rank)"
+)
+
+#: Why version 2 exists, recorded machine-readably in every emitted report.
+COMPOSITE_RATIONALE = (
+    "stage-1's continuous log-odds separates noise from known captures at "
+    "0.978 AUROC in-sample but was discarded below the gate; the composite "
+    "uses that score without moving the gate. The frozen v3.1 evidence "
+    "(seeds 20260944/20260945) showed that tightening the gate alone pushes "
+    "noise into stage 2, whose own noise axis is weak (~0.60 AUROC "
+    "standalone), costing the noise AUROC floor (worst cell 0.7957 vs 0.80)"
+)
+
+#: The composite threshold quantile is the SAME frozen quantile stage 2 uses,
+#: imported and aliased, never re-typed: q95, on enrollment survivors.
+COMPOSITE_THRESHOLD_QUANTILE = THRESHOLD_QUANTILE
+
+#: The serialized composite policy, alongside the two stage-2 npz files.
+COMPOSITE_POLICY_FILENAME = "v3_staged_composite_policy.npz"
 
 
 def _bounded_rank(scores: np.ndarray) -> np.ndarray:
@@ -647,10 +767,11 @@ def _refuse_ledger_seed(seed: int, role_description: str) -> None:
             f"may not be used as {role_description}.  {FIRST_CLEAN_NOVELTY_SEED} "
             "onward are clean."
         )
-    if seed == SEALED_RELEASE_SEED:
+    if seed in CONSUMED_SEALED_RELEASE_SEEDS:
         raise ValueError(
-            f"{seed} is the consumed sealed release suite and may not be used "
-            "for anything"
+            f"{seed} is a consumed sealed release suite "
+            f"({CONSUMED_SEALED_RELEASE_SEEDS[seed]}) and may not be used for "
+            "anything"
         )
     if seed == RELEASE_SEED_NEVER_SPENT_HERE:
         raise ValueError(
@@ -1049,6 +1170,322 @@ def load_stage_one(
 
 
 # ---------------------------------------------------------------------------
+# the composite survivor policy (staged policy version 2)
+# ---------------------------------------------------------------------------
+
+
+def _rank_vector(value: np.ndarray, name: str) -> np.ndarray:
+    """A finite vector of empirical ranks in ``[0, 1)``."""
+    result = np.asarray(value, dtype=np.float64)
+    if result.ndim != 1 or not np.isfinite(result).all():
+        raise ValueError(f"{name} must be a finite vector")
+    if np.any(result < 0.0) or np.any(result >= 1.0):
+        raise ValueError(f"{name} must lie in [0, 1)")
+    return result
+
+
+@dataclass(frozen=True)
+class CompositeSurvivorPolicy:
+    """The frozen composite survivor score and its enrollment-only threshold.
+
+    ``stage_one_calibration_raw`` is the sorted stage-1 log-odds of the
+    ENROLLMENT rows that survive the stage-1 gate; a survivor's stage-1 rank is
+    its :func:`v3_time_domain_openset.empirical_rank` against that calibration
+    (searchsorted-left over the sorted vector, the same convention as every
+    stage-2 rank).  ``composite_calibration_raw`` is the sorted composite of
+    those same enrollment survivors, kept so a loader can recompute and verify
+    ``threshold`` instead of trusting it.  ``stage_two_threshold`` is the
+    stage-2 policy's own untouched enrollment q95, recorded for cross-checks;
+    the staged decision threshold is ``threshold``.
+    """
+
+    stage_one_calibration_raw: np.ndarray
+    composite_calibration_raw: np.ndarray
+    threshold: float
+    stage_two_threshold: float
+    enrollment_rows: int
+    enrollment_gated_rows: int
+    enrollment_capture_length: int
+
+    @property
+    def enrollment_survivor_rows(self) -> int:
+        return int(len(self.stage_one_calibration_raw))
+
+    def stage_one_survivor_rank(self, stage_one_raw: np.ndarray) -> np.ndarray:
+        """Enrollment-survivor empirical rank of stage-1 log-odds, in [0, 1)."""
+        return empirical_rank(
+            np.asarray(stage_one_raw, dtype=np.float64),
+            self.stage_one_calibration_raw,
+        )
+
+    def composite(
+        self,
+        stage_two_score: np.ndarray,
+        stage_one_raw: np.ndarray,
+    ) -> np.ndarray:
+        """:data:`COMPOSITE_SURVIVOR_SCORE` for survivor rows."""
+        two = _rank_vector(stage_two_score, "stage-2 survivor scores")
+        raw = np.asarray(stage_one_raw, dtype=np.float64)
+        if raw.shape != two.shape:
+            raise ValueError(
+                "stage-2 scores and stage-1 raw scores are not aligned"
+            )
+        return np.maximum(two, self.stage_one_survivor_rank(raw))
+
+    def provenance(self) -> dict[str, Any]:
+        return {
+            "policy_version": STAGED_POLICY_VERSION,
+            "schema": int(STAGED_POLICY_SCHEMA),
+            "kind": STAGED_POLICY_KIND,
+            "survivor_score": COMPOSITE_SURVIVOR_SCORE,
+            "stage_one_rank_convention": (
+                "empirical enrollment rank: searchsorted-left over the sorted "
+                "enrollment-SURVIVOR stage-1 log-odds, divided by "
+                "(survivors + 1); identical to the stage-2 "
+                "v3_time_domain_openset.empirical_rank convention"
+            ),
+            "threshold": float(self.threshold),
+            "threshold_quantile": float(COMPOSITE_THRESHOLD_QUANTILE),
+            "threshold_population": (
+                "enrollment stage-1 survivors only (enrollment only, as every "
+                "rank and threshold in this chain)"
+            ),
+            "stage_two_threshold_unchanged": float(self.stage_two_threshold),
+            "enrollment_rows": int(self.enrollment_rows),
+            "enrollment_gated_rows": int(self.enrollment_gated_rows),
+            "enrollment_survivor_rows": self.enrollment_survivor_rows,
+            "enrollment_stage_one_gate_rate": (
+                float(self.enrollment_gated_rows / self.enrollment_rows)
+                if self.enrollment_rows
+                else 0.0
+            ),
+            "enrollment_capture_length": int(self.enrollment_capture_length),
+            "rationale": COMPOSITE_RATIONALE,
+        }
+
+
+def fit_composite_policy(
+    stage_one: StageOneGate,
+    enrollment_features: np.ndarray,
+    enrollment_capture_length: int,
+    enrollment_stage_two_scores: np.ndarray,
+    *,
+    stage_two_threshold: float,
+) -> CompositeSurvivorPolicy:
+    """Fit the composite rank and threshold on ENROLLMENT survivors only.
+
+    The signature is the guarantee, exactly as for the stage-2 fit: only the
+    enrollment stage-1 feature matrix and the enrollment stage-2 scores are
+    parameters, so no selection row, no novelty row and no release row can
+    influence the calibration or the threshold.  Nothing here is searched: the
+    quantile is the imported frozen constant.
+    """
+    length = int(enrollment_capture_length)
+    if length not in stage_one.models:
+        raise ValueError(
+            f"the enrollment population's native length N{length} has no "
+            f"fitted prefilter bundle in {stage_one.directory}; available "
+            f"{list(stage_one.lengths)}.  Enrollment features are computed at "
+            "native length, so the causal-prefix rule may not stand in for "
+            "this length"
+        )
+    two = _rank_vector(
+        enrollment_stage_two_scores, "enrollment stage-2 scores"
+    )
+    matrix = np.asarray(enrollment_features, dtype=np.float64)
+    if matrix.ndim != 2 or len(matrix) != len(two):
+        raise ValueError(
+            "enrollment stage-1 features and stage-2 scores are not aligned"
+        )
+    raw = stage_one.raw(matrix, length)
+    gated = stage_one.fires(matrix, length)
+    survivors = ~gated
+    if not survivors.any():
+        raise ValueError(
+            "the stage-1 gate fired on every enrollment row; a composite "
+            "calibration needs at least one enrollment survivor"
+        )
+    calibration = np.sort(raw[survivors])
+    survivor_rank = empirical_rank(raw[survivors], calibration)
+    composite = np.maximum(two[survivors], survivor_rank)
+    threshold = float(
+        np.quantile(composite, COMPOSITE_THRESHOLD_QUANTILE)
+    )
+    return CompositeSurvivorPolicy(
+        stage_one_calibration_raw=calibration,
+        composite_calibration_raw=np.sort(composite),
+        threshold=threshold,
+        stage_two_threshold=float(stage_two_threshold),
+        enrollment_rows=int(len(matrix)),
+        enrollment_gated_rows=int(np.count_nonzero(gated)),
+        enrollment_capture_length=length,
+    )
+
+
+def save_composite_policy(path: Path, policy: CompositeSurvivorPolicy) -> None:
+    """Serialize the composite policy without pickle."""
+    np.savez_compressed(
+        Path(path),
+        schema=np.asarray(STAGED_POLICY_SCHEMA, dtype=np.int64),
+        kind=np.asarray(STAGED_POLICY_KIND),
+        policy_version=np.asarray(STAGED_POLICY_VERSION),
+        survivor_score=np.asarray(COMPOSITE_SURVIVOR_SCORE),
+        threshold_quantile=np.asarray(
+            COMPOSITE_THRESHOLD_QUANTILE, dtype=np.float64
+        ),
+        threshold=np.asarray(policy.threshold, dtype=np.float64),
+        stage_two_threshold=np.asarray(
+            policy.stage_two_threshold, dtype=np.float64
+        ),
+        stage_one_calibration_raw=np.asarray(
+            policy.stage_one_calibration_raw, dtype=np.float64
+        ),
+        composite_calibration_raw=np.asarray(
+            policy.composite_calibration_raw, dtype=np.float64
+        ),
+        enrollment_rows=np.asarray(policy.enrollment_rows, dtype=np.int64),
+        enrollment_gated_rows=np.asarray(
+            policy.enrollment_gated_rows, dtype=np.int64
+        ),
+        enrollment_capture_length=np.asarray(
+            policy.enrollment_capture_length, dtype=np.int64
+        ),
+    )
+
+
+def load_composite_policy(
+    path: Path,
+    *,
+    expected_stage_two_threshold: float | None = None,
+) -> CompositeSurvivorPolicy:
+    """Load and verify a serialized composite policy.
+
+    Refuses any policy version other than the current frozen one -- a caller
+    holding a version-1 artifact must not be able to score with version-2
+    semantics or vice versa -- and recomputes the threshold from the stored
+    survivor composite calibration instead of trusting the stored scalar.
+    """
+    file_path = Path(path)
+    with np.load(file_path) as payload:
+        missing = [
+            name
+            for name in (
+                "schema",
+                "kind",
+                "policy_version",
+                "survivor_score",
+                "threshold_quantile",
+                "threshold",
+                "stage_two_threshold",
+                "stage_one_calibration_raw",
+                "composite_calibration_raw",
+                "enrollment_rows",
+                "enrollment_gated_rows",
+                "enrollment_capture_length",
+            )
+            if name not in payload.files
+        ]
+        if missing:
+            raise ValueError(f"{file_path} is missing {missing}")
+        for name, expected in (
+            ("schema", STAGED_POLICY_SCHEMA),
+            ("kind", STAGED_POLICY_KIND),
+            ("policy_version", STAGED_POLICY_VERSION),
+            ("survivor_score", COMPOSITE_SURVIVOR_SCORE),
+        ):
+            found = payload[name].item()
+            found = int(found) if name == "schema" else str(found)
+            if found != expected:
+                raise ValueError(
+                    f"staged policy version mismatch: {file_path} records "
+                    f"{name}={found!r}, but this module implements "
+                    f"{expected!r}.  A staged artifact may only be scored "
+                    "with the policy version that produced it"
+                )
+        quantile = float(payload["threshold_quantile"])
+        if quantile != float(COMPOSITE_THRESHOLD_QUANTILE):
+            raise ValueError(
+                f"{file_path} records threshold_quantile={quantile}, expected "
+                f"the frozen {float(COMPOSITE_THRESHOLD_QUANTILE)}"
+            )
+        calibration = np.asarray(
+            payload["stage_one_calibration_raw"], dtype=np.float64
+        )
+        composite_calibration = np.asarray(
+            payload["composite_calibration_raw"], dtype=np.float64
+        )
+        policy = CompositeSurvivorPolicy(
+            stage_one_calibration_raw=calibration,
+            composite_calibration_raw=composite_calibration,
+            threshold=float(payload["threshold"]),
+            stage_two_threshold=float(payload["stage_two_threshold"]),
+            enrollment_rows=int(payload["enrollment_rows"]),
+            enrollment_gated_rows=int(payload["enrollment_gated_rows"]),
+            enrollment_capture_length=int(
+                payload["enrollment_capture_length"]
+            ),
+        )
+    for name, vector in (
+        ("stage_one_calibration_raw", policy.stage_one_calibration_raw),
+        ("composite_calibration_raw", policy.composite_calibration_raw),
+    ):
+        if (
+            vector.ndim != 1
+            or not len(vector)
+            or not np.isfinite(vector).all()
+            or np.any(np.diff(vector) < 0.0)
+        ):
+            raise ValueError(
+                f"{file_path}: {name} must be a non-empty, finite, sorted "
+                "vector"
+            )
+    _rank_vector(
+        policy.composite_calibration_raw, "composite_calibration_raw"
+    )
+    if len(policy.stage_one_calibration_raw) != len(
+        policy.composite_calibration_raw
+    ):
+        raise ValueError(
+            f"{file_path}: the two survivor calibrations disagree on the "
+            "survivor count"
+        )
+    if policy.enrollment_rows != policy.enrollment_gated_rows + len(
+        policy.stage_one_calibration_raw
+    ):
+        raise ValueError(
+            f"{file_path}: enrollment_rows != gated + survivors"
+        )
+    expected_threshold = float(
+        np.quantile(
+            policy.composite_calibration_raw, COMPOSITE_THRESHOLD_QUANTILE
+        )
+    )
+    if (
+        not np.isfinite(policy.threshold)
+        or policy.threshold != expected_threshold
+    ):
+        raise ValueError(
+            f"{file_path}: stored threshold {policy.threshold!r} does not "
+            "equal the frozen quantile of the stored survivor composite "
+            f"calibration ({expected_threshold!r})"
+        )
+    if not 0.0 <= policy.threshold < 1.0:
+        raise ValueError(
+            f"{file_path}: composite threshold must lie in [0, 1)"
+        )
+    if expected_stage_two_threshold is not None and float(
+        expected_stage_two_threshold
+    ) != policy.stage_two_threshold:
+        raise ValueError(
+            f"{file_path} records stage_two_threshold="
+            f"{policy.stage_two_threshold!r}, but the loaded stage-2 policy "
+            f"has threshold {float(expected_stage_two_threshold)!r}; the "
+            "composite was fit against a different stage-2 state"
+        )
+    return policy
+
+
+# ---------------------------------------------------------------------------
 # rebuilding the populations, with aligned stage-1 features
 # ---------------------------------------------------------------------------
 
@@ -1063,12 +1500,12 @@ PREPARE_DATA_POPULATIONS = (
 
 
 class _PrefilterRecorder:
-    """Extract stage-1 features from the SELECTION captures as they pass through.
+    """Extract stage-1 features from captures as they pass through.
 
     ``_prepare_data`` builds the raw captures (including the multi-length
     training views, whose per-row prefix length is not recoverable from the
     returned arrays), preprocesses them, and drops them.  Stage 1 needs the raw
-    selection rows.
+    enrollment and selection rows.
 
     Rather than reimplement the capture construction -- which would duplicate the
     training-view expansion and could silently drift out of alignment -- this
@@ -1077,27 +1514,30 @@ class _PrefilterRecorder:
     the preprocessing is altered: the wrapped call is delegated unchanged and its
     result returned unchanged.
 
-    **Only the selection population is extracted.**  Stage 1 arrives already
-    fitted, so this module has no use for training or enrollment features -- and
-    not computing them is the strongest available statement that it cannot have
-    fitted anything on them.  The other two populations are counted, so the
-    interception can still be verified.
+    **Only the enrollment and selection populations are extracted.**  Stage 1
+    arrives already fitted, so this module has no use for training features --
+    and not computing them is the strongest available statement that it cannot
+    have fitted anything on them.  Enrollment features exist for exactly one
+    purpose: the composite survivor rank and its q95 threshold are calibrated
+    on enrollment, which is where every rank and threshold in this chain is
+    calibrated.  The training population is counted, so the interception can
+    still be verified.
 
     :func:`_recorded_prefilter` refuses to continue unless all three populations
-    passed through in order and the recorded matrix has one row per selection
-    packed row.
+    passed through in order and each recorded matrix has one row per packed row
+    of its population.
     """
 
-    #: The one population whose stage-1 features this module needs.
-    RECORDED_SPLIT = METRIC_SPLIT
+    #: The populations whose stage-1 features this module needs.
+    RECORDED_SPLITS = (PROTOTYPE_SPLIT, METRIC_SPLIT)
 
     def __init__(self, inner: Any, posedegen: PoseDegeneracySource) -> None:
         self._inner = inner
         self._posedegen = posedegen
         self.row_counts: list[int] = []
-        self.matrix: np.ndarray | None = None
-        self.seconds: float = 0.0
-        self.capture_lengths: tuple[int, ...] = ()
+        self.matrices: dict[str, np.ndarray] = {}
+        self.seconds: dict[str, float] = {}
+        self.capture_lengths: dict[str, tuple[int, ...]] = {}
 
     def __call__(
         self,
@@ -1112,18 +1552,21 @@ class _PrefilterRecorder:
         self.row_counts.append(len(rows))
         if (
             index < len(PREPARE_DATA_POPULATIONS)
-            and PREPARE_DATA_POPULATIONS[index][1] == self.RECORDED_SPLIT
+            and PREPARE_DATA_POPULATIONS[index][1] in self.RECORDED_SPLITS
         ):
+            split = PREPARE_DATA_POPULATIONS[index][1]
             started = time.perf_counter()
-            self.matrix = prefilter_matrix(
+            self.matrices[split] = prefilter_matrix(
                 self._posedegen,
                 rows,
                 patch_length=int(patch_length),
                 target_frac=float(target_frac),
                 population=PREPARE_DATA_POPULATIONS[index][0],
             )
-            self.seconds = time.perf_counter() - started
-            self.capture_lengths = tuple(sorted({len(row) for row in rows}))
+            self.seconds[split] = time.perf_counter() - started
+            self.capture_lengths[split] = tuple(
+                sorted({len(row) for row in rows})
+            )
         return self._inner(
             rows,
             patch_length=patch_length,
@@ -1135,8 +1578,8 @@ class _PrefilterRecorder:
 def _recorded_prefilter(
     recorder: _PrefilterRecorder,
     data: Mapping[str, Any],
-) -> tuple[np.ndarray, int]:
-    """Validate the interception and return ``(features, capture_length)``."""
+) -> dict[str, tuple[np.ndarray, int]]:
+    """Validate the interception; return ``{split: (features, length)}``."""
     if len(recorder.row_counts) != len(PREPARE_DATA_POPULATIONS):
         raise AssertionError(
             "stage-1 feature interception saw "
@@ -1144,31 +1587,41 @@ def _recorded_prefilter(
             f"{len(PREPARE_DATA_POPULATIONS)}; run_time_domain_dev._prepare_data "
             "no longer routes every population through _preprocess_rows"
         )
-    if recorder.matrix is None:
-        raise AssertionError(
-            f"the {recorder.RECORDED_SPLIT!r} population never reached the "
-            "stage-1 feature interception"
-        )
-    packed = data[f"x{recorder.RECORDED_SPLIT}"]
-    if len(recorder.matrix) != len(packed):
-        raise AssertionError(
-            f"selection: {len(recorder.matrix)} stage-1 feature rows for "
-            f"{len(packed)} packed rows; the features would be misaligned"
-        )
-    if len(recorder.capture_lengths) != 1:
-        raise AssertionError(
-            "the selection population mixes capture lengths "
-            f"{list(recorder.capture_lengths)}; the prefilter is length "
-            "dependent and one bundle cannot score a mixed population"
-        )
-    return recorder.matrix, int(recorder.capture_lengths[0])
+    recorded: dict[str, tuple[np.ndarray, int]] = {}
+    for name, split in PREPARE_DATA_POPULATIONS:
+        if split not in recorder.RECORDED_SPLITS:
+            continue
+        matrix = recorder.matrices.get(split)
+        if matrix is None:
+            raise AssertionError(
+                f"the {split!r} population never reached the stage-1 feature "
+                "interception"
+            )
+        packed = data[f"x{split}"]
+        if len(matrix) != len(packed):
+            raise AssertionError(
+                f"{name}: {len(matrix)} stage-1 feature rows for "
+                f"{len(packed)} packed rows; the features would be misaligned"
+            )
+        lengths = recorder.capture_lengths.get(split, ())
+        if len(lengths) != 1:
+            raise AssertionError(
+                f"the {name} population mixes capture lengths "
+                f"{list(lengths)}; the prefilter is length dependent and one "
+                "bundle cannot score a mixed population"
+            )
+        recorded[split] = (matrix, int(lengths[0]))
+    return recorded
 
 
 @dataclass
 class RebuiltPopulations:
-    """The base module's rebuilt populations plus selection stage-1 features."""
+    """The base rebuild plus enrollment and selection stage-1 features."""
 
     populations: Populations
+    enrollment_features: np.ndarray
+    enrollment_capture_length: int
+    enrollment_feature_seconds: float
     selection_features: np.ndarray
     selection_capture_length: int
     selection_feature_seconds: float
@@ -1187,7 +1640,8 @@ def rebuild_populations(
     bit-identical rebuild check against the fusion artifact, the branch hash
     check, the consumed-test-row assertions and the cache contract check are all
     the base module's own code.  The only addition is the interception that
-    derives selection stage-1 features from the same raw captures.
+    derives enrollment and selection stage-1 features from the same raw
+    captures.
     """
     recorder = _PrefilterRecorder(dev._preprocess_rows, posedegen)
     dev._preprocess_rows = recorder
@@ -1197,12 +1651,21 @@ def rebuild_populations(
         )
     finally:
         dev._preprocess_rows = recorder._inner
-    features, capture_length = _recorded_prefilter(recorder, populations.data)
+    recorded = _recorded_prefilter(recorder, populations.data)
+    enrollment_features, enrollment_length = recorded[PROTOTYPE_SPLIT]
+    selection_features, selection_length = recorded[METRIC_SPLIT]
     return RebuiltPopulations(
         populations=populations,
-        selection_features=features,
-        selection_capture_length=capture_length,
-        selection_feature_seconds=float(recorder.seconds),
+        enrollment_features=enrollment_features,
+        enrollment_capture_length=enrollment_length,
+        enrollment_feature_seconds=float(
+            recorder.seconds.get(PROTOTYPE_SPLIT, 0.0)
+        ),
+        selection_features=selection_features,
+        selection_capture_length=selection_length,
+        selection_feature_seconds=float(
+            recorder.seconds.get(METRIC_SPLIT, 0.0)
+        ),
     )
 
 
@@ -1354,25 +1817,40 @@ def generate_prefilter_features(
 Rejector = base.Rejector
 
 STAGED_SCORE_NOTE = (
-    "Stage-2 scores are enrollment empirical ranks in [0, 1).  A row gated at "
-    "stage 1 has no stage-2 score at all -- that is the short circuit -- and is "
-    f"placed at {STAGE_ONE_SCORE_OFFSET} + its stage-1 enrollment rank, i.e. in "
-    "[1, 2), above every ungated row.  The staged score is therefore a single "
-    "axis on which 'score > stage-2 threshold' is exactly the staged decision "
-    "'gated at stage 1, or rejected at stage 2', which is asserted row by row.  "
-    "AUROC and threshold recall computed from it are properties of the staged "
-    "system, not of either stage read in isolation."
+    "Stage-2 scores are enrollment empirical ranks in [0, 1).  A stage-1 "
+    "survivor's staged score is the COMPOSITE "
+    f"{COMPOSITE_SURVIVOR_SCORE}, also in [0, 1), where the stage-1 rank is "
+    "the empirical enrollment rank of the stage-1 log-odds fit on ENROLLMENT "
+    "stage-1 survivors only (searchsorted-left, the stage-2 convention).  A "
+    "row gated at stage 1 has no stage-2 score at all -- that is the short "
+    f"circuit -- and is placed at {STAGE_ONE_SCORE_OFFSET} + a bounded "
+    "monotone map (softsign) of its stage-1 log-odds, i.e. in (1, 2), above "
+    "every survivor.  The staged unknown threshold is the frozen q95 of the "
+    "composite over enrollment survivors, so the staged score is a single "
+    "axis on which 'score > staged threshold' is exactly the staged decision "
+    "'gated at stage 1, or composite-rejected at stage 2', which is asserted "
+    "row by row.  AUROC and threshold recall computed from it are properties "
+    "of the staged system, not of either stage read in isolation."
 )
 
 
 @dataclass(frozen=True)
 class StagedOutcome:
-    """One population scored by the staged system."""
+    """One population scored by the staged system.
+
+    ``stage_two_score`` is the unchanged stage-2 enrollment rank (NaN at gated
+    rows: the short circuit).  ``stage_one_survivor_rank`` and
+    ``composite_score`` are the version-2 survivor terms, likewise NaN at
+    gated rows.  ``staged_score`` is the single decision axis: the composite
+    for survivors, ``1 + softsign(stage-1 log-odds)`` for gated rows.
+    """
 
     gated: np.ndarray
     stage_one_raw: np.ndarray
     stage_one_rank: np.ndarray
     stage_two_score: np.ndarray
+    stage_one_survivor_rank: np.ndarray
+    composite_score: np.ndarray
     staged_score: np.ndarray
     survivor_index: np.ndarray
     feature_seconds: float
@@ -1397,28 +1875,53 @@ class StagedOutcome:
 def assert_staged_decision_equivalence(
     gated: np.ndarray,
     stage_two_score: np.ndarray,
+    composite_score: np.ndarray,
     staged_score: np.ndarray,
     threshold: float,
 ) -> None:
-    """Prove the single staged axis reproduces the two-stage decision exactly."""
+    """Prove the single staged axis reproduces the two-stage decision exactly.
+
+    ``threshold`` is the staged (composite) threshold.  Survivor decisions are
+    made on the composite; the staged axis must equal the composite on
+    survivors, sit in (1, 2) on gated rows, and its thresholding must equal
+    the two-stage decision row by row.  The composite is also proven to be a
+    true max: never below the stage-2 score it contains.
+    """
     fired = np.asarray(gated, dtype=bool)
     stage_two = np.asarray(stage_two_score, dtype=np.float64)
+    composite = np.asarray(composite_score, dtype=np.float64)
     staged = np.asarray(staged_score, dtype=np.float64)
-    if not (len(fired) == len(stage_two) == len(staged)):
+    if not (len(fired) == len(stage_two) == len(composite) == len(staged)):
         raise AssertionError("staged score vectors are not aligned with rows")
     if not np.isfinite(staged).all():
         raise AssertionError("staged score contains a non-finite value")
-    if np.any(np.isnan(stage_two[~fired])):
+    survivors = ~fired
+    if np.any(np.isnan(stage_two[survivors])):
         raise AssertionError("a surviving row has no stage-2 score")
+    if np.any(np.isnan(composite[survivors])):
+        raise AssertionError("a surviving row has no composite score")
     if not np.all(np.isnan(stage_two[fired])):
         raise AssertionError(
             "a gated row carries a stage-2 score; the short circuit did not "
             "happen and the compute saving would be fictional"
         )
+    if not np.all(np.isnan(composite[fired])):
+        raise AssertionError(
+            "a gated row carries a composite score; the short circuit did "
+            "not happen"
+        )
+    if np.any(composite[survivors] < stage_two[survivors]):
+        raise AssertionError(
+            "a survivor's composite is below its stage-2 score; the "
+            "composite is required to be a max"
+        )
+    if not np.array_equal(staged[survivors], composite[survivors]):
+        raise AssertionError(
+            "the staged axis does not equal the composite on survivors"
+        )
     decision = np.zeros(len(fired), dtype=bool)
     decision[fired] = True
-    survivors = ~fired
-    decision[survivors] = stage_two[survivors] > float(threshold)
+    decision[survivors] = composite[survivors] > float(threshold)
     if not np.array_equal(staged > float(threshold), decision):
         raise AssertionError(
             "the staged score does not reproduce the staged decision"
@@ -1446,13 +1949,17 @@ def score_staged(
     device: torch.device,
     *,
     capture_length: int,
+    composite: CompositeSurvivorPolicy,
     feature_seconds: float = 0.0,
 ) -> StagedOutcome:
-    """Stage 1 gates; only survivors reach the unchanged v3 path.
+    """Stage 1 gates; survivors reach the unchanged v3 path, then the composite.
 
     The short circuit is real: ``base.score_rows`` -- which is the encoder
     forward, the fusion, the branch LOF and the frozen policy -- is called on the
-    surviving rows alone, and gated rows never enter it.
+    surviving rows alone, and gated rows never enter it.  A survivor's staged
+    score is the composite :data:`COMPOSITE_SURVIVOR_SCORE`; the stage-2
+    sub-score is kept unchanged alongside it so the staged/unstaged
+    subset-agreement check still proves stage 2 itself did not drift.
     """
     rows = int(len(packed))
     if len(features) != rows or len(prefilter_features) != rows:
@@ -1466,6 +1973,8 @@ def score_staged(
 
     survivor_index = np.flatnonzero(~gated)
     stage_two_score = np.full(rows, np.nan, dtype=np.float64)
+    stage_one_survivor_rank = np.full(rows, np.nan, dtype=np.float64)
+    composite_score = np.full(rows, np.nan, dtype=np.float64)
     stage_two_seconds = 0.0
     if len(survivor_index):
         started = time.perf_counter()
@@ -1479,18 +1988,31 @@ def score_staged(
         stage_two_score[survivor_index] = np.asarray(
             survivor_score, dtype=np.float64
         )
+        stage_one_survivor_rank[survivor_index] = (
+            composite.stage_one_survivor_rank(stage_one_raw[survivor_index])
+        )
+        composite_score[survivor_index] = composite.composite(
+            stage_two_score[survivor_index],
+            stage_one_raw[survivor_index],
+        )
 
     staged_score = np.where(
-        gated, STAGE_ONE_SCORE_OFFSET + stage_one_rank, stage_two_score
+        gated, STAGE_ONE_SCORE_OFFSET + stage_one_rank, composite_score
     )
     assert_staged_decision_equivalence(
-        gated, stage_two_score, staged_score, rejector.policy.threshold
+        gated,
+        stage_two_score,
+        composite_score,
+        staged_score,
+        composite.threshold,
     )
     return StagedOutcome(
         gated=gated,
         stage_one_raw=stage_one_raw,
         stage_one_rank=stage_one_rank,
         stage_two_score=stage_two_score,
+        stage_one_survivor_rank=stage_one_survivor_rank,
+        composite_score=composite_score,
         staged_score=staged_score,
         survivor_index=survivor_index,
         feature_seconds=float(feature_seconds),
@@ -1610,13 +2132,19 @@ def _sum_compute(entries: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 def known_false_unknown_by_stage(
     outcome: StagedOutcome,
     unstaged_score: np.ndarray,
-    threshold: float,
+    staged_threshold: float,
+    unstaged_threshold: float,
 ) -> dict[str, Any]:
     """Attribute every rejected KNOWN row to the stage that rejected it.
 
     Known false-unknown rate is the binding risk of the staged design, because
     stage 1 does not merely flag a known signal, it suppresses its label.  This
     splits the rate so it is always visible which stage is responsible.
+
+    ``staged_threshold`` is the composite threshold the staged decision uses;
+    survivor rejection compares the COMPOSITE against it.  The unstaged control
+    is the additive path with no gate and no composite, so it keeps its own
+    ``unstaged_threshold`` (the stage-2 policy's enrollment q95).
     """
     rows = outcome.rows
     if not rows:
@@ -1626,14 +2154,16 @@ def known_false_unknown_by_stage(
     stage_two_reject = np.zeros(rows, dtype=bool)
     if survivors.any():
         stage_two_reject[survivors] = (
-            outcome.stage_two_score[survivors] > float(threshold)
+            outcome.composite_score[survivors] > float(staged_threshold)
         )
     staged_reject = gated | stage_two_reject
     unstaged_reject = np.asarray(unstaged_score, dtype=np.float64) > float(
-        threshold
+        unstaged_threshold
     )
     return {
         "rows": rows,
+        "staged_threshold": float(staged_threshold),
+        "unstaged_threshold": float(unstaged_threshold),
         "staged_false_unknown_rate": float(np.mean(staged_reject)),
         "stage_one_gate_rate": float(np.mean(gated)),
         "stage_two_false_unknown_rate_marginal": float(
@@ -1653,7 +2183,10 @@ def known_false_unknown_by_stage(
         "rejected_by_stage_two_only": int(np.count_nonzero(stage_two_reject)),
         "attribution": (
             "a known row counted here was NOT classified if stage_one gated it; "
-            "the stage-1 share is the cost of the architecture contract change"
+            "the stage-1 share is the cost of the architecture contract change. "
+            "Survivor rejection is on the COMPOSITE axis against "
+            "staged_threshold; the unstaged control uses the additive axis "
+            "against unstaged_threshold"
         ),
     }
 
@@ -1747,6 +2280,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     populations = rebuilt.populations
     data = populations.data
     known_length = int(rebuilt.selection_capture_length)
+    enrollment_length = int(rebuilt.enrollment_capture_length)
     print(
         f"[v3 staged] rebuilt populations; reproduction "
         f"{populations.reproduction}",
@@ -1754,29 +2288,35 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     # Stage 1 arrives already fitted.  The set must cover every length that will
-    # be scored, including the native length of the known selection population.
-    # A sweep length above the longest fitted length is covered by the
-    # causal-prefix rule (its features are sliced below); every other uncovered
-    # sweep length is refused inside load_stage_one.
+    # be scored, including the native lengths of the enrollment population (the
+    # composite calibration) and the known selection population.  A sweep length
+    # above the longest fitted length is covered by the causal-prefix rule (its
+    # features are sliced below); every other uncovered sweep length is refused
+    # inside load_stage_one.
     stage_one = load_stage_one(
         prefilter,
         posedegen,
         Path(args.prefilter_dir),
-        required_lengths=(*prefix_lengths, known_length),
+        required_lengths=(*prefix_lengths, known_length, enrollment_length),
     )
-    # The known selection population's stage-1 features are computed at its
-    # NATIVE length by rebuild_populations, so the causal-prefix rule may not
-    # stand in for a fitted bundle there: the known length must be fitted
-    # exactly, or the gate would score native-length features with a
-    # shorter-length model.
-    if int(known_length) not in stage_one.models:
-        raise ValueError(
-            f"{stage_one.directory} has no fitted prefilter for the known "
-            f"selection population's native length N{known_length}; available "
-            f"{list(stage_one.lengths)}.  Selection features are computed at "
-            "native length, so the causal-prefix rule may not stand in for "
-            "this length"
-        )
+    # The known selection and enrollment populations' stage-1 features are
+    # computed at their NATIVE lengths by rebuild_populations, so the
+    # causal-prefix rule may not stand in for a fitted bundle there: those
+    # lengths must be fitted exactly, or the gate would score native-length
+    # features with a shorter-length model.  (fit_composite_policy re-checks
+    # the enrollment length itself.)
+    for name, length in (
+        ("known selection", known_length),
+        ("enrollment", enrollment_length),
+    ):
+        if int(length) not in stage_one.models:
+            raise ValueError(
+                f"{stage_one.directory} has no fitted prefilter for the "
+                f"{name} population's native length N{length}; available "
+                f"{list(stage_one.lengths)}.  {name} features are computed "
+                "at native length, so the causal-prefix rule may not stand "
+                "in for this length"
+            )
     print(
         f"[v3 staged] stage1 {prefilter.module_name}@{prefilter.version} "
         f"set={stage_one.set_sha256[:16]} lengths={list(stage_one.lengths)}",
@@ -1809,6 +2349,33 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         flush=True,
     )
 
+    # ---- the composite survivor policy: enrollment only, as ever ----------
+    # policy.calibration_scores is the stage-2 score of every enrollment row,
+    # in enrollment row order, produced by the stage-2 fit itself.
+    enrollment_stage_two_scores = np.asarray(
+        policy.calibration_scores, dtype=np.float64
+    )
+    if len(enrollment_stage_two_scores) != len(data["xen"]):
+        raise AssertionError(
+            "stage-2 enrollment calibration scores are not aligned with the "
+            "enrollment population"
+        )
+    composite = fit_composite_policy(
+        stage_one,
+        rebuilt.enrollment_features,
+        enrollment_length,
+        enrollment_stage_two_scores,
+        stage_two_threshold=policy.threshold,
+    )
+    print(
+        f"[v3 staged] composite threshold={composite.threshold:.6f} "
+        f"(q{COMPOSITE_THRESHOLD_QUANTILE:.2f} on "
+        f"{composite.enrollment_survivor_rows} enrollment survivors; "
+        f"enrollment gate rate "
+        f"{composite.enrollment_gated_rows / composite.enrollment_rows:.6f})",
+        flush=True,
+    )
+
     rejector = Rejector(
         nets=populations.nets,
         real_center=populations.real_center,
@@ -1831,11 +2398,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         rebuilt.selection_features,
         device,
         capture_length=known_length,
+        composite=composite,
         feature_seconds=rebuilt.selection_feature_seconds,
     )
     known_agreement = subset_agreement(known_outcome, known_unstaged)
     known_stages = known_false_unknown_by_stage(
-        known_outcome, known_unstaged, policy.threshold
+        known_outcome, known_unstaged, composite.threshold, policy.threshold
     )
     known_scores = known_outcome.staged_score
     known_fur = float(known_stages["staged_false_unknown_rate"])
@@ -1897,6 +2465,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     stage_one_fixture.features,
                     device,
                     capture_length=int(length),
+                    composite=composite,
                     feature_seconds=stage_one_fixture.seconds,
                 )
                 agreement = subset_agreement(outcome, unstaged_score)
@@ -1913,7 +2482,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 unstaged_family[family] = unstaged_score
                 row[family] = {
                     **family_metrics(
-                        outcome.staged_score, known_scores, policy.threshold
+                        outcome.staged_score, known_scores, composite.threshold
                     ),
                     "gated_at_stage_one_fraction": float(
                         np.mean(outcome.gated)
@@ -1921,8 +2490,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "rejected_at_stage_two_fraction": (
                         float(
                             np.count_nonzero(
-                                outcome.stage_two_score[outcome.survivor_index]
-                                > policy.threshold
+                                outcome.composite_score[outcome.survivor_index]
+                                > composite.threshold
                             )
                             / outcome.rows
                         )
@@ -1943,7 +2512,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     [staged_family[family] for family in NOVELTY_FAMILIES]
                 ),
                 known_scores,
-                policy.threshold,
+                composite.threshold,
             )
             unstaged_row["overall"] = family_metrics(
                 np.concatenate(
@@ -1980,6 +2549,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     np.savez_compressed(stage_two_path, **policy.to_payload())
     lof_path = output / "v3_branch_lof_components.npz"
     save_branch_lof(lof_path, lof_components)
+    composite_path = output / COMPOSITE_POLICY_FILENAME
+    save_composite_policy(composite_path, composite)
+    # Prove the serialization round-trips before the report cites it.
+    load_composite_policy(
+        composite_path, expected_stage_two_threshold=policy.threshold
+    )
 
     prefix = "design_selection" if role == "design" else "development_openset"
     report = {
@@ -2001,7 +2576,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "sealed_release_data_used": 0,
         "consumed_test_rows_used": 0,
         "sealed_release_paths_read": 0,
-        "release_seed_20260731_used": False,
+        "release_seed_20260733_used": False,
+        "consumed_sealed_release_seeds_excluded": sorted(
+            CONSUMED_SEALED_RELEASE_SEEDS
+        ),
         # ---- the architecture contract change, stated explicitly ----
         "closed_label_can_be_gated": True,
         "closed_label_can_be_gated_note": ARCHITECTURE_CONTRACT_NOTE,
@@ -2023,6 +2601,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "architecture": {
             "kind": STAGED_POLICY_KIND,
             "schema": int(STAGED_POLICY_SCHEMA),
+            "staged_policy_version": STAGED_POLICY_VERSION,
+            "staged_policy_version_history": dict(
+                STAGED_POLICY_VERSION_HISTORY
+            ),
+            "survivor_score": COMPOSITE_SURVIVOR_SCORE,
             "stage_one": (
                 "noise prefilter on pose-degeneracy features; coefficients fit "
                 "on training rows, operating point a known-false-positive "
@@ -2033,7 +2616,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "fit_v3_openset unchanged and imported: branch-LOF rank blended "
                 f"with the {FROZEN_GEOMETRY_FEATURE} geometry rank at the frozen "
                 f"{BRANCH_LOF_RANK_WEIGHT}/{GEOMETRY_RANK_WEIGHT} weights, "
-                f"thresholded at the enrollment q{THRESHOLD_QUANTILE}"
+                f"internally thresholded at the enrollment q{THRESHOLD_QUANTILE}"
+            ),
+            "composite": (
+                f"a stage-1 survivor's staged score is {COMPOSITE_SURVIVOR_SCORE}; "
+                "the staged unknown threshold is the frozen "
+                f"q{COMPOSITE_THRESHOLD_QUANTILE} of the composite over "
+                "enrollment stage-1 survivors (enrollment only). Gated rows "
+                "keep the 1 + softsign(stage-1 log-odds) axis above every "
+                "survivor"
             ),
             "stage_two_policy_kind": FROZEN_POLICY_KIND,
             "stage_one_fitted_here": False,
@@ -2052,6 +2643,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "operating point in the wrong place. Deciding noise first, "
                 "against its own score distribution, removes that dependency"
             ),
+            "why_composite": COMPOSITE_RATIONALE,
             "staged_score_note": STAGED_SCORE_NOTE,
         },
         "fusion": {
@@ -2085,10 +2677,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ],
             "rank_and_threshold_population": "enrollment only",
             "rank_rows": int(len(data["xen"])),
+            "composite_rank_and_threshold_population": (
+                "enrollment stage-1 survivors only"
+            ),
             "stage_one_fitted_in_this_run": False,
             "stage_one_training_features_computed_here": False,
-            "stage_one_enrollment_features_computed_here": False,
+            "stage_one_enrollment_features_computed_here": True,
+            "stage_one_enrollment_features_role": (
+                "the composite survivor rank calibration and its q95 "
+                "threshold, and nothing else. Every rank and threshold in "
+                "this chain is calibrated on enrollment; the stage-1 gate "
+                "itself stays exactly as loaded"
+            ),
             "stage_one_features_computed_here": [
+                "enrollment (composite rank/threshold calibration only)",
                 "selection (scored only)",
                 "novelty (scored only)",
             ],
@@ -2132,6 +2734,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "geometry_rank_weight": float(GEOMETRY_RANK_WEIGHT),
             "threshold_quantile": float(THRESHOLD_QUANTILE),
             "threshold": float(policy.threshold),
+            "threshold_role": (
+                "the stage-2 policy's own internal enrollment q95, untouched. "
+                "The STAGED decision threshold is the composite block's "
+                "threshold; this one still governs the unstaged control arm"
+            ),
             "branch_lof_components": [
                 {"branch": branch, "weight": weight, "neighbors": neighbors}
                 for branch, weight, neighbors in BRANCH_LOF
@@ -2141,6 +2748,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "not re-searched here"
             ),
             "cannot_change_closed_label": True,
+        },
+        "composite": {
+            **composite.provenance(),
+            "enrollment_features_sha256": _matrix_sha256(
+                rebuilt.enrollment_features
+            ),
+            "enrollment_feature_seconds": float(
+                rebuilt.enrollment_feature_seconds
+            ),
         },
         "seeds": {
             "model_seed": artifact.seed,
@@ -2156,9 +2772,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "default_validation_novelty_seeds": list(
                 DEFAULT_VALIDATION_NOVELTY_SEEDS
             ),
-            "sealed_release_seed_excluded": SEALED_RELEASE_SEED,
+            "consumed_sealed_release_seeds_excluded": {
+                str(seed): reason
+                for seed, reason in sorted(
+                    CONSUMED_SEALED_RELEASE_SEEDS.items()
+                )
+            },
             "release_seed_not_spent": RELEASE_SEED_NEVER_SPENT_HERE,
             "novelty_rows_used_to_choose_the_stage_one_operating_point": 0,
+            "novelty_rows_used_to_choose_the_composite_threshold": 0,
             "ledger": SEED_LEDGER_NOTE,
         },
         "protocol": {
@@ -2250,6 +2872,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "artifacts": {
             stage_two_path.name: _sha256(stage_two_path),
             lof_path.name: _sha256(lof_path),
+            composite_path.name: _sha256(composite_path),
         },
         "source_sha256": _source_hashes(prefilter, posedegen),
         "data_audit": data["data_audit"],

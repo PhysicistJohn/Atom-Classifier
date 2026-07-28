@@ -4,14 +4,19 @@ What this produces (staging only, never release):
 
 ``artifacts/staging/time_domain_v3_openset/``
   ``time-domain-openset-weights-v1.json``
-      Stage 1: the three per-length noise-prefilter bundles
-      (``noise_prefilter_fit20261001``) converted to plain JSON -- 7 means,
-      7 scales, 7 coefficients, an intercept and a score-space threshold per
-      capture length.
-      Stage 2: the fitted branch-LOF ensemble and the frozen policy from
-      ``staged_validate_seed20260730`` (``v3_branch_lof_components.npz`` /
+      Stage 1: the three per-length noise-prefilter bundles (the tightened
+      0.01-budget set ``noise_prefilter_fit20261001_budget001``) converted to
+      plain JSON -- 7 means, 7 scales, 7 coefficients, an intercept and a
+      score-space threshold per capture length.
+      Stage 2: the fitted branch-LOF ensemble and the frozen stage-2 policy
+      from the staged artifact (``v3_branch_lof_components.npz`` /
       ``v3_open_policy_stage_two.npz``), including the single frozen geometry
-      feature column, both enrollment calibrations and the q95 threshold.
+      feature column, both enrollment calibrations and the stage-2 q95.
+      COMPOSITE (staged policy version 2): the survivor composite policy
+      (``v3_staged_composite_policy.npz``) -- the enrollment-survivor stage-1
+      calibration, the composite calibration, the composite q95 threshold and
+      the explicit ``policy_version`` the TypeScript runtime refuses to run
+      without.
   ``time-domain-classifier-weights-v1.json``
       The decision-layer half of the v3 runtime bundle
       (``v3_runtime_bundle_seed20260730``): feature standardization, fusion
@@ -104,7 +109,10 @@ from v3_time_domain_openset import (  # noqa: E402
 
 
 OPENSET_SCHEMA = "atomos.v3.time-domain-openset.staged"
-OPENSET_SCHEMA_VERSION = 1
+# Version 2: the composite survivor score (staged policy version 2).  The
+# TypeScript runtime refuses any other schema version, exactly as it refuses
+# any other staged policy version.
+OPENSET_SCHEMA_VERSION = 2
 CLASSIFIER_SCHEMA = "atomos.v3.time-domain-invariant-fusion.browser-decision"
 CLASSIFIER_SCHEMA_VERSION = 1
 PARITY_SCHEMA = "time-domain-openset-parity-v1"
@@ -131,11 +139,11 @@ DEFAULT_FUSION = (
 )
 DEFAULT_STAGED = (
     V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "staged_validate_seed20260730"
+    / "staged_validate_composite_budget001_seed20260730"
 )
 DEFAULT_PREFILTERS = (
     V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "noise_prefilter_fit20261001" / "bundles"
+    / "noise_prefilter_fit20261001_budget001" / "bundles"
 )
 DEFAULT_OUTPUT = V2 / "artifacts" / "staging" / "time_domain_v3_openset"
 
@@ -238,7 +246,13 @@ def load_bundle(bundle_dir: Path) -> dict[str, Any]:
 def load_stage_two_state(
     staged_dir: Path,
 ) -> tuple[list[tuple[str, float, KnownOnlyLOFOpenSet]], FrozenV3OpenSet, dict[str, str]]:
-    """Rebuild the fitted LOF ensemble and frozen policy from the staged npz."""
+    """Rebuild the fitted LOF ensemble and frozen policy from the staged npz.
+
+    The composite survivor policy is deliberately NOT loaded here: this
+    3-tuple contract is shared with ``evaluate_v3_release_suite.load_candidate``,
+    which performs its own composite load and version refusal.  This module's
+    :func:`load_composite_state` is the exporter-side counterpart.
+    """
     directory = assemble.reject_sealed_path(Path(staged_dir), "staged artifact")
     lof_path = directory / "v3_branch_lof_components.npz"
     policy_path = directory / "v3_open_policy_stage_two.npz"
@@ -303,6 +317,26 @@ def load_stage_two_state(
     return components, policy, hashes
 
 
+def load_composite_state(
+    staged_dir: Path,
+    policy: FrozenV3OpenSet,
+) -> tuple[Any, str]:
+    """Load and verify the composite survivor policy from the staged npz.
+
+    The composite loader enforces the staged policy version and recomputes
+    the q95 threshold from the stored calibration; the stage-2 threshold
+    cross-check proves the composite was fit against exactly this stage-2
+    state.  Returns ``(composite, sha256)``.
+    """
+    directory = assemble.reject_sealed_path(Path(staged_dir), "staged artifact")
+    composite_path = directory / staged.COMPOSITE_POLICY_FILENAME
+    composite = staged.load_composite_policy(
+        composite_path,
+        expected_stage_two_threshold=float(policy.threshold),
+    )
+    return composite, _sha256(composite_path)
+
+
 def compute_branch_lof_raw(
     scorer: KnownOnlyLOFOpenSet, embeddings: np.ndarray
 ) -> np.ndarray:
@@ -343,11 +377,35 @@ def prefilter_model_payload(model: noise_prefilter.NoisePrefilter) -> dict[str, 
     }
 
 
+def composite_policy_payload(composite: Any) -> dict[str, Any]:
+    """The `v3_staged_composite_policy.npz` payload as plain JSON.
+
+    Field names keep the npz spelling exactly, so the TypeScript loader's
+    validation (policy version refusal, sorted calibrations, recomputed q95)
+    mirrors ``fit_v3_openset_staged.load_composite_policy`` key for key.
+    """
+    return {
+        "schema": int(staged.STAGED_POLICY_SCHEMA),
+        "kind": staged.STAGED_POLICY_KIND,
+        "policy_version": staged.STAGED_POLICY_VERSION,
+        "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
+        "threshold_quantile": float(staged.COMPOSITE_THRESHOLD_QUANTILE),
+        "threshold": float(composite.threshold),
+        "stage_two_threshold": float(composite.stage_two_threshold),
+        "stage_one_calibration_raw": composite.stage_one_calibration_raw,
+        "composite_calibration_raw": composite.composite_calibration_raw,
+        "enrollment_rows": int(composite.enrollment_rows),
+        "enrollment_gated_rows": int(composite.enrollment_gated_rows),
+        "enrollment_capture_length": int(composite.enrollment_capture_length),
+    }
+
+
 def openset_weights_payload(
     prefilters: Mapping[int, noise_prefilter.NoisePrefilter],
     prefilter_set_sha: str,
     components: Sequence[tuple[str, float, KnownOnlyLOFOpenSet]],
     policy: FrozenV3OpenSet,
+    composite: Any,
     frontend: Mapping[str, Any],
     provenance: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -405,6 +463,7 @@ def openset_weights_payload(
                 "combined_calibration": policy.combined_calibration_raw,
             },
         },
+        "composite": composite_policy_payload(composite),
         "provenance": dict(provenance),
     }
 
@@ -572,8 +631,10 @@ def stage_two_row(
         "geometry_rank": geometry_rank,
         "combined_raw": combined,
         "score": score,
+        # The stage-2 policy's own enrollment q95, recorded for cross-checks;
+        # under staged policy version 2 the survivor DECISION compares the
+        # COMPOSITE against the composite threshold.
         "threshold": float(policy.threshold),
-        "rejected": bool(score > policy.threshold),
     }
 
 
@@ -586,6 +647,7 @@ def staged_parity_row(
     rejector: base.Rejector,
     components: Sequence[tuple[str, float, KnownOnlyLOFOpenSet]],
     policy: FrozenV3OpenSet,
+    composite: Any,
     feature_mean: np.ndarray,
     feature_std: np.ndarray,
     classes: Sequence[str],
@@ -614,6 +676,8 @@ def staged_parity_row(
 
     if stage_one["gated"]:
         stage_two = None
+        stage_one_survivor_rank = None
+        composite_score = None
         staged_score = float(staged.STAGE_ONE_SCORE_OFFSET + stage_one["rank"])
         rejected_stage: int | None = 1
         decision = "noise"
@@ -627,10 +691,29 @@ def staged_parity_row(
             classes,
             device,
         )
-        staged_score = float(stage_two["score"])
-        rejected_stage = 2 if stage_two["rejected"] else None
+        # Staged policy version 2: the survivor decision is the COMPOSITE
+        # against the composite q95 threshold.  Both terms come from the
+        # loaded CompositeSurvivorPolicy itself, so the fixture cannot drift
+        # from the real Python path.
+        stage_one_raw = np.asarray([stage_one["score"]], dtype=np.float64)
+        stage_one_survivor_rank = float(
+            composite.stage_one_survivor_rank(stage_one_raw)[0]
+        )
+        composite_score = float(
+            composite.composite(
+                np.asarray([stage_two["score"]], dtype=np.float64),
+                stage_one_raw,
+            )[0]
+        )
+        if composite_score != max(stage_two["score"], stage_one_survivor_rank):
+            raise AssertionError(
+                "decomposed composite differs from CompositeSurvivorPolicy"
+            )
+        staged_score = composite_score
+        rejected = bool(composite_score > composite.threshold)
+        rejected_stage = 2 if rejected else None
         decision = (
-            "unknown" if stage_two["rejected"] else stage_two["predicted_class_label"]
+            "unknown" if rejected else stage_two["predicted_class_label"]
         )
 
     row = {
@@ -649,6 +732,9 @@ def staged_parity_row(
         "raw_features": raw_features,
         "standardized_features": standardized,
         "stage_two": stage_two,
+        "stage_one_survivor_rank": stage_one_survivor_rank,
+        "composite_score": composite_score,
+        "staged_threshold": float(composite.threshold),
         "staged_score": staged_score,
         "rejected_stage": rejected_stage,
         "decision_label": decision,
@@ -774,7 +860,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if length not in prefilters:
             raise RuntimeError(f"no prefilter bundle for capture length {length}")
 
-    components, policy, staged_hashes = load_stage_two_state(Path(args.staged_dir))
+    components, policy, staged_hashes = load_stage_two_state(
+        Path(args.staged_dir)
+    )
+    composite, composite_sha = load_composite_state(
+        Path(args.staged_dir), policy
+    )
+    staged_hashes = dict(staged_hashes)
+    staged_hashes[staged.COMPOSITE_POLICY_FILENAME] = composite_sha
     staged_metrics_path = Path(args.staged_dir) / "openset_metrics.json"
     with staged_metrics_path.open(encoding="utf-8") as handle:
         staged_metrics = json.load(handle)
@@ -881,6 +974,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         prefilter_sha,
         components,
         policy,
+        composite,
         frontend_payload,
         provenance,
     )
@@ -899,6 +993,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             rejector=rejector,
             components=components,
             policy=policy,
+            composite=composite,
             feature_mean=feature_mean,
             feature_std=feature_std,
             classes=classes,
@@ -991,7 +1086,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     parity = {
         "schema": PARITY_SCHEMA,
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "staging_not_release",
         "contract": weights["contract"],
         "classes": classes,
@@ -1001,6 +1096,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "parity_seed_is_evaluation_evidence": False,
         "known_rows_population": "development selection split (scored, never fit)",
         "counts": counts,
+        "policy_version": staged.STAGED_POLICY_VERSION,
+        "survivor_score": staged.COMPOSITE_SURVIVOR_SCORE,
+        "staged_threshold": float(composite.threshold),
+        "stage_two_threshold": float(policy.threshold),
         "tolerance": {
             "stage_one_features_abs": 1e-8,
             "stage_one_score_abs": 1e-8,

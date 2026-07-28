@@ -347,21 +347,45 @@ class SeedLedgerTests(unittest.TestCase):
     def test_the_spent_ledger_is_complete(self) -> None:
         self.assertEqual(
             sorted(subject.SPENT_NOVELTY_SEEDS),
-            [20260938, 20260939, 20260940, 20260941],
+            [
+                20260938,
+                20260939,
+                20260940,
+                20260941,
+                20260942,
+                20260943,
+                20260944,
+                20260945,
+            ],
         )
-        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260942)
-        self.assertEqual(subject.SEALED_RELEASE_SEED, 20260729)
-        self.assertEqual(subject.RELEASE_SEED_NEVER_SPENT_HERE, 20260731)
+        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260946)
+        self.assertEqual(subject.PROPOSED_DESIGN_NOVELTY_SEED, 20260946)
+        self.assertEqual(
+            subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, (20260947, 20260948)
+        )
+        self.assertEqual(
+            sorted(subject.CONSUMED_SEALED_RELEASE_SEEDS),
+            [20260729, 20260731],
+        )
+        self.assertEqual(subject.RELEASE_SEED_NEVER_SPENT_HERE, 20260733)
 
-    def test_the_ledger_agrees_with_the_prefilter_module(self) -> None:
-        self.assertEqual(
-            sorted(subject.SPENT_NOVELTY_SEEDS),
-            sorted(prefilter.SPENT_NOVELTY_SEEDS),
-        )
-        self.assertEqual(
+    def test_the_ledger_extends_the_prefilter_modules_frozen_one(self) -> None:
+        """The prefilter module's ledger froze with the fitted bundles; the
+        staged ledger is the moving authority and may only ever grow beyond
+        it, never contradict it."""
+        for seed in prefilter.SPENT_NOVELTY_SEEDS:
+            self.assertIn(seed, subject.SPENT_NOVELTY_SEEDS)
+        self.assertGreaterEqual(
             subject.FIRST_CLEAN_NOVELTY_SEED,
             prefilter.CLEAN_VALIDATION_SEEDS_FROM,
         )
+        # Every seed between the prefilter's clean mark and the staged clean
+        # mark must be accounted for as spent, or it silently leaked.
+        for seed in range(
+            prefilter.CLEAN_VALIDATION_SEEDS_FROM,
+            subject.FIRST_CLEAN_NOVELTY_SEED,
+        ):
+            self.assertIn(seed, subject.SPENT_NOVELTY_SEEDS)
 
     def test_every_spent_seed_is_refused_as_novelty(self) -> None:
         for seed in subject.SPENT_NOVELTY_SEEDS:
@@ -374,27 +398,33 @@ class SeedLedgerTests(unittest.TestCase):
                 subject.validate_seed_plan("validate", seed, [VALIDATION_SEED])
 
     def test_the_sealed_and_release_seeds_are_refused(self) -> None:
-        for seed in (20260729, 20260731):
+        for seed in (20260729, 20260731, 20260733):
             with self.assertRaises(ValueError):
                 subject.validate_novelty_seeds([seed])
             with self.assertRaises(ValueError):
                 subject.validate_seed_plan("validate", seed, [VALIDATION_SEED])
 
+    def test_the_consumed_sealed_v3_seed_names_its_consumption(self) -> None:
+        with self.assertRaisesRegex(ValueError, "consumed sealed"):
+            subject.validate_novelty_seeds([20260731])
+        with self.assertRaisesRegex(ValueError, "unspent release seed"):
+            subject.validate_novelty_seeds([20260733])
+
     def test_a_clean_seed_is_accepted(self) -> None:
         self.assertEqual(
-            subject.validate_novelty_seeds([20260943, 20260944]),
-            (20260943, 20260944),
+            subject.validate_novelty_seeds([20260949, 20260950]),
+            (20260949, 20260950),
         )
 
     def test_duplicate_and_empty_seed_sets_are_refused(self) -> None:
         with self.assertRaisesRegex(ValueError, "distinct"):
-            subject.validate_novelty_seeds([20260943, 20260943])
+            subject.validate_novelty_seeds([20260949, 20260949])
         with self.assertRaisesRegex(ValueError, "distinct"):
             subject.validate_novelty_seeds([])
 
     def test_validate_refuses_design_and_novelty_overlap(self) -> None:
         with self.assertRaisesRegex(ValueError, "cannot"):
-            subject.validate_seed_plan("validate", 20260945, [20260945])
+            subject.validate_seed_plan("validate", 20260949, [20260949])
 
     def test_validate_accepts_the_default_pair(self) -> None:
         role, design, seeds = subject.validate_seed_plan(
@@ -406,7 +436,7 @@ class SeedLedgerTests(unittest.TestCase):
 
     def test_a_default_validation_seed_may_not_be_the_design_seed(self) -> None:
         with self.assertRaisesRegex(ValueError, "evidence rule 4"):
-            subject.validate_seed_plan("validate", VALIDATION_SEED, [20260945])
+            subject.validate_seed_plan("validate", VALIDATION_SEED, [20260949])
 
     def test_design_refuses_the_reserved_validation_seeds(self) -> None:
         with self.assertRaisesRegex(ValueError, "stay untouched"):
@@ -416,7 +446,7 @@ class SeedLedgerTests(unittest.TestCase):
 
     def test_design_must_draw_its_own_declared_seed(self) -> None:
         with self.assertRaisesRegex(ValueError, "must draw novelty"):
-            subject.validate_seed_plan("design", DESIGN_SEED, [20260945])
+            subject.validate_seed_plan("design", DESIGN_SEED, [20260949])
         self.assertEqual(
             subject.validate_seed_plan("design", DESIGN_SEED, [DESIGN_SEED]),
             ("design", DESIGN_SEED, (DESIGN_SEED,)),
@@ -681,24 +711,244 @@ class StageOneLoadingTests(unittest.TestCase):
             subject._bounded_rank(np.array([np.inf]))
 
 
+class CompositeSurvivorPolicyTests(unittest.TestCase):
+    """Policy version 2: the composite survivor score, fit on enrollment."""
+
+    def _gate(self, root: Path) -> "subject.StageOneGate":
+        source, posedegen = _sources()
+        return subject.load_stage_one(
+            source,
+            posedegen,
+            _bundle_set(root / "prefilter"),
+            required_lengths=(*TEST_LENGTHS, KNOWN_LENGTH),
+        )
+
+    def _enrollment(self, rows: int = 60):
+        features = np.vstack(
+            [_pose_rows(rows - 3, 71), _pose_rows(3, 72, shift=6.0)]
+        )
+        rng = np.random.default_rng(73)
+        stage_two = rng.uniform(0.0, 0.999, size=rows)
+        return features, stage_two
+
+    def test_the_frozen_constants_are_the_bumped_policy_version(self) -> None:
+        self.assertEqual(subject.STAGED_POLICY_SCHEMA, 2)
+        self.assertEqual(
+            subject.STAGED_POLICY_VERSION,
+            "v3-staged-openset-policy-v2-composite-survivor",
+        )
+        self.assertIn("composite_survivor", subject.STAGED_POLICY_KIND)
+        self.assertIn("1", subject.STAGED_POLICY_VERSION_HISTORY)
+        self.assertIn("2", subject.STAGED_POLICY_VERSION_HISTORY)
+        # The quantile is the imported frozen constant, never re-typed.
+        self.assertIs(
+            subject.COMPOSITE_THRESHOLD_QUANTILE, subject.THRESHOLD_QUANTILE
+        )
+        self.assertEqual(
+            subject.COMPOSITE_SURVIVOR_SCORE,
+            "max(stage2_enrollment_rank, stage1_score_enrollment_rank)",
+        )
+
+    def test_fit_is_on_enrollment_survivors_only(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            gate = self._gate(Path(root))
+            features, stage_two = self._enrollment()
+            policy = subject.fit_composite_policy(
+                gate,
+                features,
+                KNOWN_LENGTH,
+                stage_two,
+                stage_two_threshold=0.9,
+            )
+            raw = gate.raw(features, KNOWN_LENGTH)
+            gated = gate.fires(features, KNOWN_LENGTH)
+        survivors = ~gated
+        self.assertGreater(int(np.count_nonzero(gated)), 0)
+        self.assertEqual(policy.enrollment_rows, len(features))
+        self.assertEqual(
+            policy.enrollment_gated_rows, int(np.count_nonzero(gated))
+        )
+        self.assertEqual(
+            policy.enrollment_survivor_rows, int(np.count_nonzero(survivors))
+        )
+        np.testing.assert_array_equal(
+            policy.stage_one_calibration_raw, np.sort(raw[survivors])
+        )
+        # The rank convention is the stage-2 searchsorted-left convention.
+        rank = policy.stage_one_survivor_rank(raw[survivors])
+        expected = np.searchsorted(
+            np.sort(raw[survivors]), raw[survivors], side="left"
+        ) / (np.count_nonzero(survivors) + 1.0)
+        np.testing.assert_array_equal(rank, expected)
+        np.testing.assert_array_equal(
+            rank, frozen.empirical_rank(raw[survivors], np.sort(raw[survivors]))
+        )
+        # The composite is the max, and the threshold is its q95.
+        composite = policy.composite(stage_two[survivors], raw[survivors])
+        np.testing.assert_array_equal(
+            composite, np.maximum(stage_two[survivors], rank)
+        )
+        self.assertEqual(
+            policy.threshold,
+            float(
+                np.quantile(
+                    composite, subject.COMPOSITE_THRESHOLD_QUANTILE
+                )
+            ),
+        )
+        np.testing.assert_array_equal(
+            policy.composite_calibration_raw, np.sort(composite)
+        )
+        self.assertGreaterEqual(policy.threshold, 0.0)
+        self.assertLess(policy.threshold, 1.0)
+
+    def test_the_enrollment_length_must_be_fitted_exactly(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            gate = self._gate(Path(root))
+            features, stage_two = self._enrollment()
+            with self.assertRaisesRegex(ValueError, "native length"):
+                subject.fit_composite_policy(
+                    gate,
+                    features,
+                    4096,
+                    stage_two,
+                    stage_two_threshold=0.9,
+                )
+
+    def test_a_non_rank_stage_two_vector_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            gate = self._gate(Path(root))
+            features, stage_two = self._enrollment()
+            stage_two[0] = 1.5
+            with self.assertRaisesRegex(ValueError, r"\[0, 1\)"):
+                subject.fit_composite_policy(
+                    gate,
+                    features,
+                    KNOWN_LENGTH,
+                    stage_two,
+                    stage_two_threshold=0.9,
+                )
+
+    def test_a_fully_gated_enrollment_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            gate = self._gate(Path(root))
+            rows = 8
+            features = _pose_rows(rows, 74, shift=9.0)
+            if not gate.fires(features, KNOWN_LENGTH).all():
+                self.skipTest("fixture did not gate every row")
+            with self.assertRaisesRegex(ValueError, "at least one"):
+                subject.fit_composite_policy(
+                    gate,
+                    features,
+                    KNOWN_LENGTH,
+                    np.full(rows, 0.5),
+                    stage_two_threshold=0.9,
+                )
+
+    def test_save_load_round_trips_and_verifies(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            gate = self._gate(Path(root))
+            features, stage_two = self._enrollment()
+            policy = subject.fit_composite_policy(
+                gate,
+                features,
+                KNOWN_LENGTH,
+                stage_two,
+                stage_two_threshold=0.9,
+            )
+            path = Path(root) / subject.COMPOSITE_POLICY_FILENAME
+            subject.save_composite_policy(path, policy)
+            loaded = subject.load_composite_policy(
+                path, expected_stage_two_threshold=0.9
+            )
+            self.assertEqual(loaded.threshold, policy.threshold)
+            self.assertEqual(loaded.stage_two_threshold, 0.9)
+            self.assertEqual(loaded.enrollment_rows, policy.enrollment_rows)
+            np.testing.assert_array_equal(
+                loaded.stage_one_calibration_raw,
+                policy.stage_one_calibration_raw,
+            )
+            probe = np.linspace(-3.0, 9.0, 7)
+            np.testing.assert_array_equal(
+                loaded.stage_one_survivor_rank(probe),
+                policy.stage_one_survivor_rank(probe),
+            )
+
+    def _saved(self, root: Path):
+        gate = self._gate(root)
+        features, stage_two = self._enrollment()
+        policy = subject.fit_composite_policy(
+            gate, features, KNOWN_LENGTH, stage_two, stage_two_threshold=0.9
+        )
+        path = root / subject.COMPOSITE_POLICY_FILENAME
+        subject.save_composite_policy(path, policy)
+        return path
+
+    def _tamper(self, path: Path, **overrides) -> None:
+        with np.load(path) as payload:
+            data = {name: payload[name] for name in payload.files}
+        data.update(overrides)
+        np.savez_compressed(path, **data)
+
+    def test_a_wrong_policy_version_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = self._saved(Path(root))
+            self._tamper(path, policy_version=np.asarray("v1-of-something"))
+            with self.assertRaisesRegex(ValueError, "policy version mismatch"):
+                subject.load_composite_policy(path)
+
+    def test_a_wrong_schema_or_kind_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = self._saved(Path(root))
+            self._tamper(path, schema=np.asarray(1, dtype=np.int64))
+            with self.assertRaisesRegex(ValueError, "policy version mismatch"):
+                subject.load_composite_policy(path)
+
+    def test_a_tampered_threshold_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = self._saved(Path(root))
+            self._tamper(path, threshold=np.asarray(0.123456, dtype=np.float64))
+            with self.assertRaisesRegex(ValueError, "frozen quantile"):
+                subject.load_composite_policy(path)
+
+    def test_a_stage_two_threshold_mismatch_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = self._saved(Path(root))
+            with self.assertRaisesRegex(ValueError, "different stage-2"):
+                subject.load_composite_policy(
+                    path, expected_stage_two_threshold=0.5
+                )
+
+
 def _outcome(
     gated,
     stage_two,
     *,
+    composite=None,
     feature_seconds=0.0,
     stage_one_seconds=0.0,
     stage_two_seconds=0.0,
 ) -> "subject.StagedOutcome":
+    """A synthetic outcome; by default the composite equals the stage-2 score
+    (a valid max whenever the stage-1 survivor rank is below it)."""
     fired = np.asarray(gated, dtype=bool)
     two = np.asarray(stage_two, dtype=np.float64)
+    comp = (
+        two.copy()
+        if composite is None
+        else np.asarray(composite, dtype=np.float64)
+    )
     raw = np.where(fired, 5.0, -5.0)
     rank = subject._bounded_rank(raw)
-    staged = np.where(fired, subject.STAGE_ONE_SCORE_OFFSET + rank, two)
+    survivor_rank = np.where(fired, np.nan, 0.0)
+    staged = np.where(fired, subject.STAGE_ONE_SCORE_OFFSET + rank, comp)
     return subject.StagedOutcome(
         gated=fired,
         stage_one_raw=raw,
         stage_one_rank=rank,
         stage_two_score=two,
+        stage_one_survivor_rank=survivor_rank,
+        composite_score=comp,
         staged_score=staged,
         survivor_index=np.flatnonzero(~fired),
         feature_seconds=feature_seconds,
@@ -725,37 +975,100 @@ class StagedDecisionTests(unittest.TestCase):
         outcome = _outcome(gated, stage_two)
         for threshold in (0.05, 0.5, 0.95, 0.999):
             subject.assert_staged_decision_equivalence(
-                gated, stage_two, outcome.staged_score, threshold
+                gated,
+                stage_two,
+                outcome.composite_score,
+                outcome.staged_score,
+                threshold,
             )
             np.testing.assert_array_equal(
                 outcome.staged_score > threshold,
                 gated | (np.nan_to_num(stage_two, nan=-1.0) > threshold),
             )
 
+    def test_the_survivor_decision_is_made_on_the_composite(self) -> None:
+        """The point of policy version 2: a survivor whose stage-2 rank is
+        below the threshold but whose composite is above it IS rejected."""
+        gated = np.array([False, False])
+        stage_two = np.array([0.40, 0.40])
+        composite = np.array([0.90, 0.40])
+        outcome = _outcome(gated, stage_two, composite=composite)
+        subject.assert_staged_decision_equivalence(
+            gated, stage_two, composite, outcome.staged_score, 0.5
+        )
+        np.testing.assert_array_equal(
+            outcome.staged_score > 0.5, np.array([True, False])
+        )
+
+    def test_a_composite_below_its_stage_two_score_is_refused(self) -> None:
+        gated = np.array([False])
+        with self.assertRaisesRegex(AssertionError, "required to be a max"):
+            subject.assert_staged_decision_equivalence(
+                gated,
+                np.array([0.6]),
+                np.array([0.4]),
+                np.array([0.4]),
+                0.5,
+            )
+
     def test_a_gated_row_carrying_a_stage_two_score_is_refused(self) -> None:
         """That would mean the short circuit did not happen."""
         gated = np.array([True, False])
         stage_two = np.array([0.4, 0.2])
+        composite = np.array([np.nan, 0.2])
         staged = np.array([1.5, 0.2])
         with self.assertRaisesRegex(AssertionError, "short circuit did not"):
             subject.assert_staged_decision_equivalence(
-                gated, stage_two, staged, 0.5
+                gated, stage_two, composite, staged, 0.5
+            )
+
+    def test_a_gated_row_carrying_a_composite_score_is_refused(self) -> None:
+        gated = np.array([True])
+        with self.assertRaisesRegex(AssertionError, "composite score"):
+            subject.assert_staged_decision_equivalence(
+                gated,
+                np.array([np.nan]),
+                np.array([0.4]),
+                np.array([1.5]),
+                0.5,
             )
 
     def test_a_survivor_without_a_stage_two_score_is_refused(self) -> None:
         with self.assertRaisesRegex(AssertionError, "no stage-2 score"):
             subject.assert_staged_decision_equivalence(
-                np.array([False]), np.array([np.nan]), np.array([0.2]), 0.5
+                np.array([False]),
+                np.array([np.nan]),
+                np.array([0.2]),
+                np.array([0.2]),
+                0.5,
+            )
+
+    def test_a_survivor_without_a_composite_score_is_refused(self) -> None:
+        with self.assertRaisesRegex(AssertionError, "no composite score"):
+            subject.assert_staged_decision_equivalence(
+                np.array([False]),
+                np.array([0.2]),
+                np.array([np.nan]),
+                np.array([0.2]),
+                0.5,
             )
 
     def test_a_misaligned_or_non_finite_staged_score_is_refused(self) -> None:
         with self.assertRaisesRegex(AssertionError, "not aligned"):
             subject.assert_staged_decision_equivalence(
-                np.array([True]), np.array([np.nan]), np.array([1.1, 1.2]), 0.5
+                np.array([True]),
+                np.array([np.nan]),
+                np.array([np.nan]),
+                np.array([1.1, 1.2]),
+                0.5,
             )
         with self.assertRaisesRegex(AssertionError, "non-finite"):
             subject.assert_staged_decision_equivalence(
-                np.array([True]), np.array([np.nan]), np.array([np.nan]), 0.5
+                np.array([True]),
+                np.array([np.nan]),
+                np.array([np.nan]),
+                np.array([np.nan]),
+                0.5,
             )
 
     def test_a_staged_score_that_breaks_the_decision_is_refused(self) -> None:
@@ -763,7 +1076,18 @@ class StagedDecisionTests(unittest.TestCase):
             subject.assert_staged_decision_equivalence(
                 np.array([True, False]),
                 np.array([np.nan, 0.9]),
+                np.array([np.nan, 0.9]),
                 np.array([0.1, 0.9]),
+                0.5,
+            )
+
+    def test_a_staged_axis_that_leaves_the_composite_is_refused(self) -> None:
+        with self.assertRaisesRegex(AssertionError, "does not equal"):
+            subject.assert_staged_decision_equivalence(
+                np.array([False]),
+                np.array([0.2]),
+                np.array([0.3]),
+                np.array([0.2]),
                 0.5,
             )
 
@@ -868,7 +1192,7 @@ class KnownFalseUnknownByStageTests(unittest.TestCase):
             [True, False, False, False], [np.nan, 0.99, 0.10, 0.20]
         )
         report = subject.known_false_unknown_by_stage(
-            outcome, np.array([0.05, 0.99, 0.10, 0.20]), 0.5
+            outcome, np.array([0.05, 0.99, 0.10, 0.20]), 0.5, 0.5
         )
         self.assertEqual(report["rows"], 4)
         self.assertEqual(report["stage_one_gate_rate"], 0.25)
@@ -883,7 +1207,7 @@ class KnownFalseUnknownByStageTests(unittest.TestCase):
     def test_a_prefilter_only_rejection_is_visible(self) -> None:
         outcome = _outcome([True, False], [np.nan, 0.1])
         report = subject.known_false_unknown_by_stage(
-            outcome, np.array([0.1, 0.1]), 0.5
+            outcome, np.array([0.1, 0.1]), 0.5, 0.5
         )
         self.assertEqual(report["staged_false_unknown_rate"], 0.5)
         self.assertEqual(report["unstaged_false_unknown_rate"], 0.0)
@@ -893,7 +1217,7 @@ class KnownFalseUnknownByStageTests(unittest.TestCase):
     def test_a_fully_gated_population_reports_no_survivor_rate(self) -> None:
         outcome = _outcome([True, True], [np.nan, np.nan])
         report = subject.known_false_unknown_by_stage(
-            outcome, np.array([0.1, 0.1]), 0.5
+            outcome, np.array([0.1, 0.1]), 0.5, 0.5
         )
         self.assertEqual(report["staged_false_unknown_rate"], 1.0)
         self.assertIsNone(
@@ -903,7 +1227,36 @@ class KnownFalseUnknownByStageTests(unittest.TestCase):
     def test_an_empty_population_is_refused(self) -> None:
         outcome = _outcome([], [])
         with self.assertRaisesRegex(ValueError, "at least one row"):
-            subject.known_false_unknown_by_stage(outcome, np.zeros(0), 0.5)
+            subject.known_false_unknown_by_stage(
+                outcome, np.zeros(0), 0.5, 0.5
+            )
+
+    def test_survivor_rejection_is_on_the_composite_axis(self) -> None:
+        """A survivor below the threshold on stage-2 but above it on the
+        composite is a staged rejection; the unstaged control judges the
+        additive axis against its own threshold."""
+        outcome = _outcome(
+            [False, False],
+            [0.40, 0.40],
+            composite=[0.90, 0.40],
+        )
+        report = subject.known_false_unknown_by_stage(
+            outcome, np.array([0.40, 0.40]), 0.5, 0.5
+        )
+        self.assertEqual(report["staged_false_unknown_rate"], 0.5)
+        self.assertEqual(report["unstaged_false_unknown_rate"], 0.0)
+        self.assertEqual(report["staged_threshold"], 0.5)
+        self.assertEqual(report["unstaged_threshold"], 0.5)
+
+    def test_the_two_thresholds_act_on_their_own_axes(self) -> None:
+        outcome = _outcome([False], [0.6])
+        report = subject.known_false_unknown_by_stage(
+            outcome, np.array([0.6]), 0.7, 0.5
+        )
+        # Composite 0.6 <= staged threshold 0.7: kept.  Additive 0.6 >
+        # unstaged threshold 0.5: control rejects.
+        self.assertEqual(report["staged_false_unknown_rate"], 0.0)
+        self.assertEqual(report["unstaged_false_unknown_rate"], 1.0)
 
 
 class PrefilterRecorderTests(unittest.TestCase):
@@ -949,26 +1302,37 @@ class PrefilterRecorderTests(unittest.TestCase):
         self.assertEqual(features.shape, (3, 12))
         self.assertEqual(len(contexts), 3)
 
-    def test_only_the_selection_population_is_extracted(self) -> None:
-        """Not computing train/enroll features is the fit-nothing guarantee."""
+    def test_the_training_population_is_never_extracted(self) -> None:
+        """Not computing training features is the fit-nothing guarantee;
+        enrollment and selection are the two calibrate/score populations."""
         recorder = self._recorder()
         self._feed(recorder, (5,))
-        self.assertIsNone(recorder.matrix)
+        self.assertEqual(recorder.matrices, {})
         self._feed(recorder, (3,))
-        self.assertIsNone(recorder.matrix)
+        self.assertEqual(set(recorder.matrices), {"en"})
         self._feed(recorder, (2,))
-        self.assertIsNotNone(recorder.matrix)
-        self.assertEqual(recorder.matrix.shape, (2, pdg.FEATURE_COUNT))
+        self.assertEqual(set(recorder.matrices), {"en", "va"})
+        self.assertEqual(
+            recorder.matrices["en"].shape, (3, pdg.FEATURE_COUNT)
+        )
+        self.assertEqual(
+            recorder.matrices["va"].shape, (2, pdg.FEATURE_COUNT)
+        )
 
-    def test_the_recorded_population_is_keyed_and_measured(self) -> None:
+    def test_the_recorded_populations_are_keyed_and_measured(self) -> None:
         recorder = self._recorder()
         self._feed(recorder, (5, 3, 2))
-        features, length = subject._recorded_prefilter(
+        recorded = subject._recorded_prefilter(
             recorder,
             {"xtr": np.zeros(5), "xen": np.zeros(3), "xva": np.zeros(2)},
         )
-        self.assertEqual(features.shape, (2, pdg.FEATURE_COUNT))
-        self.assertEqual(length, 1024)
+        self.assertEqual(set(recorded), {"en", "va"})
+        enroll_features, enroll_length = recorded["en"]
+        selection_features, selection_length = recorded["va"]
+        self.assertEqual(enroll_features.shape, (3, pdg.FEATURE_COUNT))
+        self.assertEqual(selection_features.shape, (2, pdg.FEATURE_COUNT))
+        self.assertEqual(enroll_length, 1024)
+        self.assertEqual(selection_length, 1024)
 
     def test_a_missing_population_is_refused(self) -> None:
         recorder = self._recorder()
@@ -1254,6 +1618,17 @@ class EndToEndRunTests(unittest.TestCase):
         )
         return subject.RebuiltPopulations(
             populations=populations,
+            # An enrollment population with a couple of stage-1-gated rows, so
+            # the composite calibration is fit on a strict survivor subset
+            # rather than trivially on everything.
+            enrollment_features=np.vstack(
+                [
+                    _pose_rows(43, 4444),
+                    _pose_rows(2, 4445, shift=6.0),
+                ]
+            ),
+            enrollment_capture_length=KNOWN_LENGTH,
+            enrollment_feature_seconds=0.20,
             # A known population whose stage-1 scores straddle the operating
             # point, so both stages contribute to known FUR and the attribution
             # is exercised rather than trivially zero.
@@ -1328,7 +1703,11 @@ class EndToEndRunTests(unittest.TestCase):
         self.assertEqual(report["sealed_release_data_used"], 0)
         self.assertEqual(report["consumed_test_rows_used"], 0)
         self.assertEqual(report["sealed_release_paths_read"], 0)
-        self.assertFalse(report["release_seed_20260731_used"])
+        self.assertFalse(report["release_seed_20260733_used"])
+        self.assertEqual(
+            report["consumed_sealed_release_seeds_excluded"],
+            [20260729, 20260731],
+        )
         self.assertTrue(report["development_only"])
         self.assertFalse(report["release_evidence"])
         contract = report["fitting_contract"]
@@ -1336,13 +1715,26 @@ class EndToEndRunTests(unittest.TestCase):
         self.assertEqual(
             contract["rank_and_threshold_population"], "enrollment only"
         )
+        self.assertEqual(
+            contract["composite_rank_and_threshold_population"],
+            "enrollment stage-1 survivors only",
+        )
         self.assertFalse(contract["policy_searched_here"])
         self.assertFalse(contract["stage_one_fitted_in_this_run"])
         self.assertFalse(contract["stage_one_training_features_computed_here"])
-        self.assertFalse(contract["stage_one_enrollment_features_computed_here"])
+        self.assertTrue(contract["stage_one_enrollment_features_computed_here"])
+        self.assertIn(
+            "composite", contract["stage_one_enrollment_features_role"]
+        )
         self.assertEqual(
             report["seeds"][
                 "novelty_rows_used_to_choose_the_stage_one_operating_point"
+            ],
+            0,
+        )
+        self.assertEqual(
+            report["seeds"][
+                "novelty_rows_used_to_choose_the_composite_threshold"
             ],
             0,
         )
@@ -1354,6 +1746,86 @@ class EndToEndRunTests(unittest.TestCase):
             report["fusion"]["reproduction"]["bit_identical_to_artifact"]
         )
         self.assertEqual(len(report["fusion"]["directory_sha256"]), 64)
+
+    # -- the composite policy (staged policy version 2) ---------------------
+
+    def test_the_report_states_the_policy_version_it_validates(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            report = self._run(Path(root))
+        architecture = report["architecture"]
+        self.assertEqual(architecture["kind"], subject.STAGED_POLICY_KIND)
+        self.assertEqual(architecture["schema"], subject.STAGED_POLICY_SCHEMA)
+        self.assertEqual(
+            architecture["staged_policy_version"],
+            subject.STAGED_POLICY_VERSION,
+        )
+        self.assertEqual(
+            architecture["survivor_score"], subject.COMPOSITE_SURVIVOR_SCORE
+        )
+        self.assertIn("composite", architecture)
+        self.assertIn(
+            "discarded below the gate", architecture["why_composite"]
+        )
+
+    def test_the_composite_block_is_recorded_and_consistent(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            report = self._run(Path(root))
+            composite_path = (
+                Path(root) / "openset" / subject.COMPOSITE_POLICY_FILENAME
+            )
+            self.assertTrue(composite_path.is_file())
+            loaded = subject.load_composite_policy(
+                composite_path,
+                expected_stage_two_threshold=report["stage_two"]["threshold"],
+            )
+        block = report["composite"]
+        self.assertEqual(
+            block["policy_version"], subject.STAGED_POLICY_VERSION
+        )
+        self.assertEqual(block["threshold"], loaded.threshold)
+        self.assertEqual(
+            block["threshold_quantile"],
+            float(subject.COMPOSITE_THRESHOLD_QUANTILE),
+        )
+        self.assertEqual(
+            block["threshold_population"],
+            "enrollment stage-1 survivors only (enrollment only, as every "
+            "rank and threshold in this chain)",
+        )
+        self.assertEqual(
+            block["stage_two_threshold_unchanged"],
+            report["stage_two"]["threshold"],
+        )
+        self.assertEqual(
+            block["enrollment_rows"],
+            block["enrollment_gated_rows"]
+            + block["enrollment_survivor_rows"],
+        )
+        self.assertGreater(block["enrollment_gated_rows"], 0)
+        self.assertEqual(len(block["enrollment_features_sha256"]), 64)
+        # The staged decision threshold everywhere is the composite one.
+        self.assertEqual(
+            report["known"]["by_stage"]["staged_threshold"],
+            block["threshold"],
+        )
+        self.assertEqual(
+            report["known"]["by_stage"]["unstaged_threshold"],
+            report["stage_two"]["threshold"],
+        )
+
+    def test_the_composite_npz_is_a_pinned_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            report = self._run(Path(root))
+        self.assertEqual(
+            set(report["artifacts"]),
+            {
+                "v3_open_policy_stage_two.npz",
+                "v3_branch_lof_components.npz",
+                subject.COMPOSITE_POLICY_FILENAME,
+            },
+        )
+        for digest in report["artifacts"].values():
+            self.assertEqual(len(digest), 64)
 
     # -- gates, at every seed and length -----------------------------------
 
@@ -1612,6 +2084,11 @@ class EndToEndRunTests(unittest.TestCase):
     def test_the_release_seed_stops_the_run(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaisesRegex(ValueError, "unspent release seed"):
+                self._run(Path(root), novelty_seeds=[20260733])
+
+    def test_a_consumed_sealed_seed_stops_the_run(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaisesRegex(ValueError, "consumed sealed"):
                 self._run(Path(root), novelty_seeds=[20260731])
 
     def test_a_prefilter_set_missing_a_scored_length_stops_the_run(self) -> None:

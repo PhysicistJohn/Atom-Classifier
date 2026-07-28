@@ -1,18 +1,26 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  COMPOSITE_SURVIVOR_SCORE,
+  COMPOSITE_THRESHOLD_QUANTILE,
+  CompositeSurvivorPolicyV3,
   FROZEN_BRANCH_LOF_RANK_WEIGHT,
   FROZEN_GEOMETRY_WEIGHT,
   STAGE_ONE_SCORE_OFFSET,
+  STAGED_POLICY_KIND,
+  STAGED_POLICY_SCHEMA,
+  STAGED_POLICY_VERSION,
   StageOneGateV3,
   StageTwoRejectorV3,
   TimeDomainOpenSetV3,
   acrossPatchFrequencyDispersion,
   empiricalRank,
   loadTimeDomainOpenSetAssetV3,
+  numpyLinearQuantile,
   prefilterPoseDegeneracyFeatures,
   frontendMinimumBandwidth,
   stagedArchitectureContract,
+  type CompositeSurvivorPolicyAsset,
   type StageOneEvaluation,
   type TimeDomainOpenSetAssetV3,
 } from './time-domain-openset-v3.js';
@@ -48,8 +56,8 @@ interface FixtureStageTwo {
   geometry_rank: number;
   combined_raw: number;
   score: number;
+  /** The stage-2 policy's own q95, recorded for cross-checks only. */
   threshold: number;
-  rejected: boolean;
 }
 
 interface FixtureRow {
@@ -62,6 +70,10 @@ interface FixtureRow {
   raw_features: number[];
   standardized_features: number[];
   stage_two: FixtureStageTwo | null;
+  /** Null exactly when gated (staged policy version 2 survivor terms). */
+  stage_one_survivor_rank: number | null;
+  composite_score: number | null;
+  staged_threshold: number;
   staged_score: number;
   rejected_stage: 1 | 2 | null;
   decision_label: string;
@@ -69,6 +81,7 @@ interface FixtureRow {
 
 interface ParityFixture {
   schema: string;
+  schema_version: number;
   classes: string[];
   frontend: {
     patch_length: number;
@@ -78,6 +91,10 @@ interface ParityFixture {
   };
   contract: Record<string, unknown>;
   counts: Record<string, number>;
+  policy_version: string;
+  survivor_score: string;
+  staged_threshold: number;
+  stage_two_threshold: number;
   rows: FixtureRow[];
 }
 
@@ -156,6 +173,79 @@ describe('time-domain openset v3 asset', () => {
       ['real', 0.4, 2],
       ['complex', 0.6, 64],
     ]);
+  });
+
+  it('pins the staged composite policy (version 2)', () => {
+    expect(asset.composite.policy_version).toBe(STAGED_POLICY_VERSION);
+    expect(asset.composite.kind).toBe(STAGED_POLICY_KIND);
+    expect(asset.composite.schema).toBe(STAGED_POLICY_SCHEMA);
+    expect(asset.composite.survivor_score).toBe(COMPOSITE_SURVIVOR_SCORE);
+    expect(asset.composite.threshold_quantile).toBe(
+      COMPOSITE_THRESHOLD_QUANTILE,
+    );
+    // The composite was fit against exactly this stage-2 state.
+    expect(asset.composite.stage_two_threshold).toBe(
+      asset.stage_two.policy.threshold,
+    );
+    // The fixture and the asset agree on the decision threshold.
+    expect(fixture.staged_threshold).toBe(asset.composite.threshold);
+    expect(fixture.policy_version).toBe(STAGED_POLICY_VERSION);
+  });
+
+  it('refuses an asset recording a different staged policy version', () => {
+    const broken = JSON.parse(JSON.stringify(asset)) as {
+      composite: { policy_version: string };
+    };
+    broken.composite.policy_version =
+      'v3-staged-openset-policy-v1-stage2-only';
+    expect(() => loadTimeDomainOpenSetAssetV3(broken)).toThrow(
+      /staged policy version mismatch/,
+    );
+  });
+
+  it('refuses a composite fit against a different stage-2 state', () => {
+    const broken = JSON.parse(JSON.stringify(asset)) as {
+      composite: { stage_two_threshold: number };
+    };
+    broken.composite.stage_two_threshold += 1e-6;
+    expect(() => loadTimeDomainOpenSetAssetV3(broken)).toThrow(
+      /different stage-2 state/,
+    );
+  });
+
+  it('refuses a composite whose stored threshold is not the frozen quantile', () => {
+    const broken = JSON.parse(JSON.stringify(asset)) as {
+      composite: { threshold: number };
+    };
+    broken.composite.threshold = Math.min(
+      0.999999,
+      broken.composite.threshold + 1e-9,
+    );
+    expect(() => loadTimeDomainOpenSetAssetV3(broken)).toThrow(
+      /frozen quantile/,
+    );
+  });
+});
+
+describe('numpy linear quantile primitive', () => {
+  it('matches np.quantile linear interpolation on both lerp branches', () => {
+    // t < 0.5 branch: q=0.1 over [0,1,2,3] -> virtual 0.3 -> 0 + 0.3*1
+    expect(numpyLinearQuantile([0, 1, 2, 3], 0.1)).toBeCloseTo(0.3, 15);
+    // t >= 0.5 branch: q=0.95 over 5 values -> virtual 3.8 ->
+    // b - (b-a)*(1-t) with a=6, b=8, t=0.8 -> 8 - 2*0.2
+    expect(numpyLinearQuantile([0, 2, 4, 6, 8], 0.95)).toBeCloseTo(7.6, 15);
+    // Endpoints.
+    expect(numpyLinearQuantile([5], 0.95)).toBe(5);
+    expect(numpyLinearQuantile([1, 2], 1.0)).toBe(2);
+  });
+
+  it('reproduces the asset threshold from the asset calibration exactly', () => {
+    expect(
+      numpyLinearQuantile(
+        asset.composite.composite_calibration_raw,
+        COMPOSITE_THRESHOLD_QUANTILE,
+      ),
+    ).toBe(asset.composite.threshold);
   });
 });
 
@@ -313,10 +403,9 @@ describe('stage-2 parity: branch LOF + frozen geometry blend', () => {
         Math.abs(evaluation.score - expected.score),
         `${row.name} stage-2 score (bound ${scoreBound})`,
       ).toBeLessThanOrEqual(scoreBound);
+      // The stage-2 threshold is recorded for cross-checks only; the staged
+      // decision is made on the composite (staged policy version 2).
       expect(evaluation.threshold).toBe(expected.threshold);
-      expect(evaluation.rejected, `${row.name} stage-2 decision`).toBe(
-        expected.rejected,
-      );
     }
     expect(worstRawRelative).toBeLessThanOrEqual(1e-9);
     expect(worstLofRank).toBeLessThanOrEqual(1e-9);
@@ -374,9 +463,28 @@ describe('staged decision parity', () => {
         row.rejected_stage,
       );
       expect(decision.gated).toBe(row.rejected_stage === 1);
-      const stagedScoreBound = row.rejected_stage === 1
-        ? 1e-8
-        : rankToleranceAround(
+      // The decision threshold is the composite q95, on every row.
+      expect(decision.threshold).toBe(row.staged_threshold);
+      expect(decision.threshold).toBe(asset.composite.threshold);
+      if (row.rejected_stage === 1) {
+        // Gated rows have no stage-2 score at all: the short circuit is
+        // real, and the gated axis is unchanged by policy version 2.
+        expect(decision.stageTwo).toBeNull();
+        expect(decision.stageOneSurvivorRank).toBeNull();
+        expect(decision.compositeScore).toBeNull();
+        expect(
+          Math.abs(decision.stagedScore - row.staged_score),
+          `${row.name} gated staged score`,
+        ).toBeLessThanOrEqual(1e-8);
+        expect(decision.stagedScore).toBeGreaterThan(STAGE_ONE_SCORE_OFFSET);
+        expect(decision.stagedScore).toBeLessThan(2);
+      } else {
+        // Survivors: the staged score is the COMPOSITE. Both terms carry a
+        // provable bound: the stage-2 rank bound is adaptive around the
+        // enrollment tie blocks, and the stage-1 survivor rank bound is
+        // adaptive around the stage-1 score's provable radius (1e-8, the
+        // stage-1 parity tolerance).
+        const stageTwoBound = rankToleranceAround(
           asset.stage_two.policy.combined_calibration,
           row.stage_two!.combined_raw,
           asset.stage_two.policy.geometry_weight * rankToleranceAround(
@@ -385,19 +493,35 @@ describe('staged decision parity', () => {
             GEOMETRY_DEVIATION_RADIUS,
           ) + 1e-9,
         );
-      expect(
-        Math.abs(decision.stagedScore - row.staged_score),
-        `${row.name} staged score`,
-      ).toBeLessThanOrEqual(stagedScoreBound);
+        const stageOneRankBound = rankToleranceAround(
+          asset.composite.stage_one_calibration_raw,
+          row.stage_one.score,
+          1e-8,
+        );
+        expect(
+          Math.abs(
+            decision.stageOneSurvivorRank! - row.stage_one_survivor_rank!,
+          ),
+          `${row.name} stage-1 survivor rank (bound ${stageOneRankBound})`,
+        ).toBeLessThanOrEqual(stageOneRankBound);
+        const compositeBound = Math.max(stageTwoBound, stageOneRankBound);
+        expect(
+          Math.abs(decision.compositeScore! - row.composite_score!),
+          `${row.name} composite score (bound ${compositeBound})`,
+        ).toBeLessThanOrEqual(compositeBound);
+        expect(decision.stagedScore).toBe(decision.compositeScore);
+        expect(
+          Math.abs(decision.stagedScore - row.staged_score),
+          `${row.name} staged score`,
+        ).toBeLessThanOrEqual(compositeBound);
+        // The composite is a true max: never below its stage-2 term.
+        expect(decision.compositeScore!).toBeGreaterThanOrEqual(
+          decision.stageTwo!.score,
+        );
+      }
       // The staged axis reproduces the staged decision exactly.
       const rejected = decision.stagedScore > decision.threshold;
       expect(rejected).toBe(row.rejected_stage !== null);
-      // Gated rows have no stage-2 score at all: the short circuit is real.
-      if (row.rejected_stage === 1) {
-        expect(decision.stageTwo).toBeNull();
-        expect(decision.stagedScore).toBeGreaterThan(STAGE_ONE_SCORE_OFFSET);
-        expect(decision.stagedScore).toBeLessThan(2);
-      }
       // Every decision restates the architecture contract.
       expect(decision.contract).toEqual(stagedArchitectureContract());
     }
@@ -481,10 +605,13 @@ describe('stage-1 causal-prefix rule for long captures', () => {
   }
 
   it('gates a long noise-like capture on its first longest-fitted samples', () => {
-    // Seed chosen so the N16384 model fires with a wide margin (score 2.23
-    // against threshold 1.80): stage-1 noise recall is ~0.6 by design, so a
-    // knife-edge draw would make this test fragile for the wrong reason.
-    const noise = whiteNoise(LONG, 3);
+    // Seed chosen so the N16384 model fires with a wide margin (score 2.89
+    // against the tightened 0.01-budget threshold 2.47): stage-1 noise recall
+    // is ~0.5 by design at this budget, so a knife-edge draw would make this
+    // test fragile for the wrong reason.  (Seed 3 was the wide-margin draw
+    // for the retired 0.02-budget threshold 1.80; it scores 2.23 and no
+    // longer gates.)
+    const noise = whiteNoise(LONG, 43);
     const evaluation = gate.evaluate(noise.inPhase, noise.quadrature);
     expect(evaluation.causalPrefixApplied).toBe(true);
     expect(evaluation.captureLength).toBe(LONG);
@@ -608,6 +735,74 @@ describe('empirical rank primitive', () => {
     expect(empiricalRank(calibration, 2.5)).toBe(3 / 5);
     expect(empiricalRank(calibration, 0)).toBe(0);
     expect(empiricalRank(calibration, 10)).toBe(4 / 5);
+  });
+});
+
+describe('composite survivor policy primitive', () => {
+  function syntheticComposite(): CompositeSurvivorPolicyAsset {
+    const compositeCalibration = [0.1, 0.2, 0.4, 0.8];
+    return {
+      schema: STAGED_POLICY_SCHEMA,
+      kind: STAGED_POLICY_KIND,
+      policy_version: STAGED_POLICY_VERSION,
+      survivor_score: COMPOSITE_SURVIVOR_SCORE,
+      threshold_quantile: COMPOSITE_THRESHOLD_QUANTILE,
+      threshold: numpyLinearQuantile(
+        compositeCalibration,
+        COMPOSITE_THRESHOLD_QUANTILE,
+      ),
+      stage_two_threshold: 0.9,
+      stage_one_calibration_raw: [-3, -1, -1, 0.5],
+      composite_calibration_raw: compositeCalibration,
+      enrollment_rows: 6,
+      enrollment_gated_rows: 2,
+      enrollment_capture_length: 16384,
+    };
+  }
+
+  it('ranks stage-1 scores searchsorted-left against enrollment survivors', () => {
+    const policy = new CompositeSurvivorPolicyV3(syntheticComposite());
+    // Tie block: -1 appears twice; searchsorted-left lands BEFORE the block.
+    expect(policy.stageOneSurvivorRank(-1)).toBe(1 / 5);
+    expect(policy.stageOneSurvivorRank(-10)).toBe(0);
+    expect(policy.stageOneSurvivorRank(2)).toBe(4 / 5);
+  });
+
+  it('computes the composite as a true max of the two ranks', () => {
+    const policy = new CompositeSurvivorPolicyV3(syntheticComposite());
+    // stage-2 term dominates.
+    expect(policy.composite(0.3, -1)).toBe(0.3);
+    // stage-1 term dominates.
+    expect(policy.composite(0.1, 2)).toBe(4 / 5);
+  });
+
+  it('refuses an unsorted stage-1 calibration', () => {
+    const broken = syntheticComposite();
+    broken.stage_one_calibration_raw = [0.5, -1, -1, -3];
+    expect(() => new CompositeSurvivorPolicyV3(broken)).toThrow(/sorted/);
+  });
+
+  it('refuses a composite calibration outside [0, 1)', () => {
+    const broken = syntheticComposite();
+    broken.composite_calibration_raw = [0.1, 0.2, 0.4, 1.0];
+    broken.threshold = numpyLinearQuantile(
+      broken.composite_calibration_raw,
+      COMPOSITE_THRESHOLD_QUANTILE,
+    );
+    expect(() => new CompositeSurvivorPolicyV3(broken)).toThrow(/\[0, 1\)/);
+  });
+
+  it('refuses mismatched survivor counts and row accounting', () => {
+    const broken = syntheticComposite();
+    broken.stage_one_calibration_raw = [-3, -1, -1];
+    expect(() => new CompositeSurvivorPolicyV3(broken)).toThrow(
+      /survivor count/,
+    );
+    const rows = syntheticComposite();
+    rows.enrollment_rows = 7;
+    expect(() => new CompositeSurvivorPolicyV3(rows)).toThrow(
+      /gated \+ survivors/,
+    );
   });
 });
 

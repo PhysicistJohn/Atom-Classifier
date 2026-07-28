@@ -537,6 +537,13 @@ class MiniFixture:
                 "v3_branch_lof_components.npz": _sha256(
                     directory / "v3_branch_lof_components.npz"
                 ),
+                # the composite npz record is filled after the prefilters
+                # (and therefore the composite policy) exist
+            },
+            "architecture": {
+                "kind": staged.STAGED_POLICY_KIND,
+                "schema": staged.STAGED_POLICY_SCHEMA,
+                "staged_policy_version": staged.STAGED_POLICY_VERSION,
             },
             "fusion": {
                 "directory": str(self.fusion_dir),
@@ -548,7 +555,8 @@ class MiniFixture:
                 "directory": str(self.prefilter_dir),
             },
             "stage_two": {"threshold": float(self.policy.threshold)},
-            "seeds": {"novelty_seeds": [20260942, 20260943]},
+            "composite": {"threshold": None},  # filled with the prefilters
+            "seeds": {"novelty_seeds": [20260947, 20260948]},
             "source_sha256": sources,
         }
         self._staged_metrics_template = metrics
@@ -613,6 +621,46 @@ class MiniFixture:
         )
         set_sha = noise_prefilter.prefilter_set_sha256(self.prefilter_dir)
         self._staged_metrics_template["stage_one"]["set_sha256"] = set_sha
+
+        # The composite survivor policy (staged policy version 2), fit with
+        # the real fitting code against the real loaded gate.  The synthetic
+        # enrollment stage-1 features force at least one gated enrollment row
+        # so the calibration is a strict survivor subset.
+        gate = staged.load_stage_one(
+            staged.load_prefilter_module(),
+            staged.load_posedegen_module(),
+            self.prefilter_dir,
+            required_lengths=MINI_STAGE_ONE_LENGTHS,
+        )
+        rng = np.random.default_rng(23)
+        enroll_rows = len(self.policy.calibration_scores)
+        enroll_features = rng.normal(
+            0.5, 0.2, (enroll_rows, pdg.FEATURE_COUNT)
+        )
+        # The fixture model scores 0.5 - carrier_phase_coherence (coefficient
+        # -1, mean 0.5, unit scale, zero intercept), so placing the coherence
+        # column relative to the anchored threshold places each row's gate
+        # outcome deterministically: survivors strictly below, row 0 above.
+        coherence_column = pdg.FEATURE_NAMES.index("carrier_phase_coherence")
+        enroll_features[:, coherence_column] = (
+            0.5 - threshold + rng.uniform(0.01, 0.30, enroll_rows)
+        )
+        enroll_features[0, coherence_column] = 0.5 - threshold - 5.0
+        self.composite = staged.fit_composite_policy(
+            gate,
+            enroll_features,
+            length,
+            np.asarray(self.policy.calibration_scores, dtype=np.float64),
+            stage_two_threshold=self.policy.threshold,
+        )
+        composite_path = self.staged_dir / staged.COMPOSITE_POLICY_FILENAME
+        staged.save_composite_policy(composite_path, self.composite)
+        self._staged_metrics_template["artifacts"][
+            staged.COMPOSITE_POLICY_FILENAME
+        ] = _sha256(composite_path)
+        self._staged_metrics_template["composite"]["threshold"] = float(
+            self.composite.threshold
+        )
         _write_json(
             self.staged_dir / "openset_metrics.json",
             self._staged_metrics_template,
@@ -907,6 +955,15 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
             noise_prefilter.ARCHITECTURE_CONTRACT_CHANGE,
         )
         self.assertEqual(
+            contract["staged_policy_version"], staged.STAGED_POLICY_VERSION
+        )
+        self.assertEqual(
+            contract["staged_policy_schema"], staged.STAGED_POLICY_SCHEMA
+        )
+        self.assertEqual(
+            contract["survivor_score"], staged.COMPOSITE_SURVIVOR_SCORE
+        )
+        self.assertEqual(
             contract["stage_one_coverage_by_length"],
             {"256": "fitted", "512": "causal_prefix"},
         )
@@ -1027,9 +1084,24 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
             covered["known_false_unknown_rate"],
             by_stage["staged_false_unknown_rate"],
         )
+        # A gated known row is always a staged false-unknown, whatever the
+        # composite threshold does to the survivors.
         self.assertGreaterEqual(
             covered["known_false_unknown_rate"],
-            covered["unstaged_control"]["known_false_unknown_rate"],
+            by_stage["stage_one_gate_rate"],
+        )
+        # The two arms are decided on their own axes and thresholds.
+        self.assertEqual(
+            by_stage["staged_threshold"],
+            float(self.candidate.threshold),
+        )
+        self.assertEqual(
+            by_stage["unstaged_threshold"],
+            float(self.candidate.stage_two_threshold),
+        )
+        self.assertEqual(
+            covered["unstaged_control"]["threshold"],
+            float(self.candidate.stage_two_threshold),
         )
 
     def test_length_above_max_fitted_is_gated_through_the_causal_prefix(self):
@@ -1068,10 +1140,11 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
             + by_stage["stage_two_false_unknown_rate_marginal"],
             places=12,
         )
-        # Stage-1 gating means the staged axis is not the additive control.
+        # Stage-1 gating means the staged axis is not the additive control:
+        # a gated row is always a staged rejection.
         self.assertGreaterEqual(
             prefixed["known_false_unknown_rate"],
-            prefixed["unstaged_control"]["known_false_unknown_rate"],
+            by_stage["stage_one_gate_rate"],
         )
         self.assertGreaterEqual(
             prefixed["flagged_unknown_noise"],
@@ -1169,9 +1242,29 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
         )
         self.assertEqual(
             set(components["staged_artifact_sha256"]),
-            {"v3_open_policy_stage_two.npz", "v3_branch_lof_components.npz"},
+            {
+                "v3_open_policy_stage_two.npz",
+                "v3_branch_lof_components.npz",
+                staged.COMPOSITE_POLICY_FILENAME,
+            },
         )
         self.assertEqual(components["stage_one_capture_lengths"], [256])
+        self.assertEqual(
+            components["staged_policy_version"],
+            staged.STAGED_POLICY_VERSION,
+        )
+        self.assertEqual(
+            components["staged_threshold"],
+            float(self.fixture.composite.threshold),
+        )
+        self.assertEqual(
+            components["stage_two_threshold"],
+            float(self.fixture.policy.threshold),
+        )
+        self.assertEqual(
+            components["composite"]["threshold"],
+            float(self.fixture.composite.threshold),
+        )
         self.assertEqual(
             provenance["evaluation_protocol"],
             self.suite.intent["evaluation_protocol"],
@@ -1400,8 +1493,18 @@ class CandidateTamperTests(unittest.TestCase):
         candidate = self._load(self._copy_candidate())
         self.assertEqual(candidate.stage_one_lengths, MINI_STAGE_ONE_LENGTHS)
         self.assertEqual(candidate.classes, MINI_CLASSES)
+        # The STAGED decision threshold is the composite policy's; the
+        # stage-2 policy's own threshold is carried for the control arm.
         self.assertEqual(
-            candidate.threshold, float(self.fixture.policy.threshold)
+            candidate.threshold, float(self.fixture.composite.threshold)
+        )
+        self.assertEqual(
+            candidate.stage_two_threshold,
+            float(self.fixture.policy.threshold),
+        )
+        self.assertEqual(
+            candidate.composite.enrollment_survivor_rows,
+            self.fixture.composite.enrollment_survivor_rows,
         )
 
     def test_failing_staged_validation_is_refused(self):
@@ -1441,6 +1544,54 @@ class CandidateTamperTests(unittest.TestCase):
             staged_dir / "v3_open_policy_stage_two.npz", **payload
         )
         with self.assertRaises(ValueError):
+            self._load(root)
+
+    def test_a_version_one_staged_artifact_is_refused(self):
+        """A staged artifact validated under a different policy version must
+        never be evaluated with composite semantics."""
+        root = self._copy_candidate()
+        metrics_path = root / "staged" / "openset_metrics.json"
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        metrics["architecture"]["staged_policy_version"] = "v1-of-something"
+        _write_json(metrics_path, metrics)
+        with self.assertRaisesRegex(ValueError, "policy version mismatch"):
+            self._load(root)
+
+    def test_a_missing_architecture_block_is_refused(self):
+        root = self._copy_candidate()
+        metrics_path = root / "staged" / "openset_metrics.json"
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        del metrics["architecture"]
+        _write_json(metrics_path, metrics)
+        with self.assertRaisesRegex(ValueError, "policy version mismatch"):
+            self._load(root)
+
+    def test_a_missing_composite_npz_is_refused(self):
+        root = self._copy_candidate()
+        (root / "staged" / staged.COMPOSITE_POLICY_FILENAME).unlink()
+        with self.assertRaisesRegex(
+            ValueError, "composite-policy .version-2. validation artifact"
+        ):
+            self._load(root)
+
+    def test_a_tampered_composite_npz_is_refused(self):
+        root = self._copy_candidate()
+        path = root / "staged" / staged.COMPOSITE_POLICY_FILENAME
+        with np.load(path) as payload:
+            data = {name: payload[name] for name in payload.files}
+        data["threshold"] = np.asarray(0.123456, dtype=np.float64)
+        np.savez_compressed(path, **data)
+        with self.assertRaisesRegex(ValueError, "frozen quantile"):
+            self._load(root)
+
+    def test_a_composite_fit_against_another_stage_two_is_refused(self):
+        root = self._copy_candidate()
+        path = root / "staged" / staged.COMPOSITE_POLICY_FILENAME
+        with np.load(path) as payload:
+            data = {name: payload[name] for name in payload.files}
+        data["stage_two_threshold"] = np.asarray(0.5, dtype=np.float64)
+        np.savez_compressed(path, **data)
+        with self.assertRaisesRegex(ValueError, "different stage-2"):
             self._load(root)
 
     def test_bundle_asset_tamper_is_refused(self):
@@ -1492,7 +1643,7 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
 
     def test_expected_protocol_reuses_v2_rules_and_updates_v3_fields(self):
         protocol = evaluator.expected_evaluation_protocol(
-            20260731, (4096, 8192, 16384)
+            20260733, (4096, 8192, 16384)
         )
         v2 = release.EXPECTED_EVALUATION_PROTOCOL
         self.assertEqual(protocol["version"], evaluator.EVALUATION_VERSION)
@@ -1502,7 +1653,7 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
         self.assertEqual(
             protocol["length_observation_rule"], v2["length_observation_rule"]
         )
-        self.assertEqual(protocol["novelty"]["seed"], 20260731)
+        self.assertEqual(protocol["novelty"]["seed"], 20260733)
         self.assertEqual(
             protocol["novelty"]["seed_derivation"],
             v2["novelty"]["seed_derivation"],
@@ -1532,14 +1683,37 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
         )
         self.assertFalse(protocol["open_set"]["additive_only"])
         self.assertTrue(protocol["open_set"]["changes_closed_label"])
+        # The composite (staged policy version 2) is predeclared: version,
+        # survivor score, threshold rule and the staged score axis text.
+        self.assertEqual(
+            protocol["open_set"]["staged_policy_schema"],
+            staged.STAGED_POLICY_SCHEMA,
+        )
+        self.assertEqual(
+            protocol["open_set"]["staged_policy_version"],
+            staged.STAGED_POLICY_VERSION,
+        )
+        self.assertEqual(
+            protocol["open_set"]["survivor_score"],
+            staged.COMPOSITE_SURVIVOR_SCORE,
+        )
+        self.assertIn(
+            "enrollment stage-1 survivors",
+            protocol["open_set"]["unknown_threshold_rule"],
+        )
+        self.assertIn("q0.95", protocol["open_set"]["unknown_threshold_rule"])
+        self.assertIn("COMPOSITE", protocol["open_set"]["score_axis"])
+        self.assertIn(
+            "composite survivor policy", protocol["novelty"]["calibration"]
+        )
         # The protocol must be a plain JSON object.
         json.dumps(protocol, allow_nan=False)
 
     def test_expected_protocol_refuses_consumed_and_development_seeds(self):
-        for seed in (20260729, 20260942, 20261001):
+        for seed in (20260729, 20260730, 20260731, 20260732, 20260942, 20261001):
             with self.assertRaises(ValueError):
                 evaluator.expected_evaluation_protocol(seed, (4096,))
-        evaluator.expected_evaluation_protocol(20260731, (4096,))
+        evaluator.expected_evaluation_protocol(20260733, (4096,))
 
     def test_novelty_seed_derivation_matches_v2_formula(self):
         for family in release.NOVELTY_FAMILIES:
@@ -1551,10 +1725,23 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
             evaluator._novelty_seed(1, "not-a-family")
 
     def test_validate_release_seed(self):
-        self.assertEqual(evaluator.validate_release_seed(20260731), 20260731)
-        for seed in (20260729, 20260900, 20260999, 20261000, 20261999):
+        self.assertEqual(evaluator.validate_release_seed(20260733), 20260733)
+        for seed in (
+            20260729,
+            20260730,
+            20260731,
+            20260732,
+            20260900,
+            20260999,
+            20261000,
+            20261999,
+        ):
             with self.assertRaises(ValueError):
                 evaluator.validate_release_seed(seed)
+
+    def test_the_consumed_v3_seed_refusal_names_the_frozen_failure(self):
+        with self.assertRaisesRegex(ValueError, "HANDOFF 25"):
+            evaluator.validate_release_seed(20260731)
 
     def test_default_candidate_directories_are_the_frozen_candidate(self):
         parser = evaluator.build_parser()
@@ -1567,9 +1754,12 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
         )
         self.assertEqual(
             Path(args.staged_dir).name,
-            "staged_validate_prefixrule_seed20260730",
+            "staged_validate_composite_budget001_seed20260730",
         )
-        self.assertEqual(Path(args.prefilter_dir).parent.name, "noise_prefilter_fit20261001")
+        self.assertEqual(
+            Path(args.prefilter_dir).parent.name,
+            "noise_prefilter_fit20261001_budget001",
+        )
         self.assertEqual(args.device, "cpu")
         self.assertIsNone(args.release_root)
 

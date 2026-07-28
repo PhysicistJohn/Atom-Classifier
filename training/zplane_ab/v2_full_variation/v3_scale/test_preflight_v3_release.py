@@ -1,4 +1,4 @@
-"""Unit suite for the seed-20260731 release preflight.
+"""Unit suite for the seed-20260733 release preflight.
 
 What is under test is the property that makes the preflight worth running at
 all: a pin that does not match disk, a tampered artifact, a missing evaluator,
@@ -434,32 +434,43 @@ class EvaluatorSourcesCheckTest(TempDirTestCase):
 
 
 class SeedLedgerCheckTest(TempDirTestCase):
+    FAKE_ROOTS = ("fake_sealed_v2_root", "fake_sealed_v3_root")
+
     def _pins_with_fake_sealed(self, releases: Path) -> dict:
         pins = copy.deepcopy(preflight.DEFAULT_PINS)
-        pins["sealed_root_name"] = "fake_sealed_root"
-        sealed = releases / "fake_sealed_root"
-        pins["sealed_json_sha256"] = {}
-        for name in (
-            "RELEASE_INTENT.json",
-            "RELEASE_MANIFEST.json",
-            "RELEASE_EVALUATION.json",
+        pins["consumed_sealed_roots"] = {}
+        for root_name, recorded_seed in zip(
+            self.FAKE_ROOTS, (20260729, 20260731)
         ):
-            payload = json.dumps({"file": name, "release_seed": 20260729}).encode()
-            _write(sealed / name, payload)
-            pins["sealed_json_sha256"][name] = _sha(payload)
+            sealed = releases / root_name
+            hashes = {}
+            for name in (
+                "RELEASE_INTENT.json",
+                "RELEASE_MANIFEST.json",
+                "RELEASE_EVALUATION.json",
+            ):
+                payload = json.dumps(
+                    {"file": name, "release_seed": recorded_seed}
+                ).encode()
+                _write(sealed / name, payload)
+                hashes[name] = _sha(payload)
+            pins["consumed_sealed_roots"][root_name] = hashes
         return pins
 
-    def test_unused_seed_and_intact_reference_pass(self) -> None:
+    def test_unused_seed_and_intact_references_pass(self) -> None:
         releases = Path(self.tmpdir())
         pins = self._pins_with_fake_sealed(releases)
         checks = _by_name(preflight.check_seed_ledger(releases, pins))
         self.assertTrue(checks["ledger.release_seed_unused"]["passed"])
-        self.assertTrue(checks["ledger.sealed_v2_reference_intact"]["passed"])
+        for root_name in self.FAKE_ROOTS:
+            self.assertTrue(
+                checks[f"ledger.consumed_root_intact.{root_name}"]["passed"]
+            )
 
     def test_seed_named_root_fails(self) -> None:
         releases = Path(self.tmpdir())
         pins = self._pins_with_fake_sealed(releases)
-        (releases / "v3_sealed_seed20260731").mkdir()
+        (releases / "v3_sealed_seed20260733").mkdir()
         checks = _by_name(preflight.check_seed_ledger(releases, pins))
         self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
 
@@ -468,18 +479,35 @@ class SeedLedgerCheckTest(TempDirTestCase):
         pins = self._pins_with_fake_sealed(releases)
         _write(
             releases / "innocuous_name" / "RELEASE_INTENT.json",
-            json.dumps({"release_seed": 20260731}).encode(),
+            json.dumps({"release_seed": 20260733}).encode(),
         )
         checks = _by_name(preflight.check_seed_ledger(releases, pins))
         self.assertFalse(checks["ledger.release_seed_unused"]["passed"])
 
+    def test_consumed_v3_root_is_not_flagged_as_seed_use(self) -> None:
+        # The consumed seed-20260731 root exists on disk by design; only the
+        # NEW seed 20260733 may appear in no release root.
+        releases = Path(self.tmpdir())
+        pins = self._pins_with_fake_sealed(releases)
+        _write(
+            releases / "old_sealed" / "RELEASE_INTENT.json",
+            json.dumps({"release_seed": 20260731}).encode(),
+        )
+        checks = _by_name(preflight.check_seed_ledger(releases, pins))
+        self.assertTrue(checks["ledger.release_seed_unused"]["passed"])
+
     def test_tampered_sealed_reference_fails(self) -> None:
         releases = Path(self.tmpdir())
         pins = self._pins_with_fake_sealed(releases)
-        target = releases / "fake_sealed_root" / "RELEASE_EVALUATION.json"
+        target = releases / self.FAKE_ROOTS[1] / "RELEASE_EVALUATION.json"
         target.write_bytes(b'{"tampered": true}')
         checks = _by_name(preflight.check_seed_ledger(releases, pins))
-        self.assertFalse(checks["ledger.sealed_v2_reference_intact"]["passed"])
+        self.assertFalse(
+            checks[f"ledger.consumed_root_intact.{self.FAKE_ROOTS[1]}"]["passed"]
+        )
+        self.assertTrue(
+            checks[f"ledger.consumed_root_intact.{self.FAKE_ROOTS[0]}"]["passed"]
+        )
 
     @unittest.skipUnless(
         preflight.DEFAULT_RELEASES_DIR.is_dir(), "real release tree missing"
@@ -621,7 +649,7 @@ class GenerationCommandTest(TempDirTestCase):
     @unittest.skipUnless(
         preflight.DEFAULT_BUNDLE_DIR.is_dir(), "real runtime bundle missing"
     )
-    def test_command_matches_v2_mechanics_for_seed_20260731(self) -> None:
+    def test_command_matches_sealed_mechanics_for_seed_20260733(self) -> None:
         generation = preflight.build_generation_command(
             preflight.DEFAULT_PINS,
             preflight.DEFAULT_BUNDLE_DIR,
@@ -630,7 +658,8 @@ class GenerationCommandTest(TempDirTestCase):
         )
         self.assertTrue(generation["not_run_by_preflight"])
         environment = generation["environment"]
-        self.assertEqual(environment["RELEASE_SEED"], "20260731")
+        self.assertEqual(environment["RELEASE_SEED"], "20260733")
+        self.assertEqual(environment["RELEASE_EVALUATION_PROTOCOL"], "v3")
         self.assertEqual(environment["RELEASE_TARGET_PER_CLASS"], "192")
         self.assertEqual(
             environment["CANDIDATE_PATH"],
@@ -646,7 +675,7 @@ class GenerationCommandTest(TempDirTestCase):
             environment["SIGNALLAB_ROOT"],
             str(preflight.DEFAULT_ISOLATED_ROOT),
         )
-        self.assertIn("invariant_fusion_v3_sealed_seed20260731", environment["RELEASE_ROOT"])
+        self.assertIn("invariant_fusion_v3_sealed_seed20260733", environment["RELEASE_ROOT"])
         self.assertIn(
             "node tools/generate-signallab-iq-release-suite.mjs",
             generation["command"],
@@ -819,7 +848,7 @@ class EndToEndTest(TempDirTestCase):
         self.assertEqual(status, 0, text)
         final = text.splitlines()[-1]
         self.assertTrue(final.startswith("GO:"), final)
-        self.assertIn("safe to spend release seed 20260731", final)
+        self.assertIn("safe to spend release seed 20260733", final)
         # Exactly one GO / NO-GO line, every check itemised above it.
         go_lines = [
             line
@@ -855,7 +884,7 @@ class EndToEndTest(TempDirTestCase):
         # The generation command in the report is the v2 mechanics on the
         # new seed, and was not run: its release root must not exist.
         environment = report["generation_command"]["environment"]
-        self.assertEqual(environment["RELEASE_SEED"], "20260731")
+        self.assertEqual(environment["RELEASE_SEED"], "20260733")
         self.assertFalse(Path(environment["RELEASE_ROOT"]).exists())
 
 
