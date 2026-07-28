@@ -93,6 +93,19 @@ namespace disjoint from every novelty seed.  Each of those is re-checked here
 from the bundle's own provenance rather than taken on trust, and a bundle whose
 metadata does not admit that it gates is refused.
 
+The gate is length-keyed with exactly one substitution, the **causal-prefix
+rule** (:data:`STAGE_ONE_PREFIX_RULE`): a capture LONGER than every fitted
+length is gated by the longest fitted bundle applied to the capture's first
+max-fitted-length samples, which are exactly a capture of that fitted length.
+Lengths below the smallest fitted length are refused as before.  Callers that
+score such longer captures (the sealed evaluator, the deployed runtime) must
+slice via :func:`stage_one_prefix_captures`; this development harness applies
+the same rule to its novelty sweep, computing stage-1 features on each
+capture's first :meth:`StageOneGate.feature_length_for` samples, so a sweep
+length above the fitted set (the sealed suite's N32768) is gated exactly as
+the sealed evaluator gates it.  Every other uncovered sweep length is still
+refused.
+
 One consequence is worth stating plainly: **no novelty seed took part in
 choosing the stage-1 operating point.**  This module does not even extract
 stage-1 features for the training or enrollment populations, which is the
@@ -720,6 +733,18 @@ def validate_seed_plan(
 # STAGE 1: a fitted noise prefilter set, loaded and never re-fit here
 # ---------------------------------------------------------------------------
 
+STAGE_ONE_PREFIX_RULE = (
+    "at a capture length ABOVE the longest fitted prefilter length, the "
+    "stage-1 pose-degeneracy features are computed on the capture's FIRST "
+    "max-fitted-length samples and gated with that length's bundle.  The "
+    "first N samples of a longer capture are exactly an N-sample capture of "
+    "the same emission, so this is the same causal-prefix rule the release "
+    "protocol's length suite is built on, not an approximation.  Lengths "
+    "BELOW the smallest fitted length keep the existing refusal semantics: "
+    "no fitted length is a causal prefix of such a capture, so no bundle may "
+    "be substituted"
+)
+
 
 @dataclass(frozen=True)
 class StageOneGate:
@@ -728,7 +753,12 @@ class StageOneGate:
     The prefilter is **length dependent** -- the pose-degeneracy features are --
     so the sibling module fits one bundle per capture length and this gate
     refuses to score a length it has no bundle for rather than reusing a
-    neighbouring one.
+    neighbouring one.  The single exception is the causal-prefix rule
+    (:data:`STAGE_ONE_PREFIX_RULE`): a capture LONGER than every fitted length
+    is gated by the longest fitted bundle, applied to the capture's first
+    max-fitted-length samples -- which are exactly a capture of that fitted
+    length.  Callers must hand this gate features computed on that prefix;
+    :func:`stage_one_prefix_captures` derives the correctly sliced captures.
     """
 
     prefilter: NoisePrefilterSource
@@ -741,19 +771,43 @@ class StageOneGate:
     def lengths(self) -> tuple[int, ...]:
         return tuple(sorted(self.models))
 
-    def model_for(self, capture_length: int) -> Any:
+    @property
+    def max_fitted_length(self) -> int:
+        return int(max(self.models))
+
+    def feature_length_for(self, capture_length: int) -> int:
+        """The fitted length whose bundle gates a capture of this length.
+
+        A fitted length maps to itself.  A length above the longest fitted
+        length maps to the longest fitted length under the causal-prefix rule;
+        stage-1 features must then be computed on the capture's first
+        ``max_fitted_length`` samples.  Every other uncovered length is
+        refused, exactly as before.
+        """
         length = int(capture_length)
-        if length not in self.models:
-            raise KeyError(
-                f"no fitted noise prefilter for capture length {length} in "
-                f"{self.directory}; available {list(self.lengths)}.  The "
-                "pose-degeneracy features are length dependent, so a bundle "
-                "fitted at another length may not be substituted"
-            )
-        return self.models[length]
+        if length in self.models:
+            return length
+        if length > self.max_fitted_length:
+            return self.max_fitted_length
+        raise KeyError(
+            f"no fitted noise prefilter for capture length {length} in "
+            f"{self.directory}; available {list(self.lengths)}.  The "
+            "pose-degeneracy features are length dependent, so a bundle "
+            "fitted at another length may not be substituted, and the "
+            "causal-prefix rule applies only ABOVE the longest fitted "
+            f"length ({self.max_fitted_length})"
+        )
+
+    def model_for(self, capture_length: int) -> Any:
+        return self.models[self.feature_length_for(capture_length)]
 
     def raw(self, features: np.ndarray, capture_length: int) -> np.ndarray:
-        """Stage-1 log-odds of noise; higher is more noise-like."""
+        """Stage-1 log-odds of noise; higher is more noise-like.
+
+        ``capture_length`` is the capture's true length; it is resolved through
+        :meth:`feature_length_for`, so ``features`` MUST have been computed on
+        each capture's first ``feature_length_for(capture_length)`` samples.
+        """
         matrix = np.asarray(features, dtype=np.float64)
         if matrix.ndim != 2 or matrix.shape[1] != self.posedegen.feature_count:
             raise ValueError(
@@ -763,9 +817,10 @@ class StageOneGate:
             )
         if not len(matrix):
             return np.zeros(0, dtype=np.float64)
+        feature_length = self.feature_length_for(capture_length)
         value = np.asarray(
-            self.model_for(capture_length).score(
-                matrix, capture_length=int(capture_length)
+            self.models[feature_length].score(
+                matrix, capture_length=int(feature_length)
             ),
             dtype=np.float64,
         )
@@ -793,9 +848,10 @@ class StageOneGate:
         matrix = np.asarray(features, dtype=np.float64)
         if not len(matrix):
             return np.zeros(0, dtype=bool)
-        model = self.model_for(capture_length)
+        feature_length = self.feature_length_for(capture_length)
+        model = self.models[feature_length]
         decided = np.asarray(
-            model.decide(matrix, capture_length=int(capture_length)), dtype=bool
+            model.decide(matrix, capture_length=int(feature_length)), dtype=bool
         )
         expected = self.raw(matrix, capture_length) >= float(
             model.threshold_score
@@ -820,11 +876,43 @@ class StageOneGate:
             "set_sha256": self.set_sha256,
             "capture_lengths": list(self.lengths),
             "fitted_here": False,
+            "stage_one_prefix_rule": {
+                "max_fitted_length": self.max_fitted_length,
+                "rule": STAGE_ONE_PREFIX_RULE,
+            },
             "models": {
                 str(length): self.models[length].metadata()
                 for length in self.lengths
             },
         }
+
+
+def stage_one_prefix_captures(
+    stage_one: StageOneGate,
+    captures: Sequence[np.ndarray],
+    capture_length: int,
+) -> tuple[list[np.ndarray], int]:
+    """Slice captures to the stage-1 feature length under the prefix rule.
+
+    Returns ``(captures, feature_length)`` where every returned capture has
+    exactly ``feature_length = stage_one.feature_length_for(capture_length)``
+    samples: the capture itself at a fitted length, its first
+    ``max_fitted_length`` samples above the longest fitted length.  Every
+    capture is first verified to actually have ``capture_length`` samples, so
+    a mislabeled population cannot be silently truncated.
+    """
+    length = int(capture_length)
+    feature_length = stage_one.feature_length_for(length)
+    rows = [np.asarray(row) for row in captures]
+    for index, row in enumerate(rows):
+        if row.ndim != 1 or len(row) != length:
+            raise ValueError(
+                f"capture {index} has shape {row.shape}, expected ({length},); "
+                "the prefix rule needs the declared capture length to be true"
+            )
+    if feature_length == length:
+        return rows, feature_length
+    return [row[:feature_length] for row in rows], feature_length
 
 
 def load_stage_one(
@@ -927,25 +1015,36 @@ def load_stage_one(
         # The prefilter module's own ledger check, reused rather than restated.
         prefilter.module.validate_fitting_seed(fit_provenance["fitting_seed"])
 
-    missing_lengths = [
-        int(length)
-        for length in sorted({int(item) for item in required_lengths})
-        if int(length) not in models
-    ]
-    if missing_lengths:
-        raise ValueError(
-            f"{path} has no fitted prefilter for capture lengths "
-            f"{missing_lengths}; available {sorted(models)}.  The features are "
-            "length dependent and a bundle from another length may not stand in"
-        )
-
-    return StageOneGate(
+    gate = StageOneGate(
         prefilter=prefilter,
         posedegen=posedegen,
         directory=path,
         models=models,
         set_sha256=str(prefilter.module.prefilter_set_sha256(path)),
     )
+
+    # A required length is usable exactly when the gate itself can resolve it:
+    # fitted lengths map to themselves, and a length ABOVE the longest fitted
+    # length is gated on its causal prefix (STAGE_ONE_PREFIX_RULE) -- callers,
+    # this harness's own sweep included, must then compute stage-1 features on
+    # the capture's first feature_length_for(length) samples
+    # (stage_one_prefix_captures).  Every other uncovered length is refused.
+    missing_lengths = []
+    for length in sorted({int(item) for item in required_lengths}):
+        try:
+            gate.feature_length_for(length)
+        except KeyError:
+            missing_lengths.append(int(length))
+    if missing_lengths:
+        raise ValueError(
+            f"{path} has no fitted prefilter for capture lengths "
+            f"{missing_lengths}; available {sorted(models)}.  The features are "
+            "length dependent and a bundle from another length may not stand "
+            "in, and the causal-prefix rule applies only ABOVE the longest "
+            "fitted length"
+        )
+
+    return gate
 
 
 
@@ -1128,6 +1227,7 @@ def generate_prefilter_features(
     target_frac: float,
     expected_provenance: Mapping[str, Any],
     families: Sequence[str] = NOVELTY_FAMILIES,
+    stage_one: StageOneGate | None = None,
 ) -> dict[int, dict[str, dict[int, PrefilterFixture]]]:
     """Stage-1 features for the same novelty captures the base module drew.
 
@@ -1142,9 +1242,32 @@ def generate_prefilter_features(
     module's preprocessing, standardization and provenance stay in one place and
     are not duplicated here, and the redraw costs only the generator, which is
     negligible beside the frontend.
+
+    When ``stage_one`` is given, each observation's stage-1 features are
+    computed on its first ``stage_one.feature_length_for(length)`` samples --
+    the causal-prefix rule (:data:`STAGE_ONE_PREFIX_RULE`) -- so a sweep
+    length above the longest fitted prefilter length is featurized exactly as
+    that gate will score it.  At fitted lengths the slice is the whole
+    observation and the features are bit-identical to the ``stage_one=None``
+    path.  The per-length digests always cover the FULL observation: the
+    stage-1/stage-2 same-rows check is about the captures, not the slice.
     """
     seed_values = validate_novelty_seeds(seeds)
     prefix_lengths = validate_prefix_lengths(lengths)
+    feature_length_by_length = {
+        length: (
+            int(stage_one.feature_length_for(length))
+            if stage_one is not None
+            else int(length)
+        )
+        for length in prefix_lengths
+    }
+    for length, feature_length in feature_length_by_length.items():
+        if not 0 < feature_length <= int(length):
+            raise ValueError(
+                f"stage-1 feature length {feature_length} for sweep length "
+                f"{length} is not a causal prefix"
+            )
     if int(n_each) <= 0:
         raise ValueError("n_each must be positive")
     family_names = tuple(str(name) for name in families)
@@ -1181,7 +1304,7 @@ def generate_prefilter_features(
                     rows_by_length[length].append(
                         prefilter_row(
                             posedegen,
-                            observation,
+                            observation[: feature_length_by_length[length]],
                             patch_length=int(patch_length),
                             target_frac=float(target_frac),
                         )
@@ -1632,12 +1755,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     # Stage 1 arrives already fitted.  The set must cover every length that will
     # be scored, including the native length of the known selection population.
+    # A sweep length above the longest fitted length is covered by the
+    # causal-prefix rule (its features are sliced below); every other uncovered
+    # sweep length is refused inside load_stage_one.
     stage_one = load_stage_one(
         prefilter,
         posedegen,
         Path(args.prefilter_dir),
         required_lengths=(*prefix_lengths, known_length),
     )
+    # The known selection population's stage-1 features are computed at its
+    # NATIVE length by rebuild_populations, so the causal-prefix rule may not
+    # stand in for a fitted bundle there: the known length must be fitted
+    # exactly, or the gate would score native-length features with a
+    # shorter-length model.
+    if int(known_length) not in stage_one.models:
+        raise ValueError(
+            f"{stage_one.directory} has no fitted prefilter for the known "
+            f"selection population's native length N{known_length}; available "
+            f"{list(stage_one.lengths)}.  Selection features are computed at "
+            "native length, so the causal-prefix rule may not stand in for "
+            "this length"
+        )
     print(
         f"[v3 staged] stage1 {prefilter.module_name}@{prefilter.version} "
         f"set={stage_one.set_sha256[:16]} lengths={list(stage_one.lengths)}",
@@ -1730,6 +1869,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         patch_length=int(data["cache_contract"]["config"]["patch_length"]),
         target_frac=float(data["cache_contract"]["config"]["target_frac"]),
         expected_provenance=fixture_provenance,
+        stage_one=stage_one,
     )
 
     by_seed: dict[str, Any] = {}
@@ -2030,6 +2170,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "shorter lengths are exact raw prefixes of the same capture"
             ),
             "stage_one_features_verified_against_stage_two_captures": True,
+            "stage_one_feature_length_by_prefix_length": {
+                str(length): int(stage_one.feature_length_for(length))
+                for length in prefix_lengths
+            },
+            "stage_one_causal_prefix_rule_lengths": [
+                int(length)
+                for length in prefix_lengths
+                if int(stage_one.feature_length_for(length)) != int(length)
+            ],
             "novelty_frontend": td_preprocess.PREPROCESS_VERSION,
             "known_reference": (
                 f"immutable development-selection population at its native "

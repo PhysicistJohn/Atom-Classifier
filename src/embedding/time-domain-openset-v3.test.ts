@@ -429,6 +429,178 @@ describe('staged decision parity', () => {
   });
 });
 
+describe('stage-1 causal-prefix rule for long captures', () => {
+  const gate = new StageOneGateV3(asset.stage_one, {
+    patchLength: asset.frontend.patch_length,
+    targetFrac: asset.frontend.target_frac,
+  });
+  const LONGEST = Math.max(...gate.lengths());
+  const LONG = 2 * LONGEST;
+
+  /** Deterministic PRNG (mulberry32) so the captures are reproducible. */
+  function mulberry32(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let mixed = Math.imul(state ^ (state >>> 15), state | 1);
+      mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
+      return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /** White complex gaussian noise via Box-Muller. */
+  function whiteNoise(
+    length: number,
+    seed: number,
+  ): { inPhase: Float64Array; quadrature: Float64Array } {
+    const random = mulberry32(seed);
+    const inPhase = new Float64Array(length);
+    const quadrature = new Float64Array(length);
+    for (let index = 0; index < length; index++) {
+      const radius = Math.sqrt(-2 * Math.log(1 - random()));
+      const azimuth = 2 * Math.PI * random();
+      inPhase[index] = radius * Math.cos(azimuth);
+      quadrature[index] = radius * Math.sin(azimuth);
+    }
+    return { inPhase, quadrature };
+  }
+
+  /** A coherent narrowband tone: unambiguously signal-like, never noise. */
+  function tone(
+    length: number,
+  ): { inPhase: Float64Array; quadrature: Float64Array } {
+    const inPhase = new Float64Array(length);
+    const quadrature = new Float64Array(length);
+    const omega = 2 * Math.PI * 0.01;
+    for (let index = 0; index < length; index++) {
+      const envelope = 1 + 0.25 * Math.sin((2 * Math.PI * index) / 4099);
+      inPhase[index] = envelope * Math.cos(omega * index);
+      quadrature[index] = envelope * Math.sin(omega * index);
+    }
+    return { inPhase, quadrature };
+  }
+
+  it('gates a long noise-like capture on its first longest-fitted samples', () => {
+    // Seed chosen so the N16384 model fires with a wide margin (score 2.23
+    // against threshold 1.80): stage-1 noise recall is ~0.6 by design, so a
+    // knife-edge draw would make this test fragile for the wrong reason.
+    const noise = whiteNoise(LONG, 3);
+    const evaluation = gate.evaluate(noise.inPhase, noise.quadrature);
+    expect(evaluation.causalPrefixApplied).toBe(true);
+    expect(evaluation.captureLength).toBe(LONG);
+    expect(evaluation.evaluatedLength).toBe(LONGEST);
+    expect(evaluation.gated, 'a 32768-sample noise capture must be gated').toBe(
+      true,
+    );
+
+    // The rule is literal: the evaluation IS the evaluation of the prefix.
+    const prefix = gate.evaluate(
+      noise.inPhase.subarray(0, LONGEST),
+      noise.quadrature.subarray(0, LONGEST),
+    );
+    expect(prefix.causalPrefixApplied).toBe(false);
+    expect(prefix.evaluatedLength).toBe(LONGEST);
+    expect(Array.from(evaluation.features)).toEqual(
+      Array.from(prefix.features),
+    );
+    expect(evaluation.score).toBe(prefix.score);
+    expect(evaluation.rank).toBe(prefix.rank);
+    expect(evaluation.gated).toBe(prefix.gated);
+    expect(evaluation.thresholdScore).toBe(prefix.thresholdScore);
+
+    // And the staged composition short-circuits exactly as at fitted lengths.
+    const decision = openSet.gatedDecision(
+      openSet.evaluateStageOne(noise.inPhase, noise.quadrature),
+    );
+    expect(decision.rejectedStage).toBe(1);
+    expect(decision.stageTwo).toBeNull();
+    expect(decision.stagedScore).toBeGreaterThan(STAGE_ONE_SCORE_OFFSET);
+    expect(decision.stagedScore).toBeLessThan(2);
+  });
+
+  it('ignores the samples beyond the causal prefix entirely', () => {
+    const noise = whiteNoise(LONG, 0x5eed_0002);
+    const rewritten = {
+      inPhase: Float64Array.from(noise.inPhase),
+      quadrature: Float64Array.from(noise.quadrature),
+    };
+    const signalTail = tone(LONG);
+    for (let index = LONGEST; index < LONG; index++) {
+      rewritten.inPhase[index] = signalTail.inPhase[index]!;
+      rewritten.quadrature[index] = signalTail.quadrature[index]!;
+    }
+    const original = gate.evaluate(noise.inPhase, noise.quadrature);
+    const tailSwapped = gate.evaluate(rewritten.inPhase, rewritten.quadrature);
+    expect(tailSwapped.score).toBe(original.score);
+    expect(tailSwapped.gated).toBe(original.gated);
+    expect(Array.from(tailSwapped.features)).toEqual(
+      Array.from(original.features),
+    );
+  });
+
+  it('passes a long signal-like capture through to stage 2', () => {
+    const signal = tone(LONG);
+    const stageOne = openSet.evaluateStageOne(
+      signal.inPhase,
+      signal.quadrature,
+    );
+    expect(stageOne.causalPrefixApplied).toBe(true);
+    expect(stageOne.evaluatedLength).toBe(LONGEST);
+    expect(
+      stageOne.gated,
+      'a 32768-sample coherent signal must NOT be gated as noise',
+    ).toBe(false);
+
+    // Survivors flow to the unchanged stage-2 path. Stage 2 consumes
+    // embeddings and packed patches, which are length-invariant; reuse a
+    // fixture survivor's to prove the composition runs end to end.
+    const survivorRow = fixture.rows.find((row) => row.stage_two !== null)!;
+    const decision = openSet.finishSurvivor(stageOne, {
+      realEmbedding: survivorRow.stage_two!.real_embedding,
+      complexEmbedding: survivorRow.stage_two!.complex_embedding,
+      packedInPhase: survivorRow.packed_iq.in_phase,
+      packedQuadrature: survivorRow.packed_iq.quadrature,
+      predictedClassIndex: survivorRow.stage_two!.predicted_class_index,
+    });
+    expect(decision.gated).toBe(false);
+    expect(decision.stageTwo).not.toBeNull();
+    expect(decision.stageOne.causalPrefixApplied).toBe(true);
+  });
+
+  it('keeps the refusal below the smallest fitted length', () => {
+    const short = whiteNoise(2048, 0x5eed_0003);
+    expect(() => gate.evaluate(short.inPhase, short.quadrature)).toThrow(
+      /no fitted noise prefilter/,
+    );
+  });
+
+  it('keeps the refusal at uncovered lengths between fitted lengths', () => {
+    const between = whiteNoise(12288, 0x5eed_0004);
+    expect(between.inPhase.length).toBeGreaterThan(Math.min(...gate.lengths()));
+    expect(between.inPhase.length).toBeLessThan(LONGEST);
+    expect(() => gate.evaluate(between.inPhase, between.quadrature)).toThrow(
+      /no fitted noise prefilter/,
+    );
+  });
+
+  it('never applies the prefix rule at fitted lengths', () => {
+    for (const row of fixture.rows) {
+      const evaluation = gate.evaluate(row.iq.in_phase, row.iq.quadrature);
+      expect(evaluation.causalPrefixApplied).toBe(false);
+      expect(evaluation.evaluatedLength).toBe(row.capture_length);
+    }
+  });
+
+  it('refuses mismatched in-phase/quadrature lengths', () => {
+    const noise = whiteNoise(LONG, 0x5eed_0005);
+    expect(() =>
+      gate.evaluate(
+        noise.inPhase,
+        noise.quadrature.subarray(0, LONG - 1),
+      )).toThrow(/same length/);
+  });
+});
+
 describe('empirical rank primitive', () => {
   it('matches searchsorted-left semantics on ties', () => {
     const calibration = [1, 2, 2, 3];

@@ -8,7 +8,11 @@
  *   a ridge-logistic noise/not-noise GATE over seven pose-degeneracy features
  *   (`v3_scale/pose_degeneracy.py`), one fitted model per capture length.
  *   When it fires the row is rejected as noise and NOTHING downstream runs:
- *   no encoder, no fusion, no prototype distance, no branch LOF.
+ *   no encoder, no fusion, no prototype distance, no branch LOF. Captures
+ *   LONGER than the longest fitted length are gated on their first
+ *   longest-fitted-length samples with that length's model
+ *   ({@link STAGE_ONE_CAUSAL_PREFIX_RULE}); captures at any other uncovered
+ *   length are refused.
  * - STAGE 2 -- `v3_scale/fit_v3_openset_staged.py` + `v3_time_domain_openset.py`:
  *   the frozen additive policy for survivors. Branch LOF ranks (real k=2
  *   weight 0.40, complex k=64 weight 0.60) are blended 0.80/0.20 with the
@@ -53,6 +57,25 @@ export const FROZEN_GEOMETRY_FEATURE =
 
 /** Mirror of `fit_v3_openset_staged.STAGE_ONE_SCORE_OFFSET`. */
 export const STAGE_ONE_SCORE_OFFSET = 1.0;
+
+/**
+ * The stage-1 rule for capture lengths ABOVE the longest fitted prefilter
+ * length (the sealed suite includes N32768; the development corpus stores
+ * N16384 at most, so no N32768 prefilter can exist): gate on the capture's
+ * first `longest-fitted-length` samples with that length's model. The first
+ * N samples of a longer capture are exactly an N-sample capture of the same
+ * emission -- the causal-prefix rule the release protocol itself is built
+ * on. Capture lengths BELOW the smallest fitted length (and uncovered
+ * lengths between fitted lengths) keep the existing refusal unchanged.
+ */
+export const STAGE_ONE_CAUSAL_PREFIX_RULE =
+  'at a capture length above the longest fitted stage-1 length, the gate '
+  + 'computes its pose-degeneracy features on the capture\'s first '
+  + 'longest-fitted-length samples and gates with that length\'s model; the '
+  + 'first N samples of a longer capture are exactly an N-sample capture of '
+  + 'the same emission (the causal-prefix rule the release protocol is built '
+  + 'on). Lengths below the smallest fitted length keep the existing refusal '
+  + 'semantics unchanged.';
 
 /**
  * The exact contract keys a release claim must carry
@@ -439,7 +462,16 @@ export interface StageOneEvaluation {
   /** True means NOISE: abstain, do not classify. */
   gated: boolean;
   thresholdScore: number;
+  /** The raw capture length the caller handed in. */
   captureLength: number;
+  /**
+   * The length whose fitted model produced this evaluation. Equal to
+   * `captureLength` except when {@link STAGE_ONE_CAUSAL_PREFIX_RULE}
+   * applied, in which case it is the longest fitted prefilter length.
+   */
+  evaluatedLength: number;
+  /** True exactly when the causal-prefix rule applied (long capture). */
+  causalPrefixApplied: boolean;
 }
 
 function softsignRank(score: number): number {
@@ -563,6 +595,15 @@ export class StageOneGateV3 {
     return [...this.models.keys()].sort((a, b) => a - b);
   }
 
+  /** The longest capture length carrying a fitted prefilter. */
+  longestFittedLength(): number {
+    let longest = 0;
+    for (const length of this.models.keys()) {
+      longest = Math.max(longest, length);
+    }
+    return longest;
+  }
+
   modelFor(captureLength: number): NoisePrefilterV3 {
     const model = this.models.get(captureLength);
     if (model === undefined) {
@@ -576,20 +617,52 @@ export class StageOneGateV3 {
     return model;
   }
 
-  /** Full stage-1 evaluation of one raw capture. */
+  /**
+   * Full stage-1 evaluation of one raw capture.
+   *
+   * At a capture length above the longest fitted prefilter length the
+   * {@link STAGE_ONE_CAUSAL_PREFIX_RULE} applies: the features are computed
+   * on the capture's first `longestFittedLength()` samples (exactly a
+   * capture of that length of the same emission) and gated with that
+   * length's model. Any other uncovered length keeps the existing refusal.
+   */
   evaluate(
     inPhase: ArrayLike<number>,
     quadrature: ArrayLike<number>,
   ): StageOneEvaluation {
     const captureLength = inPhase.length;
-    const model = this.modelFor(captureLength);
-    const features = prefilterPoseDegeneracyFeatures(inPhase, quadrature, {
-      minBandwidth: frontendMinimumBandwidth(
-        captureLength,
-        this.patchLength,
-        this.targetFrac,
-      ),
-    });
+    if (quadrature.length !== captureLength) {
+      throw new RangeError(
+        'in-phase and quadrature must have the same length',
+      );
+    }
+    const longest = this.longestFittedLength();
+    const causalPrefixApplied = captureLength > longest;
+    const evaluatedLength = causalPrefixApplied ? longest : captureLength;
+    const model = this.modelFor(evaluatedLength);
+    let gateInPhase = inPhase;
+    let gateQuadrature = quadrature;
+    if (causalPrefixApplied) {
+      const prefixInPhase = new Float64Array(evaluatedLength);
+      const prefixQuadrature = new Float64Array(evaluatedLength);
+      for (let index = 0; index < evaluatedLength; index++) {
+        prefixInPhase[index] = inPhase[index]!;
+        prefixQuadrature[index] = quadrature[index]!;
+      }
+      gateInPhase = prefixInPhase;
+      gateQuadrature = prefixQuadrature;
+    }
+    const features = prefilterPoseDegeneracyFeatures(
+      gateInPhase,
+      gateQuadrature,
+      {
+        minBandwidth: frontendMinimumBandwidth(
+          evaluatedLength,
+          this.patchLength,
+          this.targetFrac,
+        ),
+      },
+    );
     const score = model.score(features);
     return {
       features,
@@ -598,6 +671,8 @@ export class StageOneGateV3 {
       gated: score >= model.thresholdScore,
       thresholdScore: model.thresholdScore,
       captureLength,
+      evaluatedLength,
+      causalPrefixApplied,
     };
   }
 }

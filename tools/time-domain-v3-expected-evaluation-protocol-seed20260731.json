@@ -1,0 +1,111 @@
+{
+  "comment": [
+    "The exact evaluation_protocol object the v3 sealed evaluator requires the",
+    "release intent to embed for release seed 20260731 (stage-1 fitted lengths",
+    "4096/8192/16384; N32768 is gated through the causal-prefix rule).",
+    "Captured verbatim from:",
+    "  PYTHONWARNINGS=error PYTHONPATH=training:training/zplane_ab:training/zplane_ab/v2_full_variation \\",
+    "  .venv-training/bin/python training/zplane_ab/v2_full_variation/v3_scale/evaluate_v3_release_suite.py \\",
+    "  --staged-dir training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_validate_prefixrule_seed20260730 \\",
+    "  --print-expected-protocol 20260731",
+    "(--staged-dir is the evaluator default; it is spelled out because the",
+    "command must name a staged artifact whose recorded source hashes match",
+    "the current fit_v3_openset_staged.py bytes, or candidate loading refuses",
+    "with source drift before anything is printed.)",
+    "Regenerate with that command whenever evaluate_v3_release_suite.py changes",
+    "its predeclared protocol (the evaluator refuses any suite whose intent",
+    "protocol differs from its expected object, so a stale fixture fails loudly",
+    "at evaluation time, before any gate is scored)."
+  ],
+  "release_seed": 20260731,
+  "evaluation_protocol": {
+    "five_shot": {
+      "hash_payload": "utf8(split_salt + NUL + release_seed_decimal + NUL + canonical_row_identity_json)",
+      "k": 5,
+      "prototype_source": "support rows embedded at matched_capture_length; one fixed five-shot prototype set reused at every capture length",
+      "query_rule": "all remaining rows; identical row indices at every matched capture length",
+      "split_salt": "atomos-invariant-release-five-shot-v1",
+      "split_version": "sha256-lowest-per-class-v1",
+      "support_rule": "lowest five lowercase SHA-256 digests per class; ties by corpus row index"
+    },
+    "gates": {
+      "closed_clean": 0.85,
+      "closed_family": 0.82,
+      "closed_fine": 0.72,
+      "closed_high_snr": 0.78,
+      "five_shot": 0.85,
+      "invariant_max_mean_pairwise_cosine": 0.78,
+      "invariant_worst_balanced_accuracy": 0.75,
+      "length_pair_embedding_cosine": 0.85,
+      "length_pair_prediction_agreement": 0.8,
+      "open_auroc_chirp": 0.8,
+      "open_auroc_noise": 0.8,
+      "open_auroc_overall": 0.72,
+      "open_known_false_unknown_max": 0.1,
+      "open_unknown_recall_chirp": 0.1,
+      "open_unknown_recall_noise": 0.1,
+      "scale_pair_embedding_cosine": 0.8,
+      "scale_pair_prediction_agreement": 0.75
+    },
+    "high_snr_db": 18,
+    "length_observation_rule": "generate maximum capture length once; every shorter observed and clean row is a bit-exact cf32le prefix of the corresponding maximum-length row",
+    "matched_capture_length": 16384,
+    "minimum_target_per_class": 80,
+    "novelty": {
+      "calibration": "none; frozen per-length stage-1 noise-prefilter bundles and the frozen stage-2 branch-LOF ensemble, geometry blend, and enrollment q95 threshold are loaded verbatim",
+      "families": [
+        "noise",
+        "chirp"
+      ],
+      "generation": "generate each fresh openset_eval.NOVELTY realization once at maximum capture length; shorter observations are exact prefixes; one family seed derived by SHA-256 from base seed and family",
+      "n_each_per_length": 300,
+      "seed": 20260731,
+      "seed_derivation": "uint64 little-endian first 8 bytes of SHA-256(utf8(base seed decimal + NUL + family))",
+      "seed_rule": "the novelty base seed equals the untouched release seed; consumed release seeds and development novelty/fitting seed bands are refused"
+    },
+    "open_set": {
+      "additive_only": false,
+      "architecture": "v3_staged_noise_prefilter_then_known_only_lof_geometry",
+      "changes_closed_label": true,
+      "gates_before_classification": true,
+      "known_false_unknown_accounting": "counts both stages: a known row gated by the stage-1 noise prefilter and a known row above the frozen stage-2 threshold are both false-unknown, and every per-length open report attributes each rejected known row to the stage that rejected it",
+      "score_axis": "Stage-2 scores are enrollment empirical ranks in [0, 1).  A row gated at stage 1 has no stage-2 score at all -- that is the short circuit -- and is placed at 1.0 + its stage-1 enrollment rank, i.e. in [1, 2), above every ungated row.  The staged score is therefore a single axis on which 'score > stage-2 threshold' is exactly the staged decision 'gated at stage 1, or rejected at stage 2', which is asserted row by row.  AUROC and threshold recall computed from it are properties of the staged system, not of either stage read in isolation.",
+      "stage_one_capture_lengths": [
+        4096,
+        8192,
+        16384
+      ],
+      "stage_one_max_fitted_length": 16384,
+      "stage_one_prefix_gated_lengths": [
+        32768
+      ],
+      "stage_one_prefix_rule": {
+        "max_fitted_length": 16384,
+        "rule": "at a capture length ABOVE the longest fitted prefilter length, the stage-1 pose-degeneracy features are computed on the capture's FIRST max-fitted-length samples and gated with that length's bundle.  The first N samples of a longer capture are exactly an N-sample capture of the same emission, so this is the same causal-prefix rule the release protocol's length suite is built on, not an approximation.  Lengths BELOW the smallest fitted length keep the existing refusal semantics: no fitted length is a causal prefix of such a capture, so no bundle may be substituted"
+      },
+      "stage_one_uncovered_lengths": [],
+      "stage_one_uncovered_rule": "at a capture length ABOVE the longest fitted stage-1 length the gate applies through the causal-prefix rule (stage_one_prefix_rule): features are computed on the capture's first max-fitted-length samples and gated with that length's bundle, recorded as stage_one_active: true with the effective stage_one_feature_length; at a capture length BELOW the smallest fitted length the gate cannot fire and every row flows to the unchanged additive stage-2 path, recorded as stage_one_active: false",
+      "sweep_rejector_rule": "the causal-length and physical-scale sweeps measure the closed-set representation exactly as the v2 evaluator defined them; no stage gates their rows (rejection never participates in the closed and invariance gates, and the stage-1 causal-prefix rule does not change that)"
+    },
+    "physical_scale_factors": [
+      0.5,
+      0.75,
+      1,
+      1.5,
+      2
+    ],
+    "physical_scale_support": {
+      "edge_guard_fraction": 0.001953125,
+      "minimum_rows_per_class": 20,
+      "rule": "for every requested factor, effective resampling scale times (abs(centreOffsetFrac) + bandwidthHz/(2*sampleRateHz)) must be strictly below 0.5 - edge_guard_fraction",
+      "selection_timing": "metadata-only common subset fixed before preprocessing or inference"
+    },
+    "required_capture_lengths": [
+      4096,
+      8192,
+      16384,
+      32768
+    ],
+    "version": "time-domain-v3-release-evaluation-v1"
+  }
+}

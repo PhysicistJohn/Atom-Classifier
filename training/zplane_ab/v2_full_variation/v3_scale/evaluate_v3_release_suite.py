@@ -1,0 +1,2153 @@
+"""Evaluate one sealed v3 release suite against the frozen staged v3 candidate.
+
+This is the v3 counterpart of ``evaluate_invariant_release_suite.py`` (the v2
+sealed evaluator).  It preserves the v2 discipline exactly where the candidate
+did not change, and states precisely where the staged rejector forced a change:
+
+* Every gate name, floor, comparison and the gate assembler itself are
+  **imported** from the v2 evaluator (``GATE_FLOORS``, ``_gate``,
+  ``_assemble_release_gates``, ``_five_shot_report``, ``_auroc``,
+  ``_closed_report``, ...).  No gate is added, removed, or re-levelled here,
+  and no threshold is re-typed anywhere in this file.
+* The suite-side verification (intent/manifest binding, corpus byte hashes,
+  bit-exact prefix nesting, prefix-derivation records, unscored start probe,
+  dependency provenance, predeclared five-shot split) is the v2 machinery,
+  imported and applied unchanged.
+* The evaluator is data-blind until both sides are frozen: the candidate is
+  four hash-pinned artifact directories loaded verbatim, and no development
+  corpus row, sealed row, or novelty row is ever fit, calibrated, or selected
+  on.  ``development_data_loaded`` is ``False``: unlike the dev harnesses this
+  evaluator never opens the development corpus at all.
+
+THE CANDIDATE is four frozen components, transitively bound to the single
+``candidate_sha256`` the release intent records:
+
+1. ``--bundle-dir``     the self-verified v3 runtime bundle.  Its
+                        ``bundle_manifest.json`` is the intent-bound candidate
+                        file; the manifest pins every fusion asset by SHA-256.
+2. ``--fusion-dir``     the fusion artifact the bundle was exported from,
+                        bound by ``provenance.source_dev_metrics_sha256``.
+3. ``--staged-dir``     the frozen fitted stage-2 state (branch-LOF ensemble
+                        npz + frozen policy npz) from the staged validation
+                        run, bound to the same fusion by its recorded
+                        ``fusion.directory_sha256`` and to its own npz bytes
+                        by its recorded artifact hashes.
+4. ``--prefilter-dir``  the fitted per-length stage-1 noise prefilter set,
+                        bound by the staged artifact's recorded
+                        ``stage_one.set_sha256``.
+
+ARCHITECTURE CONTRACT (stated here and carried in the emitted JSON): the v3
+rejector is STAGED and is not additive.  When the stage-1 noise prefilter
+fires, the capture is rejected as noise before classification and downstream
+work (encoder forward, fusion, prototype distance, branch LOF, frozen policy)
+is never computed for that row inside the staged scoring pass.  Stage 2 stays
+additive for the rows it sees and the closed label is asserted unchanged.
+
+Predeclared v3 semantics, all bound into the sealed ``evaluation_protocol``
+object the release intent must embed (see ``expected_evaluation_protocol``):
+
+1. **Open-set gates score the staged decision axis.**  Stage-2 scores are
+   enrollment ranks in ``[0, 1)``; a stage-1-gated row is placed at
+   ``1 + softsign(stage-1 log-odds)`` in ``(1, 2)``, above every ungated row,
+   so ``score > threshold`` is exactly the staged decision (asserted row by
+   row by the staged module's own equivalence check).  The known
+   false-unknown gate therefore counts BOTH stages, and the per-length open
+   reports attribute every rejected known row to the stage that rejected it.
+2. **Stage-1 applies on its fitted per-length domain, extended upward by the
+   causal-prefix rule.**  The pose-degeneracy features are length dependent,
+   so the candidate carries one fitted bundle per capture length and no
+   bundle is ever substituted sideways.  At a sealed capture length ABOVE
+   the longest fitted length (N32768: the development corpus stores N16384,
+   so no N32768 model can exist) the stage-1 features are computed on each
+   capture's FIRST max-fitted-length samples and gated with that length's
+   bundle -- the first 16384 samples of a 32768-sample capture are exactly a
+   16384-sample capture of the same emission, the same causal-prefix rule
+   the suite's own length corpora are built on.  A capture length BELOW the
+   smallest fitted length keeps the additive pass-through semantics: the
+   gate cannot fire and every row flows to the unchanged stage-2 path.
+   Both cases are recorded per length (``stage_one_active``,
+   ``stage_one_feature_length``), declared in the sealed protocol under
+   ``stage_one_prefix_rule``, and NOT silently ignored.  The deployed
+   TypeScript runtime must apply the identical prefix rule; a runtime that
+   refuses such lengths does not match the sealed claim and must be
+   reconciled before any ship.
+3. **Closed, five-shot, causal-length and physical-scale gates keep their v2
+   definitions** on the additive sub-path (frontend -> encoders -> fusion ->
+   nearest prototype over every row).  The v2 rejector never participated in
+   those gates, the task contract changes only the known-FUR accounting, and
+   the stage-1 causal-prefix rule does not change that: no stage gates any
+   sweep row.
+4. **Fresh novelty at the release seed.**  The novelty base seed IS the
+   release seed (mirroring v2, where both were 20260729), with the identical
+   per-family SHA-256 derivation.  Consumed and development seeds are refused.
+
+The unstaged additive score of every scored row is also computed as a control
+and the staged survivors are asserted to score identically (the staged
+module's subset-agreement check), so the staged short circuit cannot drift
+from the additive path it embeds.
+
+This evaluator refuses to run twice: it refuses a release root that already
+contains ``RELEASE_EVALUATION.json`` and its exclusive writer refuses an
+existing output file.
+"""
+from __future__ import annotations
+
+import argparse
+import copy
+from dataclasses import dataclass
+import hashlib
+import json
+from pathlib import Path
+import platform
+import sys
+from typing import Any, Mapping, Sequence
+
+import numpy as np
+import torch
+
+
+HERE = Path(__file__).resolve().parent
+V2 = HERE.parent
+ZPAB = V2.parent
+TRAINING = ZPAB.parent
+REPO = TRAINING.parent
+for _path in (TRAINING, ZPAB, V2, HERE):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
+
+import assemble_v3_fusion as assemble  # noqa: E402
+import evaluate_invariant_release_suite as release  # noqa: E402
+import export_v3_openset_browser_assets as openset_export  # noqa: E402
+import fit_v3_openset as openset_base  # noqa: E402
+import fit_v3_openset_staged as staged  # noqa: E402
+import measure_v3_remaining_gates as measure  # noqa: E402
+import noise_prefilter  # noqa: E402
+import preprocess as production_preprocess  # noqa: E402
+import time_domain_invariant_patch_preprocess as td_preprocess  # noqa: E402
+from openset_eval import NOVELTY  # noqa: E402
+from train import embed_all  # noqa: E402
+from v3_time_domain_openset import (  # noqa: E402
+    FROZEN_GEOMETRY_FEATURE,
+    FROZEN_GEOMETRY_WEIGHT,
+    FROZEN_POLICY_KIND,
+    FROZEN_POLICY_SCHEMA,
+    FROZEN_THRESHOLD_QUANTILE,
+    FROZEN_V2_WEIGHT,
+)
+
+
+# ---------------------------------------------------------------------------
+# identity with the v2 evaluator: imported objects, never re-typed values
+# ---------------------------------------------------------------------------
+
+EVALUATOR_SCHEMA = 1
+EVALUATION_VERSION = "time-domain-v3-release-evaluation-v1"
+RELEASE_PROTOCOL = release.RELEASE_PROTOCOL
+
+GATE_FLOORS = release.GATE_FLOORS
+FIVE_SHOT_K = release.FIVE_SHOT_K
+HIGH_SNR_DB = release.HIGH_SNR_DB
+
+# Mirrored as module attributes so a test can rescale the whole protocol
+# coherently; for a real run they are exactly the v2 values.
+REQUIRED_CAPTURE_LENGTHS = release.REQUIRED_CAPTURE_LENGTHS
+MATCHED_CAPTURE_LENGTH = release.MATCHED_CAPTURE_LENGTH
+MIN_TARGET_PER_CLASS = release.MIN_TARGET_PER_CLASS
+NOVELTY_FAMILIES = release.NOVELTY_FAMILIES
+NOVELTY_N_EACH_PER_LENGTH = release.NOVELTY_N_EACH_PER_LENGTH
+PHYSICAL_SCALE_FACTORS = release.PHYSICAL_SCALE_FACTORS
+SCALE_MIN_PER_CLASS = release.SCALE_MIN_PER_CLASS
+
+_gate = release._gate
+_sha256 = release._sha256
+_read_json = release._read_json
+_is_below = release._is_below
+_regular_file = release._regular_file
+_integer = release._integer
+_verify_file_record = release._verify_file_record
+_write_json_exclusive = release._write_json_exclusive
+resolve_device = release.resolve_device
+
+#: The one frozen candidate directory set this evaluator was written for.
+DEFAULT_BUNDLE_DIR = (
+    V2 / "artifacts" / "invariant_patch" / "v3_scale"
+    / "v3_runtime_bundle_seed20260730"
+)
+DEFAULT_FUSION_DIR = (
+    V2 / "artifacts" / "invariant_patch" / "v3_scale"
+    / "v3_fusion_multilength_seed20260730"
+)
+#: The passing prefix-rule validation artifact (clean seeds 20260942/20260943,
+#: sweep 4096/8192/16384/32768).  Its stage-2 npz bytes are bit-identical to
+#: the earlier ``staged_validate_seed20260730`` run's; it exists because the
+#: causal-prefix-rule change to ``fit_v3_openset_staged.py`` made that earlier
+#: artifact's recorded source hash permanently stale for the source-drift
+#: check below, and because the sealed suite's N32768 length must be validated
+#: under the exact rule this evaluator applies.
+DEFAULT_STAGED_DIR = (
+    V2 / "artifacts" / "invariant_patch" / "v3_scale"
+    / "staged_validate_prefixrule_seed20260730"
+)
+DEFAULT_PREFILTER_DIR = (
+    V2 / "artifacts" / "invariant_patch" / "v3_scale"
+    / "noise_prefilter_fit20261001" / "bundles"
+)
+
+BUNDLE_KIND = "v3-time-domain-centered-invariant-fusion"
+BUNDLE_SCHEMA = "atomos.v3.time-domain-invariant-fusion.runtime-bundle"
+BUNDLE_SCHEMA_VERSION = 1
+BUNDLE_MANIFEST_NAME = "bundle_manifest.json"
+BUNDLE_SELF_VERIFICATION_TOLERANCE = 1e-6
+
+#: Release seeds this evaluator refuses outright.  20260729 is the consumed
+#: sealed v2 suite; the two bands are the development novelty namespace and
+#: the prefilter fit-only band, which are development evidence, not release
+#: seeds.
+CONSUMED_RELEASE_SEEDS = {
+    20260729: "consumed sealed v2 release suite (evidence rule 2)",
+}
+REFUSED_RELEASE_SEED_BANDS = (
+    (20260900, 20260999, "development novelty seed namespace"),
+    (20261000, 20261999, "noise-prefilter fit-only seed band"),
+)
+
+#: Single source of truth for the causal-prefix rule text: the staged module.
+STAGE_ONE_PREFIX_RULE = staged.STAGE_ONE_PREFIX_RULE
+
+STAGE_ONE_UNCOVERED_RULE = (
+    "at a capture length ABOVE the longest fitted stage-1 length the gate "
+    "applies through the causal-prefix rule (stage_one_prefix_rule): features "
+    "are computed on the capture's first max-fitted-length samples and gated "
+    "with that length's bundle, recorded as stage_one_active: true with the "
+    "effective stage_one_feature_length; at a capture length BELOW the "
+    "smallest fitted length the gate cannot fire and every row flows to the "
+    "unchanged additive stage-2 path, recorded as stage_one_active: false"
+)
+SWEEP_REJECTOR_RULE = (
+    "the causal-length and physical-scale sweeps measure the closed-set "
+    "representation exactly as the v2 evaluator defined them; no stage gates "
+    "their rows (rejection never participates in the closed and invariance "
+    "gates, and the stage-1 causal-prefix rule does not change that)"
+)
+KNOWN_FUR_ACCOUNTING = (
+    "counts both stages: a known row gated by the stage-1 noise prefilter and "
+    "a known row above the frozen stage-2 threshold are both false-unknown, "
+    "and every per-length open report attributes each rejected known row to "
+    "the stage that rejected it"
+)
+
+#: Source files whose current bytes MUST equal the hash the frozen artifacts
+#: recorded.  Everything here is executed by this evaluator's inference path.
+#: ``run_time_domain_dev.py`` is deliberately absent: it is the training-loop
+#: script, it is imported but never executed for data here, and it legitimately
+#: drifted after the candidate was frozen (HANDOFF 24.1 selection-policy work);
+#: its recorded and current hashes are reported instead of enforced.
+STAGED_SOURCE_HARD_CONTRACT = (
+    "assemble_v3_fusion.py",
+    "fit_v3_openset.py",
+    "fit_v3_openset_staged.py",
+    "invariant_fusion.py",
+    "invariant_patch_data.py",
+    "known_only_patch_openset.py",
+    "noise_prefilter.py",
+    "openset_eval.py",
+    "pose_degeneracy.py",
+    "time_domain_geometry.py",
+    "time_domain_invariant_patch_preprocess.py",
+    "train.py",
+    "v3_time_domain_openset.py",
+)
+STAGED_SOURCE_RECORDED_ONLY = ("run_time_domain_dev.py",)
+BUNDLE_ASSEMBLY_SOURCE_HARD_CONTRACT = (
+    "assemble_v3_fusion.py",
+    "invariant_fusion.py",
+    "invariant_patch_cnn.py",
+    "invariant_patch_data.py",
+    "invariant_patch_preprocess.py",
+    "time_domain_geometry.py",
+    "time_domain_invariant_patch_preprocess.py",
+    "train.py",
+)
+
+_SOURCE_LOOKUP = {
+    "assemble_v3_fusion.py": HERE / "assemble_v3_fusion.py",
+    "fit_v3_openset.py": HERE / "fit_v3_openset.py",
+    "fit_v3_openset_staged.py": HERE / "fit_v3_openset_staged.py",
+    "noise_prefilter.py": HERE / "noise_prefilter.py",
+    "pose_degeneracy.py": HERE / "pose_degeneracy.py",
+    "run_time_domain_dev.py": HERE / "run_time_domain_dev.py",
+    "export_v3_openset_browser_assets.py": (
+        HERE / "export_v3_openset_browser_assets.py"
+    ),
+    "measure_v3_remaining_gates.py": HERE / "measure_v3_remaining_gates.py",
+    "invariant_fusion.py": V2 / "invariant_fusion.py",
+    "invariant_patch_cnn.py": V2 / "invariant_patch_cnn.py",
+    "invariant_patch_data.py": V2 / "invariant_patch_data.py",
+    "known_only_patch_openset.py": V2 / "known_only_patch_openset.py",
+    "openset_eval.py": V2 / "openset_eval.py",
+    "v3_time_domain_openset.py": V2 / "v3_time_domain_openset.py",
+    "run_invariant_cnn_dev.py": V2 / "run_invariant_cnn_dev.py",
+    "evaluate_invariant_release_suite.py": (
+        V2 / "evaluate_invariant_release_suite.py"
+    ),
+    "invariant_patch_preprocess.py": TRAINING / "invariant_patch_preprocess.py",
+    "preprocess.py": TRAINING / "preprocess.py",
+    "time_domain_geometry.py": TRAINING / "time_domain_geometry.py",
+    "time_domain_invariant_patch_preprocess.py": (
+        TRAINING / "time_domain_invariant_patch_preprocess.py"
+    ),
+    "train.py": TRAINING / "train.py",
+}
+
+
+def _source_path(name: str) -> Path:
+    try:
+        return _SOURCE_LOOKUP[name]
+    except KeyError as exc:
+        raise ValueError(f"unknown evaluator source file {name!r}") from exc
+
+
+def _read_candidate_json(path: Path) -> dict[str, Any]:
+    """Read a frozen candidate-side JSON artifact.
+
+    Deliberately not ``release._read_json``: that validator enforces the sealed
+    release-root JSON contract, which rejects integers beyond 2**53 - 1, and
+    development artifacts legitimately carry nanosecond mtimes inside their
+    recorded cache contracts.  Candidate files are still bound by SHA-256.
+    """
+    _regular_file(path, name=str(path.name))
+    with Path(path).open(encoding="utf-8") as handle:
+        value = json.load(handle)
+    if not isinstance(value, dict):
+        raise ValueError(f"JSON root must be an object: {path}")
+    return value
+
+
+# ---------------------------------------------------------------------------
+# the predeclared v3 protocol object
+# ---------------------------------------------------------------------------
+
+
+def validate_release_seed(value: Any) -> int:
+    seed = _integer(value, "release_seed")
+    if seed in CONSUMED_RELEASE_SEEDS:
+        raise ValueError(
+            f"release seed {seed} is refused: {CONSUMED_RELEASE_SEEDS[seed]}"
+        )
+    for low, high, reason in REFUSED_RELEASE_SEED_BANDS:
+        if low <= seed <= high:
+            raise ValueError(
+                f"release seed {seed} lies in the {reason} ({low}-{high}) and "
+                "is not an untouched release seed"
+            )
+    return seed
+
+
+def expected_evaluation_protocol(
+    release_seed: int,
+    stage_one_lengths: Sequence[int],
+) -> dict[str, Any]:
+    """The exact object the release intent/manifest must embed for this run.
+
+    Built from the v2 protocol object so every unchanged rule is byte-identical
+    to v2's, then updated only where the v3 candidate changed the semantics.
+    ``gates`` stays the imported v2 ``GATE_FLOORS`` dict, so the floors cannot
+    drift between the intent, the launcher, and this evaluator.
+    """
+    seed = validate_release_seed(release_seed)
+    domain = tuple(sorted(int(length) for length in stage_one_lengths))
+    if not domain or len(set(domain)) != len(domain):
+        raise ValueError("stage-1 lengths must be a non-empty set of ints")
+    max_fitted = int(max(domain))
+    prefix_gated = [
+        int(length)
+        for length in REQUIRED_CAPTURE_LENGTHS
+        if int(length) not in domain and int(length) > max_fitted
+    ]
+    uncovered = [
+        int(length)
+        for length in REQUIRED_CAPTURE_LENGTHS
+        if int(length) not in domain and int(length) < max_fitted
+    ]
+    protocol = copy.deepcopy(release.EXPECTED_EVALUATION_PROTOCOL)
+    protocol["version"] = EVALUATION_VERSION
+    protocol["matched_capture_length"] = int(MATCHED_CAPTURE_LENGTH)
+    protocol["required_capture_lengths"] = [
+        int(length) for length in REQUIRED_CAPTURE_LENGTHS
+    ]
+    protocol["minimum_target_per_class"] = int(MIN_TARGET_PER_CLASS)
+    protocol["physical_scale_factors"] = [
+        float(factor) for factor in PHYSICAL_SCALE_FACTORS
+    ]
+    protocol["physical_scale_support"] = dict(
+        protocol["physical_scale_support"]
+    )
+    protocol["physical_scale_support"]["minimum_rows_per_class"] = int(
+        SCALE_MIN_PER_CLASS
+    )
+    protocol["novelty"] = dict(protocol["novelty"])
+    protocol["novelty"]["seed"] = seed
+    protocol["novelty"]["seed_rule"] = (
+        "the novelty base seed equals the untouched release seed; consumed "
+        "release seeds and development novelty/fitting seed bands are refused"
+    )
+    protocol["novelty"]["n_each_per_length"] = int(NOVELTY_N_EACH_PER_LENGTH)
+    protocol["novelty"]["calibration"] = (
+        "none; frozen per-length stage-1 noise-prefilter bundles and the "
+        "frozen stage-2 branch-LOF ensemble, geometry blend, and enrollment "
+        "q95 threshold are loaded verbatim"
+    )
+    protocol["open_set"] = {
+        "architecture": staged.STAGED_POLICY_KIND,
+        "additive_only": False,
+        "changes_closed_label": True,
+        "gates_before_classification": True,
+        "stage_one_capture_lengths": [int(length) for length in domain],
+        "stage_one_max_fitted_length": max_fitted,
+        "stage_one_prefix_gated_lengths": prefix_gated,
+        "stage_one_prefix_rule": {
+            "max_fitted_length": max_fitted,
+            "rule": STAGE_ONE_PREFIX_RULE,
+        },
+        "stage_one_uncovered_lengths": uncovered,
+        "stage_one_uncovered_rule": STAGE_ONE_UNCOVERED_RULE,
+        "sweep_rejector_rule": SWEEP_REJECTOR_RULE,
+        "known_false_unknown_accounting": KNOWN_FUR_ACCOUNTING,
+        "score_axis": staged.STAGED_SCORE_NOTE,
+    }
+    protocol["gates"] = dict(GATE_FLOORS)
+    return protocol
+
+
+# ---------------------------------------------------------------------------
+# the frozen candidate
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class V3Candidate:
+    bundle_dir: Path
+    bundle_manifest_path: Path
+    bundle_manifest_sha256: str
+    bundle_manifest: dict[str, Any]
+    bundle_arrays: dict[str, np.ndarray]
+    fusion_dir: Path
+    fusion_artifact: Any  # openset_base.FusionArtifact
+    fusion_module: torch.nn.Module  # CenteredInvariantFusion
+    staged_dir: Path
+    staged_metrics: dict[str, Any]
+    staged_hashes: dict[str, str]
+    prefilter_dir: Path
+    prefilter_set_sha256: str
+    stage_one: Any  # staged.StageOneGate
+    stage_one_lengths: tuple[int, ...]
+    posedegen: Any
+    prefilter_module: Any
+    rejector: Any  # openset_base.Rejector
+    classes: tuple[str, ...]
+    patch_length: int
+    patch_count: int
+    target_frac: float
+    feature_mean: np.ndarray
+    feature_std: np.ndarray
+    threshold: float
+    source_report: dict[str, Any]
+
+
+def _verify_source_contract(
+    recorded: Mapping[str, Any],
+    hard_names: Sequence[str],
+    *,
+    origin: str,
+) -> dict[str, Any]:
+    """Compare recorded source hashes against current bytes; fail on drift."""
+    checked: dict[str, Any] = {}
+    for name in hard_names:
+        expected = recorded.get(name)
+        if not isinstance(expected, str) or len(expected) != 64:
+            raise ValueError(f"{origin} records no usable hash for {name!r}")
+        current = _sha256(_source_path(name))
+        if current != expected:
+            raise ValueError(
+                f"source drift: {name} is {current}, but {origin} froze "
+                f"{expected}; the loaded module is not the one the candidate "
+                "was validated with"
+            )
+        checked[name] = current
+    return checked
+
+
+def _load_bundle(bundle_dir: Path) -> dict[str, Any]:
+    """Load and strictly validate the v3 runtime bundle."""
+    bundle = assemble.reject_sealed_path(Path(bundle_dir), "runtime bundle")
+    manifest_path = bundle / BUNDLE_MANIFEST_NAME
+    manifest = _read_candidate_json(manifest_path)
+    if (
+        manifest.get("kind") != BUNDLE_KIND
+        or manifest.get("schema") != BUNDLE_SCHEMA
+        or manifest.get("schema_version") != BUNDLE_SCHEMA_VERSION
+    ):
+        raise ValueError(f"{bundle} is not a v3 runtime bundle")
+    for key, expected in (
+        ("development_only", True),
+        ("release_evidence", False),
+        ("sealed_release_data_used", 0),
+        ("consumed_test_rows_used", 0),
+    ):
+        if manifest.get(key) != expected:
+            raise ValueError(
+                f"{bundle} records {key}={manifest.get(key)!r}, expected "
+                f"{expected!r}"
+            )
+    assets = manifest.get("assets")
+    if not isinstance(assets, Mapping) or not assets:
+        raise ValueError(f"{bundle} manifest has no asset records")
+    arrays: dict[str, np.ndarray] = {}
+    for name, record in assets.items():
+        path = bundle / str(name)
+        _verify_file_record(path, record, name=f"bundle/{name}")
+        if str(name).endswith(".npy"):
+            arrays[str(name)] = np.load(path)
+    verification = manifest.get("self_verification")
+    if (
+        not isinstance(verification, Mapping)
+        or verification.get("closed_label_agreement") is not True
+        or not isinstance(verification.get("worst_max_abs_error"), (int, float))
+        or float(verification["worst_max_abs_error"])
+        > BUNDLE_SELF_VERIFICATION_TOLERANCE
+    ):
+        raise ValueError(f"{bundle} does not carry a passing self-verification")
+    return {
+        "directory": bundle,
+        "manifest_path": manifest_path,
+        "manifest": manifest,
+        "manifest_sha256": _sha256(manifest_path),
+        "arrays": arrays,
+    }
+
+
+def load_candidate(
+    *,
+    bundle_dir: Path,
+    fusion_dir: Path,
+    staged_dir: Path,
+    prefilter_dir: Path,
+    device: torch.device,
+) -> V3Candidate:
+    """Load the four frozen components and prove they are one candidate."""
+    bundle = _load_bundle(bundle_dir)
+    manifest = bundle["manifest"]
+
+    # --- the fusion artifact, and the bundle's binding to it ---------------
+    fusion_artifact = openset_base.load_fusion_artifact(Path(fusion_dir))
+    provenance = manifest.get("provenance")
+    if not isinstance(provenance, Mapping):
+        raise ValueError("bundle manifest has no provenance block")
+    recorded_fusion = (REPO / str(provenance.get("source_fusion_artifact"))).resolve()
+    if recorded_fusion != fusion_artifact.directory:
+        raise ValueError(
+            f"bundle was exported from {recorded_fusion}, not from the given "
+            f"fusion directory {fusion_artifact.directory}"
+        )
+    if provenance.get("source_dev_metrics_sha256") != fusion_artifact.file_sha256[
+        "dev_metrics.json"
+    ]:
+        raise ValueError(
+            "bundle provenance.source_dev_metrics_sha256 does not match the "
+            "fusion artifact's dev_metrics.json bytes"
+        )
+    for asset_name, fusion_value in (
+        ("real_center.npy", fusion_artifact.real_center),
+        ("complex_center.npy", fusion_artifact.complex_center),
+        ("fusion_prototypes.npy", fusion_artifact.prototypes),
+        ("feature_mean.npy", fusion_artifact.feature_mean),
+        ("feature_std.npy", fusion_artifact.feature_std),
+    ):
+        if not np.array_equal(
+            np.asarray(bundle["arrays"][asset_name], dtype=np.float32),
+            np.asarray(fusion_value, dtype=np.float32),
+        ):
+            raise ValueError(
+                f"runtime bundle {asset_name} differs from the fusion artifact"
+            )
+
+    # --- the torch fusion module, rebuilt from the frozen state dict -------
+    loaded = measure.load_fusion_artifact(Path(fusion_dir))
+    fusion_module = loaded["fusion"].to(device).eval()
+    state_name = str(fusion_artifact.metrics["artifacts"]["state_dict"])
+    if _sha256(bundle["directory"] / "fusion_state_dict.pt") != (
+        fusion_artifact.file_sha256[state_name]
+    ):
+        raise ValueError(
+            "bundle fusion_state_dict.pt differs from the fusion artifact's"
+        )
+
+    # --- the frozen staged stage-2 state -----------------------------------
+    components, policy, staged_hashes = openset_export.load_stage_two_state(
+        Path(staged_dir)
+    )
+    staged_metrics_path = (
+        assemble.reject_sealed_path(Path(staged_dir), "staged artifact")
+        / "openset_metrics.json"
+    )
+    staged_metrics = _read_candidate_json(staged_metrics_path)
+    for key, expected in (
+        ("status", "development_openset_pass"),
+        ("role", "validate"),
+        ("gates_are_evidence", True),
+        ("all_pass", True),
+        ("development_only", True),
+        ("release_evidence", False),
+        ("sealed_release_data_used", 0),
+        ("consumed_test_rows_used", 0),
+        ("additive_only", False),
+        ("changes_closed_label", True),
+        ("gates_before_classification", True),
+        ("closed_label_can_be_gated", True),
+    ):
+        if staged_metrics.get(key) != expected:
+            raise ValueError(
+                f"staged artifact records {key}={staged_metrics.get(key)!r}, "
+                f"expected {expected!r}; only a passing validation run may "
+                "supply the frozen stage-2 state"
+            )
+    if staged_metrics.get("artifacts") != staged_hashes:
+        raise ValueError(
+            "staged artifact npz bytes differ from the hashes its own report "
+            "recorded"
+        )
+    recorded = staged_metrics.get("fusion", {})
+    if recorded.get("directory_sha256") != fusion_artifact.directory_sha256:
+        raise ValueError(
+            "the staged stage-2 state was fit against a different fusion "
+            f"({recorded.get('directory_sha256')!r}) than the candidate "
+            f"({fusion_artifact.directory_sha256!r})"
+        )
+    if float(staged_metrics["stage_two"]["threshold"]) != float(policy.threshold):
+        raise ValueError(
+            "loaded stage-2 threshold differs from the staged artifact record"
+        )
+
+    # --- the stage-1 prefilter set ------------------------------------------
+    prefilter_module = staged.load_prefilter_module()
+    posedegen = staged.load_posedegen_module()
+    prefilter_path = assemble.reject_sealed_path(
+        Path(prefilter_dir), "prefilter set"
+    )
+    set_sha256 = str(noise_prefilter.prefilter_set_sha256(prefilter_path))
+    if staged_metrics.get("stage_one", {}).get("set_sha256") != set_sha256:
+        raise ValueError(
+            "prefilter set bytes differ from the set the staged validation "
+            "run recorded; the stage-1 gate is not the validated one"
+        )
+    declared_lengths = tuple(
+        int(length)
+        for length in staged_metrics.get("stage_one", {}).get(
+            "capture_lengths", ()
+        )
+    )
+    if not declared_lengths:
+        raise ValueError("staged artifact declares no stage-1 capture lengths")
+    stage_one = staged.load_stage_one(
+        prefilter_module,
+        posedegen,
+        prefilter_path,
+        required_lengths=declared_lengths,
+    )
+    if tuple(stage_one.lengths) != declared_lengths:
+        raise ValueError(
+            f"prefilter set covers {list(stage_one.lengths)}, but the staged "
+            f"validation declared {list(declared_lengths)}"
+        )
+
+    # --- the bundle's rejection contract must describe this exact policy ----
+    rejection = manifest.get("rejection", {})
+    required_contract = rejection.get("required_contract", {})
+    for key, expected in (
+        ("policy_schema", FROZEN_POLICY_SCHEMA),
+        ("policy_kind", FROZEN_POLICY_KIND),
+        ("geometry_feature", FROZEN_GEOMETRY_FEATURE),
+        ("geometry_weight", FROZEN_GEOMETRY_WEIGHT),
+        ("v2_weight", FROZEN_V2_WEIGHT),
+        ("threshold_quantile", FROZEN_THRESHOLD_QUANTILE),
+        ("module", "v3_time_domain_openset"),
+    ):
+        if required_contract.get(key) != expected:
+            raise ValueError(
+                f"bundle rejection.required_contract[{key!r}] is "
+                f"{required_contract.get(key)!r}, expected {expected!r}"
+            )
+
+    # --- source drift --------------------------------------------------------
+    staged_recorded = staged_metrics.get("source_sha256", {})
+    checked = _verify_source_contract(
+        staged_recorded,
+        STAGED_SOURCE_HARD_CONTRACT,
+        origin="the staged validation artifact",
+    )
+    checked.update(
+        _verify_source_contract(
+            manifest.get("provenance", {}).get("assembly_source_sha256", {}),
+            BUNDLE_ASSEMBLY_SOURCE_HARD_CONTRACT,
+            origin="the runtime bundle assembly record",
+        )
+    )
+    frontend_recorded = manifest.get("frontend", {}).get("source_sha256", {})
+    for name, expected in dict(frontend_recorded).items():
+        short = str(name).split("/")[-1]
+        current = _sha256(_source_path(short))
+        if current != expected:
+            raise ValueError(f"frontend source drift: {name}")
+        checked[short] = current
+    recorded_only = {
+        name: {
+            "recorded_by_staged_artifact": staged_recorded.get(name),
+            "current": _sha256(_source_path(name)),
+            "enforced": False,
+            "reason": (
+                "training-loop source; imported but never executed for data "
+                "by this evaluator, and legitimately changed after the "
+                "candidate was frozen (HANDOFF 24.1)"
+            ),
+        }
+        for name in STAGED_SOURCE_RECORDED_ONLY
+    }
+    evaluator_chain = {
+        name: _sha256(_source_path(name))
+        for name in (
+            "evaluate_invariant_release_suite.py",
+            "export_v3_openset_browser_assets.py",
+            "measure_v3_remaining_gates.py",
+            "preprocess.py",
+            "invariant_patch_preprocess.py",
+            "run_invariant_cnn_dev.py",
+        )
+    }
+
+    # --- geometry and classes -----------------------------------------------
+    frontend = manifest["frontend"]
+    metadata = td_preprocess.preprocess_metadata()
+    for key in ("patch_length", "patch_count", "target_frac"):
+        if metadata[key] != frontend[key]:
+            raise ValueError(
+                f"current frontend {key}={metadata[key]!r} differs from the "
+                f"bundle's frozen {frontend[key]!r}"
+            )
+    if metadata["version"] != frontend["version"]:
+        raise ValueError("current frontend version differs from the bundle's")
+    classes = tuple(str(name) for name in manifest["classification"]["classes"])
+    if not classes or list(classes) != sorted(classes):
+        raise ValueError("bundle classes must be a sorted non-empty list")
+
+    rejector = openset_base.Rejector(
+        nets={
+            "real": fusion_module.real_branch,
+            "complex": fusion_module.complex_branch,
+        },
+        real_center=fusion_artifact.real_center,
+        complex_center=fusion_artifact.complex_center,
+        weight_real=fusion_artifact.weight_real,
+        prototypes=fusion_artifact.prototypes,
+        lof_components=list(components),
+        policy=policy,
+    )
+
+    return V3Candidate(
+        bundle_dir=bundle["directory"],
+        bundle_manifest_path=bundle["manifest_path"],
+        bundle_manifest_sha256=bundle["manifest_sha256"],
+        bundle_manifest=manifest,
+        bundle_arrays=bundle["arrays"],
+        fusion_dir=fusion_artifact.directory,
+        fusion_artifact=fusion_artifact,
+        fusion_module=fusion_module,
+        staged_dir=staged_metrics_path.parent,
+        staged_metrics=staged_metrics,
+        staged_hashes=staged_hashes,
+        prefilter_dir=prefilter_path,
+        prefilter_set_sha256=set_sha256,
+        stage_one=stage_one,
+        stage_one_lengths=tuple(stage_one.lengths),
+        posedegen=posedegen,
+        prefilter_module=prefilter_module,
+        rejector=rejector,
+        classes=classes,
+        patch_length=int(frontend["patch_length"]),
+        patch_count=int(frontend["patch_count"]),
+        target_frac=float(frontend["target_frac"]),
+        feature_mean=np.asarray(
+            bundle["arrays"]["feature_mean.npy"], dtype=np.float32
+        ),
+        feature_std=np.asarray(
+            bundle["arrays"]["feature_std.npy"], dtype=np.float32
+        ),
+        threshold=float(policy.threshold),
+        source_report={
+            "enforced": checked,
+            "recorded_only": recorded_only,
+            "evaluator_chain": evaluator_chain,
+        },
+    )
+
+
+def candidate_provenance(candidate: V3Candidate) -> dict[str, Any]:
+    return {
+        "bundle_dir": str(candidate.bundle_dir),
+        "bundle_manifest_sha256": candidate.bundle_manifest_sha256,
+        "bundle_assets": {
+            name: dict(record)
+            for name, record in candidate.bundle_manifest["assets"].items()
+        },
+        "fusion_dir": str(candidate.fusion_dir),
+        "fusion_directory_sha256": candidate.fusion_artifact.directory_sha256,
+        "fusion_file_sha256": dict(candidate.fusion_artifact.file_sha256),
+        "fusion_seed": int(candidate.fusion_artifact.seed),
+        "staged_dir": str(candidate.staged_dir),
+        "staged_artifact_sha256": dict(candidate.staged_hashes),
+        "staged_status": candidate.staged_metrics["status"],
+        "staged_novelty_seeds": list(
+            candidate.staged_metrics["seeds"]["novelty_seeds"]
+        ),
+        "prefilter_dir": str(candidate.prefilter_dir),
+        "prefilter_set_sha256": candidate.prefilter_set_sha256,
+        "stage_one_capture_lengths": [
+            int(length) for length in candidate.stage_one_lengths
+        ],
+        "stage_two_threshold": candidate.threshold,
+        "source_sha256": candidate.source_report,
+    }
+
+
+# ---------------------------------------------------------------------------
+# suite loading: v2 machinery with the v3 protocol and candidate binding
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class V3ReleaseSuite:
+    root: Path
+    intent_path: Path
+    manifest_path: Path
+    intent: dict[str, Any]
+    release_manifest: dict[str, Any]
+    candidate_sha256: str
+    release_seed: int
+    classes: tuple[str, ...]
+    corpora: dict[int, release.CorpusSpec]
+    support_indices: np.ndarray
+    query_indices: np.ndarray
+    split_report: dict[str, Any]
+    prefix_nesting_report: dict[str, Any]
+    dependency_report: dict[str, Any]
+    start_probe_report: dict[str, Any]
+
+
+def load_v3_release_suite(
+    release_root: Path,
+    candidate: V3Candidate,
+) -> V3ReleaseSuite:
+    """Load and cryptographically verify a sealed v3 suite before inference.
+
+    This mirrors ``evaluate_invariant_release_suite.load_release_suite`` step
+    by step; every sub-verification (file records, corpus geometry, prefix
+    nesting, derivation records, start probe, dependency provenance, split) is
+    the imported v2 function.  The two v3-specific changes are the expected
+    ``evaluation_protocol`` object and the candidate binding: the intent's
+    ``candidate_path`` must be the runtime bundle's manifest file, whose
+    SHA-256 transitively pins all four candidate components.
+    """
+    root = Path(release_root).expanduser().resolve()
+    if not root.is_dir() or root.is_symlink():
+        raise ValueError(f"release root must be a regular directory: {root}")
+    if _is_below(root, release.LIVE_CORPUS) or _is_below(
+        release.LIVE_CORPUS, root
+    ):
+        raise ValueError(
+            "release root aliases, contains, or is inside the live corpus"
+        )
+    existing = root / "RELEASE_EVALUATION.json"
+    if existing.exists():
+        raise FileExistsError(
+            f"{existing} already exists; this suite has been evaluated and a "
+            "sealed one-shot may not be re-run"
+        )
+
+    intent_path = root / "RELEASE_INTENT.json"
+    manifest_path = root / "RELEASE_MANIFEST.json"
+    intent = _read_json(intent_path)
+    release_manifest = _read_json(manifest_path)
+    if intent.get("protocol") != RELEASE_PROTOCOL or release_manifest.get(
+        "protocol"
+    ) != RELEASE_PROTOCOL:
+        raise ValueError("release protocol is invalid")
+    if intent.get("status") != "in_progress":
+        raise ValueError("RELEASE_INTENT must preserve its pre-generation status")
+    if release_manifest.get("status") != "complete":
+        raise ValueError("release manifest is not complete")
+    if intent.get("development_data_used") is not False or release_manifest.get(
+        "development_data_used"
+    ) is not False:
+        raise ValueError("release suite may not declare development-data use")
+
+    release_seed = validate_release_seed(intent.get("release_seed"))
+    expected_protocol = expected_evaluation_protocol(
+        release_seed, candidate.stage_one_lengths
+    )
+    for name, holder in (("intent", intent), ("manifest", release_manifest)):
+        if holder.get("evaluation_protocol") != expected_protocol:
+            raise ValueError(
+                f"release {name} evaluation_protocol is missing or differs "
+                "from the precommitted v3 evaluator contract"
+            )
+
+    intent_hash = str(release_manifest.get("release_intent_sha256", "")).lower()
+    if intent_hash != _sha256(intent_path):
+        raise ValueError(
+            "RELEASE_MANIFEST does not bind the exact RELEASE_INTENT bytes"
+        )
+    for key in (
+        "protocol",
+        "development_data_used",
+        "candidate_path",
+        "candidate_sha256",
+        "release_seed",
+        "capture_lengths",
+        "target_per_class",
+        "exact_target_per_class",
+        "evaluation_protocol",
+        "source_sha256",
+        "dependency_provenance",
+        "runtime_provenance",
+        "started_at",
+    ):
+        if release_manifest.get(key) != intent.get(key):
+            raise ValueError(
+                f"release manifest changed precommitted intent field {key!r}"
+            )
+
+    source_records = intent.get("source_sha256")
+    if not isinstance(source_records, Mapping) or set(source_records) != {
+        "launcher",
+        "corpus_generator",
+        "prefix_deriver",
+        "tsx_package",
+    }:
+        raise ValueError("intent source_sha256 is missing")
+    expected_source_paths = {
+        "launcher": release.LAUNCHER,
+        "corpus_generator": release.CORPUS_GENERATOR,
+        "prefix_deriver": release.PREFIX_DERIVER,
+    }
+    for name, expected_path in expected_source_paths.items():
+        record = source_records.get(name)
+        if not isinstance(record, Mapping):
+            raise ValueError(f"intent source record {name!r} is missing")
+        path = Path(str(record.get("path", ""))).expanduser().resolve()
+        if path != expected_path:
+            raise ValueError(
+                f"intent source path {name!r} is not the release source"
+            )
+        if str(record.get("sha256", "")).lower() != _sha256(path):
+            raise ValueError(f"intent source {name!r} changed after generation")
+    if source_records.get("tsx_package") != "tsx@4.20.3":
+        raise ValueError("release intent did not pin the expected tsx package")
+    if release_manifest.get("source_sha256") != source_records:
+        raise ValueError("release manifest source records differ from intent")
+
+    dependency_report = release._validate_dependency_provenance(
+        intent.get("dependency_provenance"),
+        intent.get("runtime_provenance"),
+    )
+    signal_lab_root = Path(dependency_report["signallab"]["root"])
+
+    # Candidate binding: the intent-bound file is the bundle manifest.
+    candidate_path = (
+        Path(str(intent.get("candidate_path", ""))).expanduser().resolve()
+    )
+    if candidate_path != candidate.bundle_manifest_path:
+        raise ValueError(
+            "RELEASE_INTENT candidate_path is not the v3 runtime bundle "
+            f"manifest: {candidate_path} != {candidate.bundle_manifest_path}"
+        )
+    if _is_below(candidate_path, root):
+        raise ValueError("candidate must be frozen outside the release output root")
+    candidate_hash = str(intent.get("candidate_sha256", "")).lower()
+    if candidate_hash != candidate.bundle_manifest_sha256:
+        raise ValueError(
+            "candidate bundle-manifest SHA-256 does not match RELEASE_INTENT"
+        )
+    for directory in (
+        candidate.bundle_dir,
+        candidate.fusion_dir,
+        candidate.staged_dir,
+        candidate.prefilter_dir,
+    ):
+        if _is_below(Path(directory), root):
+            raise ValueError(
+                "every candidate component must live outside the release root"
+            )
+
+    target_per_class = _integer(
+        intent.get("target_per_class"), "target_per_class", MIN_TARGET_PER_CLASS
+    )
+    if intent.get("exact_target_per_class") is not True:
+        raise ValueError("release suite must use exact per-class targeting")
+    lengths_value = intent.get("capture_lengths")
+    if (
+        not isinstance(lengths_value, list)
+        or lengths_value != list(REQUIRED_CAPTURE_LENGTHS)
+        or any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 64
+            for value in lengths_value
+        )
+    ):
+        raise ValueError(
+            "capture_lengths must equal the frozen required release length suite"
+        )
+    lengths = [int(value) for value in lengths_value]
+
+    corpus_records = release_manifest.get("corpora")
+    if not isinstance(corpus_records, list) or len(corpus_records) != len(lengths):
+        raise ValueError("release manifest corpus list is incomplete")
+    by_length: dict[int, Mapping[str, Any]] = {}
+    for record in corpus_records:
+        if not isinstance(record, Mapping):
+            raise ValueError("each release corpus record must be an object")
+        length = _integer(record.get("capture_length"), "capture_length", 64)
+        if length in by_length:
+            raise ValueError(f"duplicate release corpus length {length}")
+        by_length[length] = record
+    if sorted(by_length) != lengths:
+        raise ValueError("release corpus lengths differ from precommitted lengths")
+
+    corpora: dict[int, release.CorpusSpec] = {}
+    reference_items: list[Mapping[str, Any]] | None = None
+    classes: tuple[str, ...] | None = None
+    reference_keys: tuple[str, ...] | None = None
+    for length in lengths:
+        record = by_length[length]
+        expected_derivation = (
+            "generated_once_at_longest_length"
+            if length == lengths[-1]
+            else "bit_exact_row_prefix_of_longest"
+        )
+        if record.get("derivation") != expected_derivation:
+            raise ValueError(
+                f"release corpus n{length} derivation declaration is invalid"
+            )
+        directory_input = Path(str(record.get("directory", ""))).expanduser()
+        expected_directory = root / f"n{length}"
+        if directory_input.is_symlink() or expected_directory.is_symlink():
+            raise ValueError(
+                f"release corpus n{length} directory may not be a symlink"
+            )
+        directory = directory_input.resolve()
+        if directory != expected_directory:
+            raise ValueError(
+                f"release corpus n{length} escapes its sealed directory"
+            )
+        files = record.get("files")
+        if not isinstance(files, Mapping) or set(files) != {
+            "corpus.json",
+            "corpus.f32",
+            "corpus_clean.f32",
+        }:
+            raise ValueError(
+                f"release corpus n{length} file records are incomplete"
+            )
+        corpus_manifest_path = directory / "corpus.json"
+        raw_path = directory / "corpus.f32"
+        clean_path = directory / "corpus_clean.f32"
+        _verify_file_record(
+            corpus_manifest_path, files["corpus.json"], name=f"n{length}/corpus.json"
+        )
+        _verify_file_record(
+            raw_path, files["corpus.f32"], name=f"n{length}/corpus.f32"
+        )
+        _verify_file_record(
+            clean_path,
+            files["corpus_clean.f32"],
+            name=f"n{length}/corpus_clean.f32",
+        )
+        corpus_manifest = _read_json(corpus_manifest_path)
+        count = _integer(corpus_manifest.get("count"), f"n{length}.count", 1)
+        if (
+            corpus_manifest.get("format") != "cf32le-interleaved"
+            or corpus_manifest.get("sampleCount") != length
+            or corpus_manifest.get("corpusSeed") != release_seed
+            or corpus_manifest.get("targetPerClass") != target_per_class
+            or corpus_manifest.get("exactTargetPerClass") is not True
+            or corpus_manifest.get("hasCleanPairs") is not True
+            or corpus_manifest.get("signalLabRoot") != str(signal_lab_root)
+        ):
+            raise ValueError(
+                f"n{length} corpus geometry/seed/target/format is invalid"
+            )
+        items = corpus_manifest.get("items")
+        corpus_classes = corpus_manifest.get("classes")
+        if (
+            not isinstance(items, list)
+            or len(items) != count
+            or any(not isinstance(item, Mapping) for item in items)
+            or not isinstance(corpus_classes, list)
+            or not corpus_classes
+            or any(
+                not isinstance(name, str) or not name for name in corpus_classes
+            )
+            or corpus_classes != sorted(set(corpus_classes))
+        ):
+            raise ValueError(f"n{length} corpus classes/items are malformed")
+        class_counts = {
+            name: sum(item.get("cls") == name for item in items)
+            for name in corpus_classes
+        }
+        if any(value != target_per_class for value in class_counts.values()):
+            raise ValueError(
+                f"n{length} class counts differ from exact target "
+                f"{target_per_class}: {class_counts}"
+            )
+        expected_bytes = count * length * 2 * np.dtype("<f4").itemsize
+        if (
+            raw_path.stat().st_size != expected_bytes
+            or clean_path.stat().st_size != expected_bytes
+        ):
+            raise ValueError(
+                f"n{length} raw byte size disagrees with corpus geometry"
+            )
+        keys = tuple(release._row_keys(items))
+        if reference_items is None:
+            reference_items = items
+            reference_keys = keys
+            classes = tuple(corpus_classes)
+        else:
+            if tuple(corpus_classes) != classes or keys != reference_keys:
+                raise ValueError(
+                    f"n{length} rows are not metadata-matched to the reference "
+                    "corpus"
+                )
+        corpora[length] = release.CorpusSpec(
+            capture_length=length,
+            directory=directory,
+            manifest_path=corpus_manifest_path,
+            raw_path=raw_path,
+            clean_path=clean_path,
+            manifest=corpus_manifest,
+            row_keys=keys,
+        )
+
+    assert reference_items is not None and classes is not None
+    if classes != candidate.classes:
+        raise ValueError(
+            f"sealed corpus classes {list(classes)} differ from the candidate "
+            f"classes {list(candidate.classes)}"
+        )
+    start_probe_report = release._validate_unscored_start_probe(
+        release_manifest,
+        root=root,
+        longest=corpora[lengths[-1]],
+        classes=classes,
+        release_seed=release_seed,
+        target_per_class=target_per_class,
+        signal_lab_root=signal_lab_root,
+    )
+    prefix_nesting_report = release.verify_prefix_nesting(corpora)
+    prefix_nesting_report["derivation_records"] = (
+        release.validate_prefix_derivation_records(corpora)
+    )
+    support, query, split_report = release.predeclared_five_shot_split(
+        reference_items, classes, release_seed
+    )
+    return V3ReleaseSuite(
+        root=root,
+        intent_path=intent_path,
+        manifest_path=manifest_path,
+        intent=intent,
+        release_manifest=release_manifest,
+        candidate_sha256=candidate_hash,
+        release_seed=release_seed,
+        classes=classes,
+        corpora=corpora,
+        support_indices=support,
+        query_indices=query,
+        split_report=split_report,
+        prefix_nesting_report=prefix_nesting_report,
+        dependency_report=dependency_report,
+        start_probe_report=start_probe_report,
+    )
+
+
+# ---------------------------------------------------------------------------
+# inference: the additive sub-path and the staged decision path
+# ---------------------------------------------------------------------------
+
+
+def _preprocess_iq_rows(
+    captures: Sequence[np.ndarray],
+    candidate: V3Candidate,
+) -> tuple[np.ndarray, np.ndarray]:
+    """v3 time-domain frontend + the bundle's frozen feature standardization."""
+    if not len(captures):
+        raise ValueError("preprocessing requires at least one capture")
+    packed = np.empty(
+        (
+            len(captures),
+            2,
+            candidate.patch_count * candidate.patch_length,
+        ),
+        dtype=np.float32,
+    )
+    features = np.empty(
+        (len(captures), len(candidate.feature_mean)), dtype=np.float32
+    )
+    for row, raw in enumerate(captures):
+        channels, raw_features, _context = td_preprocess.preprocess(
+            raw,
+            patch_length=candidate.patch_length,
+            patch_count=candidate.patch_count,
+            target_frac=candidate.target_frac,
+        )
+        packed[row] = np.asarray(channels, dtype=np.float32)
+        features[row] = (
+            np.asarray(raw_features, dtype=np.float32) - candidate.feature_mean
+        ) / candidate.feature_std
+    if not np.isfinite(packed).all() or not np.isfinite(features).all():
+        raise RuntimeError("v3 frontend produced non-finite preprocessing")
+    return packed, features
+
+
+def _embed_additive(
+    candidate: V3Candidate,
+    packed: np.ndarray,
+    features: np.ndarray,
+    device: torch.device,
+) -> dict[str, np.ndarray]:
+    """Branch and fused embeddings for every row (the additive sub-path)."""
+    real = embed_all(
+        candidate.rejector.nets["real"], packed, features, device
+    ).astype(np.float32, copy=False)
+    complex_embedding = embed_all(
+        candidate.rejector.nets["complex"], packed, features, device
+    ).astype(np.float32, copy=False)
+    fused = assemble.fuse_numpy(
+        real,
+        complex_embedding,
+        candidate.rejector.real_center,
+        candidate.rejector.complex_center,
+        weight_real=candidate.rejector.weight_real,
+    )
+    result = {"real": real, "complex": complex_embedding, "fusion": fused}
+    if any(not np.isfinite(value).all() for value in result.values()):
+        raise RuntimeError("runtime produced non-finite embeddings")
+    return result
+
+
+def _unstaged_scores(
+    candidate: V3Candidate,
+    embeddings: Mapping[str, np.ndarray],
+    packed: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The additive stage-2 score of every row, from already-built embeddings.
+
+    Mirrors ``fit_v3_openset.run``'s selection scoring: branch-LOF rank
+    ensemble, frozen policy score, and the additivity assertion that the
+    closed label is unchanged by scoring.
+    """
+    lof = openset_base.score_branch_lof(
+        candidate.rejector.lof_components,
+        {"real": embeddings["real"], "complex": embeddings["complex"]},
+    )
+    # train.nearest, exactly as fit_v3_openset.score_rows predicts, so the
+    # additivity assertion below compares one formula with itself.  The closed
+    # and invariance reports use release._nearest, exactly as v2 did.
+    prediction, _distance = openset_base.nearest(
+        embeddings["fusion"], candidate.rejector.prototypes
+    )
+    prediction = np.asarray(prediction, dtype=np.int64)
+    score = candidate.rejector.policy.score(lof, packed, prediction)
+    openset_base.assert_closed_label_unchanged(
+        embeddings["fusion"],
+        candidate.rejector.prototypes,
+        prediction,
+        score,
+    )
+    return prediction, np.asarray(score, dtype=np.float64)
+
+
+def _stage_one_features(
+    candidate: V3Candidate,
+    captures: Sequence[np.ndarray],
+    *,
+    population: str,
+) -> np.ndarray:
+    return staged.prefilter_matrix(
+        candidate.posedegen,
+        captures,
+        patch_length=candidate.patch_length,
+        target_frac=candidate.target_frac,
+        population=population,
+    )
+
+
+def _staged_scores(
+    candidate: V3Candidate,
+    captures: Sequence[np.ndarray],
+    packed: np.ndarray,
+    features: np.ndarray,
+    unstaged_prediction: np.ndarray,
+    unstaged_score: np.ndarray,
+    device: torch.device,
+    *,
+    capture_length: int,
+    population: str,
+) -> dict[str, Any]:
+    """Score one row set through the staged decision path.
+
+    On a fitted length this is ``fit_v3_openset_staged.score_staged``
+    verbatim: stage 1 gates, downstream is never computed for gated rows
+    inside this pass, and the staged/unstaged survivor agreement is asserted.
+    On a length ABOVE the longest fitted length the causal-prefix rule
+    applies: stage-1 features are computed on each capture's first
+    max-fitted-length samples (``staged.stage_one_prefix_captures``) and the
+    gate scores them with that length's bundle; everything downstream is the
+    covered path unchanged.  On a length BELOW the smallest fitted length the
+    gate cannot fire and the staged score IS the additive score, which is
+    recorded rather than hidden.
+    """
+    rows = int(len(packed))
+    threshold = candidate.threshold
+    length = int(capture_length)
+    fitted = length in candidate.stage_one_lengths
+    prefix_applied = (not fitted) and length > int(
+        max(candidate.stage_one_lengths)
+    )
+    active = fitted or prefix_applied
+    feature_length: int | None = None
+    if active:
+        feature_captures, feature_length = staged.stage_one_prefix_captures(
+            candidate.stage_one, captures, length
+        )
+        stage_features = _stage_one_features(
+            candidate, feature_captures, population=population
+        )
+        outcome = staged.score_staged(
+            candidate.rejector,
+            candidate.stage_one,
+            packed,
+            features,
+            stage_features,
+            device,
+            capture_length=length,
+        )
+        agreement = staged.subset_agreement(outcome, unstaged_score)
+        gated = np.asarray(outcome.gated, dtype=bool)
+        staged_score = np.asarray(outcome.staged_score, dtype=np.float64)
+        by_stage = staged.known_false_unknown_by_stage(
+            outcome, unstaged_score, threshold
+        )
+    else:
+        gated = np.zeros(rows, dtype=bool)
+        staged_score = np.asarray(unstaged_score, dtype=np.float64)
+        agreement = {
+            "survivor_rows": rows,
+            "max_abs_difference": 0.0,
+            "exact": True,
+            "note": (
+                "stage 1 inactive below the smallest fitted length; "
+                "staged == additive"
+            ),
+        }
+        rejected = staged_score > threshold
+        by_stage = {
+            "rows": rows,
+            "staged_false_unknown_rate": float(np.mean(rejected)),
+            "stage_one_gate_rate": 0.0,
+            "stage_two_false_unknown_rate_marginal": float(np.mean(rejected)),
+            "stage_two_false_unknown_rate_among_survivors": float(
+                np.mean(rejected)
+            ),
+            "unstaged_false_unknown_rate": float(np.mean(rejected)),
+            "rejected_by_stage_one_only": 0,
+            "rejected_by_stage_two_only": int(np.count_nonzero(rejected)),
+            "attribution": (
+                "this capture length is below the smallest fitted stage-1 "
+                "length, so no bundle's fitted length is a causal prefix of "
+                "it; every row flowed to the additive stage-2 path"
+            ),
+        }
+    prediction = np.asarray(unstaged_prediction, dtype=np.int64).copy()
+    final_label = np.where(
+        gated | (staged_score > threshold), np.int64(-1), prediction
+    )
+    return {
+        "stage_one_active": bool(active),
+        "stage_one_feature_length": (
+            int(feature_length) if feature_length is not None else None
+        ),
+        "stage_one_prefix_rule_applied": bool(prefix_applied),
+        "gated": gated,
+        "staged_score": staged_score,
+        "final_label_or_unknown": final_label,
+        "gated_fraction": float(np.mean(gated)) if rows else 0.0,
+        "rejected_fraction": (
+            float(np.mean(staged_score > threshold)) if rows else 0.0
+        ),
+        "subset_scoring_agreement": agreement,
+        "false_unknown_by_stage": by_stage,
+    }
+
+
+# ---------------------------------------------------------------------------
+# novelty: generated once at the maximum length from the release seed
+# ---------------------------------------------------------------------------
+
+
+def _novelty_seed(base_seed: int, family: str) -> int:
+    """The v2 derivation with the release seed as base (v2 used 20260729)."""
+    if family not in NOVELTY_FAMILIES:
+        raise ValueError(f"unfrozen novelty family {family!r}")
+    payload = f"{int(base_seed)}\0{family}".encode("utf-8")
+    return int.from_bytes(hashlib.sha256(payload).digest()[:8], "little")
+
+
+def _novelty_rows_by_family(
+    base_seed: int,
+    longest: int,
+) -> tuple[dict[str, list[np.ndarray]], dict[str, Any]]:
+    rows_by_family: dict[str, list[np.ndarray]] = {}
+    seed_by_family: dict[str, int] = {}
+    longest_bytes_sha256: dict[str, str] = {}
+    for family in NOVELTY_FAMILIES:
+        seed = _novelty_seed(base_seed, family)
+        seed_by_family[family] = seed
+        rng = np.random.default_rng(seed)
+        rows = [
+            np.asarray(NOVELTY[family](longest, rng), dtype=np.complex128)
+            for _ in range(NOVELTY_N_EACH_PER_LENGTH)
+        ]
+        if any(
+            row.shape != (longest,)
+            or not np.isfinite(row.real).all()
+            or not np.isfinite(row.imag).all()
+            for row in rows
+        ):
+            raise RuntimeError(
+                f"novelty generator {family!r} returned invalid rows"
+            )
+        digest = hashlib.sha256()
+        for row in rows:
+            digest.update(np.asarray(row, dtype="<c16").tobytes(order="C"))
+        longest_bytes_sha256[family] = digest.hexdigest()
+        rows_by_family[family] = rows
+    provenance = {
+        "base_seed": int(base_seed),
+        "derived_seed_by_family": seed_by_family,
+        "families": list(NOVELTY_FAMILIES),
+        "rows_per_family": int(NOVELTY_N_EACH_PER_LENGTH),
+        "longest_capture_length": int(longest),
+        "longest_complex128_bytes_sha256": longest_bytes_sha256,
+        "prefix_rule": (
+            "each shorter novelty observation is the exact leading slice of "
+            "the same in-memory maximum-length realization"
+        ),
+        "recalibration_performed": False,
+    }
+    return rows_by_family, provenance
+
+
+# ---------------------------------------------------------------------------
+# per-length open report on the staged axis (v2 report keys preserved)
+# ---------------------------------------------------------------------------
+
+
+def _open_report(
+    known: Mapping[str, Any],
+    novelty: Mapping[str, Mapping[str, Any]],
+    candidate: V3Candidate,
+    novelty_provenance: Mapping[str, Any],
+) -> dict[str, Any]:
+    known_score = np.asarray(known["staged_score"], dtype=np.float64)
+    family_scores = {
+        family: np.asarray(novelty[family]["staged_score"], dtype=np.float64)
+        for family in NOVELTY_FAMILIES
+    }
+    if any(
+        len(scores) != NOVELTY_N_EACH_PER_LENGTH
+        for scores in family_scores.values()
+    ):
+        raise RuntimeError(
+            "prefix-matched novelty population has an unexpected row count"
+        )
+    all_novelty = np.concatenate(
+        [family_scores[name] for name in NOVELTY_FAMILIES]
+    )
+    threshold = candidate.threshold
+    return {
+        "known_rows": int(len(known_score)),
+        "novelty_rows_per_family": int(NOVELTY_N_EACH_PER_LENGTH),
+        "base_seed": int(novelty_provenance["base_seed"]),
+        "derived_seed_by_family": dict(
+            novelty_provenance["derived_seed_by_family"]
+        ),
+        "maximum_length_realization_sha256": dict(
+            novelty_provenance["longest_complex128_bytes_sha256"]
+        ),
+        "shorter_observation_rule": novelty_provenance["prefix_rule"],
+        "score": (
+            "staged axis: frozen stage-1 noise prefilter gates, survivors "
+            "carry the frozen enrollment-ranked branch-LOF + geometry blend; "
+            "gated rows are placed above every ungated row"
+        ),
+        "threshold": float(threshold),
+        "recalibration_performed": False,
+        "stage_one_active": bool(known["stage_one_active"]),
+        "stage_one_feature_length": known["stage_one_feature_length"],
+        "stage_one_prefix_rule_applied": bool(
+            known["stage_one_prefix_rule_applied"]
+        ),
+        "auroc_overall": release._auroc(all_novelty, known_score),
+        **{
+            f"auroc_{name}": release._auroc(family_scores[name], known_score)
+            for name in NOVELTY_FAMILIES
+        },
+        "known_false_unknown_rate": float(np.mean(known_score > threshold)),
+        **{
+            f"flagged_unknown_{name}": float(
+                np.mean(family_scores[name] > threshold)
+            )
+            for name in NOVELTY_FAMILIES
+        },
+        "known_false_unknown_by_stage": dict(known["false_unknown_by_stage"]),
+        "known_gated_fraction": float(known["gated_fraction"]),
+        **{
+            f"gated_fraction_{name}": float(novelty[name]["gated_fraction"])
+            for name in NOVELTY_FAMILIES
+        },
+        "subset_scoring_agreement": {
+            "known": dict(known["subset_scoring_agreement"]),
+            **{
+                name: dict(novelty[name]["subset_scoring_agreement"])
+                for name in NOVELTY_FAMILIES
+            },
+        },
+        "unstaged_control": {
+            "auroc_overall": release._auroc(
+                np.concatenate(
+                    [
+                        np.asarray(
+                            novelty[name]["unstaged_score"], dtype=np.float64
+                        )
+                        for name in NOVELTY_FAMILIES
+                    ]
+                ),
+                np.asarray(known["unstaged_score"], dtype=np.float64),
+            ),
+            **{
+                f"auroc_{name}": release._auroc(
+                    np.asarray(
+                        novelty[name]["unstaged_score"], dtype=np.float64
+                    ),
+                    np.asarray(known["unstaged_score"], dtype=np.float64),
+                )
+                for name in NOVELTY_FAMILIES
+            },
+            "known_false_unknown_rate": float(
+                np.mean(
+                    np.asarray(known["unstaged_score"], dtype=np.float64)
+                    > threshold
+                )
+            ),
+            **{
+                f"flagged_unknown_{name}": float(
+                    np.mean(
+                        np.asarray(
+                            novelty[name]["unstaged_score"], dtype=np.float64
+                        )
+                        > threshold
+                    )
+                )
+                for name in NOVELTY_FAMILIES
+            },
+            "role": (
+                "verification control: the additive path over the same rows; "
+                "never a gate input"
+            ),
+        },
+        "known_score_quantiles": {
+            "p50": float(np.quantile(known_score, 0.5)),
+            "p95": float(np.quantile(known_score, 0.95)),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# scale sweep: the v2 sweep semantics with the v3 additive sub-path
+# ---------------------------------------------------------------------------
+
+
+def _scale_sweep(
+    spec: release.CorpusSpec,
+    candidate: V3Candidate,
+    device: torch.device,
+    labels: np.ndarray,
+    query_indices: np.ndarray,
+) -> dict[str, Any]:
+    eligible, eligibility = release._scale_eligible_indices(
+        spec, query_indices, candidate.classes
+    )
+    base_captures = release._raw_rows(spec, eligible)
+    rows = []
+    embeddings_by_factor: dict[float, np.ndarray] = {}
+    predictions_by_factor: dict[float, np.ndarray] = {}
+    wanted = labels[eligible]
+    snr = np.asarray(
+        [
+            release._finite_number(
+                spec.manifest["items"][int(index)]["snrDb"], "snrDb"
+            )
+            for index in eligible
+        ],
+        dtype=np.float64,
+    )
+    for factor in PHYSICAL_SCALE_FACTORS:
+        new_length = max(64, int(round(MATCHED_CAPTURE_LENGTH / factor)))
+        effective_factor = (MATCHED_CAPTURE_LENGTH - 1) / (new_length - 1)
+        captures = (
+            base_captures
+            if factor == 1.0
+            else [
+                production_preprocess.lin_resample(raw, new_length)
+                for raw in base_captures
+            ]
+        )
+        packed, features = _preprocess_iq_rows(captures, candidate)
+        embeddings = _embed_additive(candidate, packed, features, device)[
+            "fusion"
+        ]
+        embeddings_by_factor[factor] = embeddings
+        closed, prediction = release._simple_closed_report(
+            embeddings,
+            wanted,
+            candidate.rejector.prototypes,
+            candidate.classes,
+        )
+        predictions_by_factor[factor] = prediction
+        transformed_sample_rates = np.asarray(
+            [
+                release._finite_number(
+                    spec.manifest["items"][int(index)]["sampleRateHz"],
+                    "sampleRateHz",
+                )
+                / effective_factor
+                for index in eligible
+            ],
+            dtype=np.float64,
+        )
+        rows.append(
+            {
+                "factor": factor,
+                "effective_factor": effective_factor,
+                "raw_length": new_length,
+                "transformed_metadata": {
+                    "sample_rate_hz_rule": (
+                        "original sampleRateHz / effective_factor"
+                    ),
+                    "sample_rate_hz_min": float(transformed_sample_rates.min()),
+                    "sample_rate_hz_max": float(transformed_sample_rates.max()),
+                    "bandwidth_hz_rule": "unchanged",
+                    "centre_offset_fraction_rule": (
+                        "original centreOffsetFrac * effective_factor"
+                    ),
+                },
+                "accuracy": closed["accuracy"],
+                "balanced_accuracy": closed["balanced_accuracy"],
+                "per_class_recall": closed["per_class_recall"],
+                "mean_pairwise_cosine": closed["mean_pairwise_cosine"],
+            }
+        )
+    reference = embeddings_by_factor[1.0]
+    reference_prediction = predictions_by_factor[1.0]
+    for row in rows:
+        factor = float(row["factor"])
+        row["paired_to_factor1"] = release._paired_invariance_report(
+            embeddings_by_factor[factor],
+            reference,
+            predictions_by_factor[factor],
+            reference_prediction,
+            wanted,
+            snr,
+            candidate.classes,
+        )
+    return {
+        "definition": (
+            "normalized frequencies multiplied by s through deterministic "
+            "linear resampling to N/s; common predeclared no-alias subset"
+        ),
+        "rejector_rule": SWEEP_REJECTOR_RULE,
+        "factors": list(PHYSICAL_SCALE_FACTORS),
+        "eligible_rows": int(len(eligible)),
+        **eligibility,
+        "eligible_indices_sha256": hashlib.sha256(
+            eligible.astype("<i8", copy=False).tobytes()
+        ).hexdigest(),
+        "rows": rows,
+        "worst_balanced_accuracy": min(
+            float(row["balanced_accuracy"]) for row in rows
+        ),
+        "worst_mean_pairwise_cosine": max(
+            float(row["mean_pairwise_cosine"]) for row in rows
+        ),
+        "worst_prediction_agreement_to_factor1": min(
+            float(row["paired_to_factor1"]["prediction_agreement"])
+            for row in rows
+        ),
+        "worst_embedding_cosine_to_factor1": min(
+            float(row["paired_to_factor1"]["embedding_cosine_mean"])
+            for row in rows
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# the evaluation
+# ---------------------------------------------------------------------------
+
+
+def evaluate_release(
+    suite: V3ReleaseSuite,
+    candidate: V3Candidate,
+    device: torch.device,
+) -> dict[str, Any]:
+    """Run the fully precommitted evaluation without modifying frozen assets."""
+    lengths = sorted(suite.corpora)
+    longest = lengths[-1]
+    query = suite.query_indices
+
+    print("[v3 release] generating prefix-matched novelty", flush=True)
+    novelty_rows, novelty_provenance = _novelty_rows_by_family(
+        suite.release_seed, longest
+    )
+
+    embeddings_by_length: dict[int, dict[str, np.ndarray]] = {}
+    closed_by_length: dict[str, Any] = {}
+    open_by_length: dict[str, Any] = {}
+    staged_known_by_length: dict[int, dict[str, Any]] = {}
+    labels_by_length: dict[int, np.ndarray] = {}
+    snr_by_length: dict[int, np.ndarray] = {}
+
+    for length in lengths:
+        spec = suite.corpora[length]
+        print(f"[v3 release] preprocessing/inference n={length}", flush=True)
+        captures = release._raw_rows(
+            spec, np.arange(int(spec.manifest["count"]), dtype=np.int64)
+        )
+        packed, features = _preprocess_iq_rows(captures, candidate)
+        embeddings = _embed_additive(candidate, packed, features, device)
+        embeddings_by_length[length] = embeddings
+        labels, snr, impaired = release._labels_and_snr(spec, candidate.classes)
+        labels_by_length[length] = labels
+        snr_by_length[length] = snr
+
+        closed, _prediction = release._closed_report(
+            embeddings["fusion"][query],
+            labels[query],
+            snr[query],
+            impaired[query],
+            candidate.rejector.prototypes,
+            candidate.classes,
+        )
+        closed_by_length[str(length)] = closed
+
+        query_embeddings = {
+            name: embeddings[name][query]
+            for name in ("real", "complex", "fusion")
+        }
+        unstaged_prediction, unstaged_score = _unstaged_scores(
+            candidate, query_embeddings, packed[query]
+        )
+        known_staged = _staged_scores(
+            candidate,
+            [captures[int(index)] for index in query],
+            packed[query],
+            features[query],
+            unstaged_prediction,
+            unstaged_score,
+            device,
+            capture_length=length,
+            population=f"n{length}-known-query",
+        )
+        known_staged["unstaged_score"] = unstaged_score
+        staged_known_by_length[length] = known_staged
+
+        novelty_by_family: dict[str, dict[str, Any]] = {}
+        for family in NOVELTY_FAMILIES:
+            prefixes = [row[:length] for row in novelty_rows[family]]
+            novelty_packed, novelty_features = _preprocess_iq_rows(
+                prefixes, candidate
+            )
+            novelty_embeddings = _embed_additive(
+                candidate, novelty_packed, novelty_features, device
+            )
+            family_prediction, family_score = _unstaged_scores(
+                candidate, novelty_embeddings, novelty_packed
+            )
+            family_staged = _staged_scores(
+                candidate,
+                prefixes,
+                novelty_packed,
+                novelty_features,
+                family_prediction,
+                family_score,
+                device,
+                capture_length=length,
+                population=f"n{length}-novelty-{family}",
+            )
+            family_staged["unstaged_score"] = family_score
+            novelty_by_family[family] = family_staged
+        open_by_length[str(length)] = _open_report(
+            known_staged, novelty_by_family, candidate, novelty_provenance
+        )
+
+    matched_enrollment = embeddings_by_length[MATCHED_CAPTURE_LENGTH]["fusion"]
+    matched_labels = labels_by_length[MATCHED_CAPTURE_LENGTH]
+    five_shot_by_length: dict[str, Any] = {}
+    for length in lengths:
+        if not np.array_equal(labels_by_length[length], matched_labels):
+            raise AssertionError("matched release label arrays differ by length")
+        five_shot_by_length[str(length)] = release._five_shot_report(
+            matched_enrollment,
+            embeddings_by_length[length]["fusion"],
+            matched_labels,
+            suite.support_indices,
+            suite.query_indices,
+            candidate.classes,
+        )
+
+    reference = embeddings_by_length[MATCHED_CAPTURE_LENGTH]["fusion"][query]
+    reference_prediction, _ = release._nearest(
+        reference, candidate.rejector.prototypes
+    )
+    length_rows = []
+    for length in lengths:
+        current = embeddings_by_length[length]["fusion"][query]
+        prediction, _ = release._nearest(
+            current, candidate.rejector.prototypes
+        )
+        closed = closed_by_length[str(length)]
+        paired = release._paired_invariance_report(
+            current,
+            reference,
+            prediction,
+            reference_prediction,
+            labels_by_length[length][query],
+            snr_by_length[length][query],
+            candidate.classes,
+        )
+        length_rows.append(
+            {
+                "capture_length": length,
+                "accuracy": closed["accuracy"],
+                "balanced_accuracy": closed["balanced_accuracy"],
+                "per_class_recall": closed["per_class_recall"],
+                "mean_pairwise_cosine": closed["mean_pairwise_cosine"],
+                "paired_to_matched": paired,
+            }
+        )
+    length_sweep = {
+        "matched_capture_length": int(MATCHED_CAPTURE_LENGTH),
+        "matched_rows": int(len(query)),
+        "all_classes_required": list(candidate.classes),
+        "rejector_rule": SWEEP_REJECTOR_RULE,
+        "rows": length_rows,
+        "worst_balanced_accuracy": min(
+            float(row["balanced_accuracy"]) for row in length_rows
+        ),
+        "worst_mean_pairwise_cosine": max(
+            float(row["mean_pairwise_cosine"]) for row in length_rows
+        ),
+        "worst_prediction_agreement_to_matched": min(
+            float(row["paired_to_matched"]["prediction_agreement"])
+            for row in length_rows
+        ),
+        "worst_embedding_cosine_to_matched": min(
+            float(row["paired_to_matched"]["embedding_cosine_mean"])
+            for row in length_rows
+        ),
+    }
+    scale_sweep = _scale_sweep(
+        suite.corpora[MATCHED_CAPTURE_LENGTH],
+        candidate,
+        device,
+        labels_by_length[MATCHED_CAPTURE_LENGTH],
+        suite.query_indices,
+    )
+
+    gates = release._assemble_release_gates(
+        candidate_sha256=suite.candidate_sha256,
+        expected_candidate_sha256=suite.release_manifest["candidate_sha256"],
+        prefix_nesting_passes=bool(suite.prefix_nesting_report["passes"]),
+        dependency_provenance_passes=bool(suite.dependency_report["passes"]),
+        start_probe_excluded=(
+            suite.start_probe_report["scored"] is False
+            and bool(suite.start_probe_report["passes"])
+        ),
+        closed_by_length=closed_by_length,
+        five_shot_by_length=five_shot_by_length,
+        open_by_length=open_by_length,
+        length_sweep=length_sweep,
+        scale_sweep=scale_sweep,
+    )
+    all_pass = all(bool(value["passes"]) for value in gates.values())
+
+    max_fitted = int(max(candidate.stage_one_lengths))
+    stage_one_coverage = {
+        str(length): (
+            "fitted"
+            if int(length) in candidate.stage_one_lengths
+            else "causal_prefix"
+            if int(length) > max_fitted
+            else "inactive"
+        )
+        for length in lengths
+    }
+    stage_one_feature_lengths = {
+        str(length): staged_known_by_length[length]["stage_one_feature_length"]
+        for length in lengths
+    }
+    final_label_counts = {
+        str(length): {
+            "rows": int(len(staged_known_by_length[length]["final_label_or_unknown"])),
+            "unknown": int(
+                np.count_nonzero(
+                    staged_known_by_length[length]["final_label_or_unknown"]
+                    == -1
+                )
+            ),
+            "gated_at_stage_one": int(
+                np.count_nonzero(staged_known_by_length[length]["gated"])
+            ),
+        }
+        for length in lengths
+    }
+
+    return {
+        "schema": EVALUATOR_SCHEMA,
+        "status": "complete",
+        "release_evidence": True,
+        "evaluation_version": EVALUATION_VERSION,
+        "development_data_loaded": False,
+        "retraining_performed": False,
+        "recalibration_performed": False,
+        "architecture_contract": {
+            "additive_only": False,
+            "changes_closed_label": True,
+            "gates_before_classification": True,
+            "architecture_contract_change": str(
+                noise_prefilter.ARCHITECTURE_CONTRACT_CHANGE
+            ),
+            "staged_policy_kind": staged.STAGED_POLICY_KIND,
+            "staged_score_note": staged.STAGED_SCORE_NOTE,
+            "known_false_unknown_accounting": KNOWN_FUR_ACCOUNTING,
+            "stage_one_capture_lengths": [
+                int(length) for length in candidate.stage_one_lengths
+            ],
+            "stage_one_coverage_by_length": stage_one_coverage,
+            "stage_one_feature_length_by_length": stage_one_feature_lengths,
+            "stage_one_prefix_rule": {
+                "max_fitted_length": max_fitted,
+                "rule": STAGE_ONE_PREFIX_RULE,
+            },
+            "stage_one_uncovered_rule": STAGE_ONE_UNCOVERED_RULE,
+            "sweep_rejector_rule": SWEEP_REJECTOR_RULE,
+            "typescript_runtime_note": (
+                "the deployed TypeScript staged runtime must apply this same "
+                "causal-prefix rule at capture lengths above the longest "
+                "fitted stage-1 length; a runtime that refuses such lengths "
+                "does not match the sealed claim and must be reconciled "
+                "before any ship"
+            ),
+        },
+        "candidate": {
+            "path": str(candidate.bundle_manifest_path),
+            "sha256": suite.candidate_sha256,
+            "runtime_schema": BUNDLE_SCHEMA,
+            "runtime_schema_version": BUNDLE_SCHEMA_VERSION,
+            "runtime_kind": BUNDLE_KIND,
+            "classes": list(candidate.classes),
+            "components": candidate_provenance(candidate),
+            "frozen_assets_used": [
+                "fusion state dict (both branches, centers, alphas, weight, eps)",
+                "training-only branch centers",
+                "training-only feature mean/std",
+                "enrollment-only fused prototypes",
+                "frozen stage-1 per-length noise-prefilter bundles",
+                "frozen stage-2 branch-LOF ensemble (training reference, "
+                "enrollment ranks)",
+                "frozen stage-2 policy (geometry blend, enrollment q95 "
+                "threshold)",
+            ],
+        },
+        "closed_per_length": closed_by_length,
+        "family_per_length": {
+            length: report["family"]
+            for length, report in closed_by_length.items()
+        },
+        "high_snr_per_length": {
+            length: report["high_snr"]
+            for length, report in closed_by_length.items()
+        },
+        "low_snr_per_length": {
+            length: report["low_snr"]
+            for length, report in closed_by_length.items()
+        },
+        "clean_subset_per_length": {
+            length: report["clean_subset"]
+            for length, report in closed_by_length.items()
+        },
+        "impaired_subset_per_length": {
+            length: report["impaired_subset"]
+            for length, report in closed_by_length.items()
+        },
+        "five_shot_predeclared_per_length": five_shot_by_length,
+        "open_staged_per_length": open_by_length,
+        "staged_known_decisions_per_length": final_label_counts,
+        "matched_length_sweep": length_sweep,
+        "physical_scale_sweep": scale_sweep,
+        "gates": gates,
+        "all_release_gates_pass": all_pass,
+        "provenance": {
+            "release_root": str(suite.root),
+            "release_intent_sha256": _sha256(suite.intent_path),
+            "release_manifest_sha256": _sha256(suite.manifest_path),
+            "release_seed": suite.release_seed,
+            "evaluation_protocol": expected_evaluation_protocol(
+                suite.release_seed, candidate.stage_one_lengths
+            ),
+            "predeclared_split": suite.split_report,
+            "prefix_nesting": suite.prefix_nesting_report,
+            "dependency_provenance": suite.dependency_report,
+            "unscored_start_probe": suite.start_probe_report,
+            "novelty_prefix_generation": novelty_provenance,
+            "candidate_sha256": suite.candidate_sha256,
+            "corpus_assets": suite.release_manifest["corpora"],
+            "evaluator_path": str(Path(__file__).resolve()),
+            "evaluator_sha256": _sha256(Path(__file__).resolve()),
+            "v2_evaluator_sha256": _sha256(
+                _source_path("evaluate_invariant_release_suite.py")
+            ),
+            "gate_helpers_imported_from_v2": [
+                "GATE_FLOORS",
+                "_gate",
+                "_assemble_release_gates",
+                "_closed_report",
+                "_simple_closed_report",
+                "_classification_subset",
+                "_paired_invariance_report",
+                "_five_shot_report",
+                "_auroc",
+                "_nearest",
+                "_scale_eligible_indices",
+                "predeclared_five_shot_split",
+                "verify_prefix_nesting",
+                "validate_prefix_derivation_records",
+                "_validate_unscored_start_probe",
+                "_validate_dependency_provenance",
+            ],
+            "python": platform.python_version(),
+            "numpy": np.__version__,
+            "torch": torch.__version__,
+            "device": str(device),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def run(args: argparse.Namespace) -> dict[str, Any]:
+    device = resolve_device(args.device)
+    candidate = load_candidate(
+        bundle_dir=Path(args.bundle_dir),
+        fusion_dir=Path(args.fusion_dir),
+        staged_dir=Path(args.staged_dir),
+        prefilter_dir=Path(args.prefilter_dir),
+        device=device,
+    )
+    if args.print_expected_protocol is not None:
+        protocol = expected_evaluation_protocol(
+            int(args.print_expected_protocol), candidate.stage_one_lengths
+        )
+        print(json.dumps(protocol, indent=2, sort_keys=True, allow_nan=False))
+        return {"expected_evaluation_protocol": protocol}
+    if args.release_root is None:
+        raise ValueError(
+            "--release-root is required unless --print-expected-protocol is "
+            "given"
+        )
+    suite = load_v3_release_suite(Path(args.release_root), candidate)
+    report = evaluate_release(suite, candidate, device)
+    output = (
+        Path(args.output).expanduser().resolve()
+        if args.output
+        else suite.root / "RELEASE_EVALUATION.json"
+    )
+    if not _is_below(output, suite.root):
+        raise ValueError("release evaluation output must stay inside release root")
+    _write_json_exclusive(output, report)
+    print(
+        f"[v3 release] gates="
+        f"{'PASS' if report['all_release_gates_pass'] else 'FAIL'} -> {output}",
+        flush=True,
+    )
+    return report
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--release-root",
+        default=None,
+        help="the sealed suite directory written by the release launcher",
+    )
+    parser.add_argument("--output")
+    parser.add_argument("--device", choices=("cpu", "mps"), default="cpu")
+    parser.add_argument(
+        "--bundle-dir",
+        default=str(DEFAULT_BUNDLE_DIR),
+        help="the self-verified v3 runtime bundle directory",
+    )
+    parser.add_argument(
+        "--fusion-dir",
+        default=str(DEFAULT_FUSION_DIR),
+        help="the v3 fusion artifact the bundle was exported from",
+    )
+    parser.add_argument(
+        "--staged-dir",
+        default=str(DEFAULT_STAGED_DIR),
+        help=(
+            "the passing staged validation artifact holding the frozen "
+            "stage-2 LOF ensemble and policy npz files"
+        ),
+    )
+    parser.add_argument(
+        "--prefilter-dir",
+        default=str(DEFAULT_PREFILTER_DIR),
+        help="the fitted per-length stage-1 noise-prefilter bundle set",
+    )
+    parser.add_argument(
+        "--print-expected-protocol",
+        type=int,
+        default=None,
+        metavar="RELEASE_SEED",
+        help=(
+            "print the exact evaluation_protocol object the release intent "
+            "must embed for the given seed, then exit without touching any "
+            "release root"
+        ),
+    )
+    return parser
+
+
+if __name__ == "__main__":
+    run(build_parser().parse_args())

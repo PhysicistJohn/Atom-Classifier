@@ -497,19 +497,105 @@ class StageOneLoadingTests(unittest.TestCase):
             self.assertTrue(metadata["gates_before_classification"])
 
     def test_a_missing_length_is_refused_rather_than_substituted(self) -> None:
+        """A gap BELOW the longest fitted length has no causal prefix bundle."""
         with tempfile.TemporaryDirectory() as root:
-            directory = _bundle_set(Path(root) / "prefilter", lengths=(1024,))
+            directory = _bundle_set(
+                Path(root) / "prefilter", lengths=(1024, 4096)
+            )
             source, posedegen = _sources()
             with self.assertRaisesRegex(ValueError, "no fitted prefilter"):
                 subject.load_stage_one(
-                    source, posedegen, directory, required_lengths=(1024, 4096)
+                    source, posedegen, directory, required_lengths=(1024, 2048)
                 )
 
-    def test_scoring_an_unfitted_length_is_refused(self) -> None:
+    def test_a_required_length_above_the_fitted_set_loads_by_prefix_rule(
+        self,
+    ) -> None:
+        """The sealed suite's N32768 case: required above max fitted loads."""
+        with tempfile.TemporaryDirectory() as root:
+            directory = _bundle_set(Path(root) / "prefilter")
+            source, posedegen = _sources()
+            gate = subject.load_stage_one(
+                source,
+                posedegen,
+                directory,
+                required_lengths=(*TEST_LENGTHS, KNOWN_LENGTH, 4096),
+            )
+            self.assertEqual(
+                gate.lengths, tuple(sorted({*TEST_LENGTHS, KNOWN_LENGTH}))
+            )
+            self.assertEqual(
+                gate.feature_length_for(4096), gate.max_fitted_length
+            )
+
+    def test_scoring_below_the_smallest_fitted_length_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             gate = self._load(Path(root))
             with self.assertRaisesRegex(KeyError, "length dependent"):
-                gate.raw(_pose_rows(3, 7), 4096)
+                gate.raw(_pose_rows(3, 7), 512)
+
+    def test_a_gap_length_between_fitted_lengths_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            gate = self._load(Path(root))
+            with self.assertRaisesRegex(KeyError, "causal-prefix"):
+                gate.feature_length_for(1536)
+
+    def test_a_length_above_the_longest_fitted_uses_the_prefix_bundle(self) -> None:
+        """The causal-prefix rule: above max fitted, gate with the max bundle."""
+        with tempfile.TemporaryDirectory() as root:
+            gate = self._load(Path(root))
+            longest = max(gate.lengths)
+            self.assertEqual(gate.max_fitted_length, longest)
+            self.assertEqual(gate.feature_length_for(4096), longest)
+            self.assertEqual(gate.feature_length_for(longest), longest)
+            features = _pose_rows(12, 41, shift=1.0)
+            np.testing.assert_array_equal(
+                gate.raw(features, 4096), gate.raw(features, longest)
+            )
+            np.testing.assert_array_equal(
+                gate.fires(features, 4096), gate.fires(features, longest)
+            )
+
+    def test_prefix_captures_slice_to_the_max_fitted_length(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            gate = self._load(Path(root))
+            longest = max(gate.lengths)
+            rng = np.random.default_rng(5)
+            captures = [
+                rng.standard_normal(4096) + 1j * rng.standard_normal(4096)
+                for _ in range(3)
+            ]
+            sliced, feature_length = subject.stage_one_prefix_captures(
+                gate, captures, 4096
+            )
+            self.assertEqual(feature_length, longest)
+            for original, prefix in zip(captures, sliced):
+                self.assertEqual(len(prefix), longest)
+                np.testing.assert_array_equal(prefix, original[:longest])
+            # A fitted length passes through unsliced.
+            same, same_length = subject.stage_one_prefix_captures(
+                gate, [row[:longest] for row in captures], longest
+            )
+            self.assertEqual(same_length, longest)
+            for original, unchanged in zip(captures, same):
+                np.testing.assert_array_equal(unchanged, original[:longest])
+            # A capture whose true length contradicts the declared one is
+            # refused rather than silently truncated.
+            with self.assertRaisesRegex(ValueError, "declared capture length"):
+                subject.stage_one_prefix_captures(
+                    gate, [captures[0][:2000]], 4096
+                )
+
+    def test_the_provenance_records_the_prefix_rule(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            gate = self._load(Path(root))
+            block = gate.provenance()["stage_one_prefix_rule"]
+            self.assertEqual(
+                block["max_fitted_length"], max(gate.lengths)
+            )
+            self.assertEqual(block["rule"], subject.STAGE_ONE_PREFIX_RULE)
+            self.assertIn("FIRST", block["rule"])
+            self.assertIn("BELOW", block["rule"])
 
     def test_a_bundle_without_an_operating_point_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -988,6 +1074,71 @@ class NoveltyFeatureTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "SPENT"):
             self._features(provenance, seeds=(20260939,))
 
+    def test_prefix_rule_features_equal_the_shorter_lengths_features(
+        self,
+    ) -> None:
+        """The causal-prefix identity, end to end through the sweep.
+
+        With a gate fitted at TEST_LENGTHS, a sweep length of 4096 (above the
+        longest fitted length) must produce stage-1 features computed on each
+        capture's first max-fitted samples -- which are bit-identical to the
+        features of the max-fitted-length observation of the same row, because
+        the shorter observation IS that prefix.
+        """
+        sweep = (*TEST_LENGTHS, 4096)
+        _fixtures, provenance = self._base_fixtures(lengths=sweep)
+        with tempfile.TemporaryDirectory() as root:
+            source, posedegen = _sources()
+            gate = subject.load_stage_one(
+                source,
+                posedegen,
+                _bundle_set(Path(root) / "prefilter"),
+                required_lengths=sweep,
+            )
+            features = subject.generate_prefilter_features(
+                posedegen,
+                (DESIGN_SEED,),
+                n_each=2,
+                lengths=sweep,
+                patch_length=PATCH_LENGTH,
+                target_frac=0.5,
+                expected_provenance=provenance,
+                stage_one=gate,
+            )
+            # Same rows, no gate: the native-length path.  The gate argument
+            # may change ONLY the above-max length; the fitted lengths must be
+            # bit-identical between the two calls (the slice there is the
+            # whole observation), and the above-max length must differ from
+            # its own native-length featurization.
+            plain = subject.generate_prefilter_features(
+                posedegen,
+                (DESIGN_SEED,),
+                n_each=2,
+                lengths=sweep,
+                patch_length=PATCH_LENGTH,
+                target_frac=0.5,
+                expected_provenance=provenance,
+            )
+        longest_fitted = max(gate.lengths)
+        self.assertLess(longest_fitted, 4096)
+        for family in subject.NOVELTY_FAMILIES:
+            np.testing.assert_array_equal(
+                features[DESIGN_SEED][family][4096].features,
+                features[DESIGN_SEED][family][longest_fitted].features,
+            )
+            for length in TEST_LENGTHS:
+                np.testing.assert_array_equal(
+                    features[DESIGN_SEED][family][length].features,
+                    plain[DESIGN_SEED][family][length].features,
+                )
+            self.assertFalse(
+                np.array_equal(
+                    features[DESIGN_SEED][family][4096].features,
+                    plain[DESIGN_SEED][family][4096].features,
+                ),
+                "the prefix rule must change the above-max featurization",
+            )
+
 
 class EndToEndRunTests(unittest.TestCase):
     """Drive ``run`` over a tiny synthetic fusion, without the real corpus.
@@ -1229,6 +1380,55 @@ class EndToEndRunTests(unittest.TestCase):
         self.assertEqual(
             report["gates"]["known_false_unknown_rate"]["ceiling"],
             subject.KNOWN_FUR_CEILING,
+        )
+
+    def test_a_sweep_length_above_the_fitted_set_is_gated_by_prefix_rule(
+        self,
+    ) -> None:
+        """The sealed suite's N32768 shape, in miniature: sweep 1024/2048/4096
+        against a gate fitted at 1024/2048 only.
+
+        Stage 1 at the above-max length must be the max-fitted gate applied to
+        each capture's first max-fitted samples -- so its stage-1 outcomes are
+        bit-identical to the max-fitted length's cell (same rows, same prefix),
+        while stage 2 still scores the full-length capture.  The report must
+        say all of this rather than leave it implicit.
+        """
+        sweep = [*TEST_LENGTHS, 4096]
+        with tempfile.TemporaryDirectory() as root:
+            report = self._run(Path(root), prefix_lengths=sweep)
+        protocol = report["protocol"]
+        self.assertEqual(protocol["prefix_lengths"], sweep)
+        self.assertEqual(
+            protocol["stage_one_feature_length_by_prefix_length"],
+            {
+                str(TEST_LENGTHS[0]): TEST_LENGTHS[0],
+                str(TEST_LENGTHS[1]): TEST_LENGTHS[1],
+                "4096": KNOWN_LENGTH,
+            },
+        )
+        self.assertEqual(
+            protocol["stage_one_causal_prefix_rule_lengths"], [4096]
+        )
+        rows = report["novelty"][str(VALIDATION_SEED)]
+        long_row = rows["4096"]
+        max_fitted_row = rows[str(KNOWN_LENGTH)]
+        for family in subject.NOVELTY_FAMILIES:
+            self.assertEqual(
+                long_row[family]["gated_at_stage_one_fraction"],
+                max_fitted_row[family]["gated_at_stage_one_fraction"],
+            )
+            self.assertEqual(
+                long_row[family]["stage_one_raw_median"],
+                max_fitted_row[family]["stage_one_raw_median"],
+            )
+        # The gate summary covers the above-max cells too: worst-of includes
+        # them, so a failure there would fail the run's gates.
+        self.assertEqual(
+            report["gates"]["noise_auroc"]["worst"],
+            min(
+                rows[str(length)]["noise"]["auroc"] for length in sweep
+            ),
         )
 
     def test_the_unstaged_control_is_reported_beside_the_staged_gates(self) -> None:

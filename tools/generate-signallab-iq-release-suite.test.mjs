@@ -107,6 +107,160 @@ test('rejects a well-formed but wrong candidate digest without creating output',
   assert.equal(existsSync(root), false);
 });
 
+test('refuses an unknown RELEASE_EVALUATION_PROTOCOL before any output', () => {
+  const root = join(
+    tmpdir(),
+    `atomos-release-bad-protocol-${process.pid}-${Date.now()}`,
+  );
+  const result = run({
+    RELEASE_ROOT: root,
+    RELEASE_EVALUATION_PROTOCOL: 'v9',
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /RELEASE_EVALUATION_PROTOCOL must be 'v2'/);
+  assert.equal(existsSync(root), false);
+});
+
+test('v3 protocol refuses a release seed the fixture did not predeclare', () => {
+  const root = join(
+    tmpdir(),
+    `atomos-release-v3-seed-mismatch-${process.pid}-${Date.now()}`,
+  );
+  const result = run({
+    RELEASE_ROOT: root,
+    RELEASE_EVALUATION_PROTOCOL: 'v3',
+    RELEASE_SEED: '20260728',
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /predeclares seed 20260731/);
+  assert.equal(existsSync(root), false);
+});
+
+test('v3 protocol refuses consumed and development-band release seeds', () => {
+  for (const [seed, pattern] of [
+    ['20260729', /consumed sealed v2 release suite/],
+    ['20260942', /development novelty seed namespace/],
+    ['20261001', /noise-prefilter fit-only seed band/],
+  ]) {
+    const root = join(
+      tmpdir(),
+      `atomos-release-v3-refused-seed-${seed}-${process.pid}-${Date.now()}`,
+    );
+    const result = run({
+      RELEASE_ROOT: root,
+      RELEASE_EVALUATION_PROTOCOL: 'v3',
+      RELEASE_SEED: seed,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, pattern);
+    assert.equal(existsSync(root), false);
+  }
+});
+
+test('v3 protocol fixture is the evaluator-printed object, self-consistent', () => {
+  // The fixture is captured from
+  //   evaluate_v3_release_suite.py --print-expected-protocol 20260731
+  // (command recorded inside the fixture itself). Node tests never shell out
+  // to Python; the sealed evaluator's own intent-equality check is the
+  // final cross-language backstop.
+  const wrapper = JSON.parse(
+    readFileSync(
+      join(REPO, 'tools/time-domain-v3-expected-evaluation-protocol-seed20260731.json'),
+      'utf8',
+    ),
+  );
+  assert.equal(wrapper.release_seed, 20260731);
+  const protocol = wrapper.evaluation_protocol;
+  assert.equal(protocol.version, 'time-domain-v3-release-evaluation-v1');
+  assert.equal(protocol.novelty.seed, 20260731);
+  assert.deepEqual(protocol.required_capture_lengths, [4096, 8192, 16384, 32768]);
+  assert.equal(protocol.open_set.additive_only, false);
+  assert.equal(protocol.open_set.changes_closed_label, true);
+  assert.equal(protocol.open_set.gates_before_classification, true);
+  assert.equal(
+    protocol.open_set.architecture,
+    'v3_staged_noise_prefilter_then_known_only_lof_geometry',
+  );
+  // Every stage-1 length must be one of the sealed capture lengths. Sealed
+  // lengths ABOVE the longest fitted length are gated through the
+  // causal-prefix rule; any other unfitted length is uncovered.
+  const covered = protocol.open_set.stage_one_capture_lengths;
+  for (const length of covered) {
+    assert.ok(protocol.required_capture_lengths.includes(length));
+  }
+  const maxFitted = Math.max(...covered);
+  assert.equal(protocol.open_set.stage_one_max_fitted_length, maxFitted);
+  assert.equal(
+    protocol.open_set.stage_one_prefix_rule.max_fitted_length,
+    maxFitted,
+  );
+  assert.match(protocol.open_set.stage_one_prefix_rule.rule, /causal-prefix/);
+  assert.deepEqual(
+    protocol.open_set.stage_one_prefix_gated_lengths,
+    protocol.required_capture_lengths.filter((length) => length > maxFitted),
+  );
+  assert.deepEqual(
+    protocol.open_set.stage_one_uncovered_lengths,
+    protocol.required_capture_lengths.filter(
+      (length) => !covered.includes(length) && length < maxFitted,
+    ),
+  );
+  // The gate floors are the frozen v2 floors, unchanged (rule: no gate is
+  // added, removed, or re-levelled for v3).
+  assert.equal(protocol.gates.open_unknown_recall_noise, 0.10);
+  assert.equal(protocol.gates.open_auroc_noise, 0.80);
+  assert.equal(Object.keys(protocol.gates).length, 17);
+});
+
+test('v3 intent embeds the evaluator-printed protocol object verbatim', {
+  skip: TEST_SIGNALLAB_ROOT
+    ? false
+    : 'set ATOMOS_RELEASE_TEST_SIGNALLAB_ROOT to a verified isolated tree',
+}, () => {
+  const root = join(
+    tmpdir(),
+    `atomos-release-v3-intent-${process.pid}-${Date.now()}`,
+  );
+  const fakeBin = mkdtempSync(join(tmpdir(), 'atomos-release-v3-fake-bin-'));
+  const fakeNpx = join(fakeBin, 'npx');
+  writeFileSync(
+    fakeNpx,
+    '#!/bin/sh\n'
+      + 'if [ "$1" = "--version" ]; then echo "10.9.8"; exit 0; fi\n'
+      + 'exit 17\n',
+  );
+  chmodSync(fakeNpx, 0o755);
+  const result = run({
+    RELEASE_ROOT: root,
+    RELEASE_SEED: '20260731',
+    RELEASE_EVALUATION_PROTOCOL: 'v3',
+    RELEASE_LENGTHS: '4096,8192,16384,32768',
+    RELEASE_TARGET_PER_CLASS: '80',
+    PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /occupied-start probe generation.*failed/);
+  const intent = JSON.parse(
+    readFileSync(join(root, 'RELEASE_INTENT.json'), 'utf8'),
+  );
+  const fixture = JSON.parse(
+    readFileSync(
+      join(REPO, 'tools/time-domain-v3-expected-evaluation-protocol-seed20260731.json'),
+      'utf8',
+    ),
+  );
+  // The embedded object must equal the evaluator's --print-expected-protocol
+  // output exactly: the sealed evaluator refuses the suite on ANY difference.
+  assert.deepEqual(intent.evaluation_protocol, fixture.evaluation_protocol);
+  assert.equal(intent.release_seed, 20260731);
+  assert.equal(intent.status, 'in_progress');
+  // The v2 provenance constant remains selectable and untouched.
+  assert.equal(
+    intent.evaluation_protocol.version,
+    'time-domain-v3-release-evaluation-v1',
+  );
+});
+
 test('predeclares evaluation choices in intent before corpus generation', {
   skip: TEST_SIGNALLAB_ROOT
     ? false

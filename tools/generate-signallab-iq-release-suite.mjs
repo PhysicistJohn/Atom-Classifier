@@ -16,6 +16,13 @@
  *   CANDIDATE_PATH=training/.../runtime_bundle.pt \
  *   CANDIDATE_SHA256=<sha256> \
  *   node tools/generate-signallab-iq-release-suite.mjs
+ *
+ * The embedded evaluation_protocol is selected by RELEASE_EVALUATION_PROTOCOL:
+ * 'v2' (default) embeds the frozen v2 object below, exactly as the consumed
+ * seed-20260729 run did; 'v3' embeds the staged time-domain protocol printed
+ * by evaluate_v3_release_suite.py --print-expected-protocol, loaded verbatim
+ * from its pinned fixture (see V3_EXPECTED_PROTOCOL_FIXTURE) and required to
+ * agree with RELEASE_SEED.
  */
 
 import {
@@ -74,6 +81,12 @@ const DEPENDENCY_CONTRACT = Object.freeze({
       'fc6933a4c7e7d9aeaa2ca22043f6e22b2333671c08b81b1cd35b29a7de08c980',
   },
 });
+/**
+ * The frozen v2 evaluation protocol, kept verbatim for provenance: it is the
+ * exact object the consumed seed-20260729 v2 sealed run embedded, and it
+ * remains the default so a v2-protocol rerun of this launcher is
+ * byte-identical to the historical behaviour.
+ */
 const EVALUATION_PROTOCOL = Object.freeze({
   version: 'invariant-release-evaluation-v1',
   matched_capture_length: 16384,
@@ -142,6 +155,84 @@ const EVALUATION_PROTOCOL = Object.freeze({
     scale_pair_embedding_cosine: 0.80,
   },
 });
+
+/**
+ * The v3 (staged time-domain) sealed protocol is NOT hard-coded here: the
+ * predeclared object is owned by the sealed evaluator
+ * (`training/zplane_ab/v2_full_variation/v3_scale/evaluate_v3_release_suite.py`,
+ * `--print-expected-protocol <seed>`), captured verbatim into this pinned
+ * fixture, and embedded from it. The evaluator refuses any suite whose
+ * intent protocol differs from its own expected object, so the two copies
+ * cannot silently drift: a stale fixture fails the evaluation loudly before
+ * any gate is scored. `RELEASE_EVALUATION_PROTOCOL=v3` selects it;
+ * the default (`v2`) preserves the historical behaviour above.
+ */
+const V3_EXPECTED_PROTOCOL_FIXTURE = resolve(
+  HERE,
+  'time-domain-v3-expected-evaluation-protocol-seed20260731.json',
+);
+const V3_EVALUATION_VERSION = 'time-domain-v3-release-evaluation-v1';
+/**
+ * Seed hygiene mirrored from `evaluate_v3_release_suite.validate_release_seed`
+ * so a refused seed fails here, before any corpus generation, instead of at
+ * evaluation time after the suite bytes exist.
+ */
+const V3_CONSUMED_RELEASE_SEEDS = Object.freeze({
+  20260729: 'consumed sealed v2 release suite (evidence rule 2)',
+});
+const V3_REFUSED_RELEASE_SEED_BANDS = Object.freeze([
+  [20260900, 20260999, 'development novelty seed namespace'],
+  [20261000, 20261999, 'noise-prefilter fit-only seed band'],
+]);
+
+function loadV3EvaluationProtocol(releaseSeed) {
+  const consumed = V3_CONSUMED_RELEASE_SEEDS[releaseSeed];
+  if (consumed !== undefined) {
+    throw new Error(`release seed ${releaseSeed} is refused: ${consumed}`);
+  }
+  for (const [low, high, reason] of V3_REFUSED_RELEASE_SEED_BANDS) {
+    if (releaseSeed >= low && releaseSeed <= high) {
+      throw new Error(
+        `release seed ${releaseSeed} lies in the ${reason} (${low}-${high}) `
+        + 'and is not an untouched release seed',
+      );
+    }
+  }
+  const wrapper = JSON.parse(readFileSync(V3_EXPECTED_PROTOCOL_FIXTURE, 'utf8'));
+  const protocol = wrapper?.evaluation_protocol;
+  if (protocol?.version !== V3_EVALUATION_VERSION) {
+    throw new Error(
+      `v3 protocol fixture does not carry version ${V3_EVALUATION_VERSION}: `
+      + V3_EXPECTED_PROTOCOL_FIXTURE,
+    );
+  }
+  if (wrapper.release_seed !== protocol?.novelty?.seed) {
+    throw new Error(
+      'v3 protocol fixture is internally inconsistent: its release_seed and '
+      + 'its evaluation_protocol.novelty.seed differ',
+    );
+  }
+  if (protocol.novelty.seed !== releaseSeed) {
+    throw new Error(
+      `the v3 protocol rule is 'novelty base seed IS the release seed'; the `
+      + `pinned fixture predeclares seed ${protocol.novelty.seed} but `
+      + `RELEASE_SEED=${releaseSeed}. Regenerate the fixture with `
+      + `evaluate_v3_release_suite.py --print-expected-protocol ${releaseSeed} `
+      + 'only if a different untouched release seed is genuinely intended',
+    );
+  }
+  return protocol;
+}
+
+function selectEvaluationProtocol(releaseSeed) {
+  const choice = (process.env.RELEASE_EVALUATION_PROTOCOL ?? 'v2').trim();
+  if (choice === 'v2') return EVALUATION_PROTOCOL;
+  if (choice === 'v3') return loadV3EvaluationProtocol(releaseSeed);
+  throw new Error(
+    "RELEASE_EVALUATION_PROTOCOL must be 'v2' (default, historical) or 'v3' "
+    + '(staged time-domain sealed protocol)',
+  );
+}
 
 function integer(name, raw, minimum) {
   const value = Number(raw);
@@ -369,6 +460,7 @@ function runChecked(command, args, env, description) {
 const releaseRoot = canonicalProspectivePath(required('RELEASE_ROOT'));
 const canonicalLiveCorpus = canonicalProspectivePath(LIVE_CORPUS);
 const releaseSeed = integer('RELEASE_SEED', required('RELEASE_SEED'), 0);
+const evaluationProtocol = selectEvaluationProtocol(releaseSeed);
 const candidatePath = canonicalProspectivePath(required('CANDIDATE_PATH'));
 const candidateSha256 = required('CANDIDATE_SHA256');
 if (!/^[0-9a-f]{64}$/i.test(candidateSha256)) {
@@ -387,17 +479,17 @@ if (actualCandidateSha256 !== candidateSha256.toLowerCase()) {
 const lengths = parseLengths(process.env.RELEASE_LENGTHS ?? '4096,8192,16384,32768');
 if (
   JSON.stringify(lengths)
-  !== JSON.stringify(EVALUATION_PROTOCOL.required_capture_lengths)
+  !== JSON.stringify(evaluationProtocol.required_capture_lengths)
 ) {
   throw new Error(
     'RELEASE_LENGTHS must equal the frozen required release suite '
-    + JSON.stringify(EVALUATION_PROTOCOL.required_capture_lengths),
+    + JSON.stringify(evaluationProtocol.required_capture_lengths),
   );
 }
 const targetPerClass = integer(
   'RELEASE_TARGET_PER_CLASS',
   process.env.RELEASE_TARGET_PER_CLASS ?? '80',
-  EVALUATION_PROTOCOL.minimum_target_per_class,
+  evaluationProtocol.minimum_target_per_class,
 );
 
 if (
@@ -477,7 +569,7 @@ const intent = {
   capture_lengths: lengths,
   target_per_class: targetPerClass,
   exact_target_per_class: true,
-  evaluation_protocol: EVALUATION_PROTOCOL,
+  evaluation_protocol: evaluationProtocol,
   source_sha256: sourceSha256,
   dependency_provenance: dependencyProvenance,
   runtime_provenance: runtimeProvenance,
