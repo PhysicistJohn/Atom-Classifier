@@ -212,19 +212,28 @@ class MiniFixture:
         self.base = Path(base).resolve()
         self.candidate_root = self.base / "mini_candidate"
         self.suite_root = self.base / "mini_v3_suite"
-        self.bundle_dir = self.candidate_root / "bundle"
-        self.fusion_dir = self.candidate_root / "fusion"
+        self.rejector_bundle_dir = self.candidate_root / "rejector_bundle"
+        self.classifier_bundle_dir = self.candidate_root / "classifier_bundle"
+        self.rejector_fusion_dir = self.candidate_root / "rejector_fusion"
+        self.classifier_fusion_dir = self.candidate_root / "classifier_fusion"
+        # Old fixture-local names continue to mean the 4k rejector role.
+        self.bundle_dir = self.rejector_bundle_dir
+        self.fusion_dir = self.rejector_fusion_dir
         self.staged_dir = self.candidate_root / "staged"
         self.prefilter_dir = self.candidate_root / "prefilters"
         torch.manual_seed(20260730)
         self._build_fusion()
+        self._build_classifier_fusion()
         self._build_bundle()
+        self._build_classifier_bundle()
         self._build_staged()
-        self.build_suite(self.suite_root)
+        self.build_suite(self.base / "mini_calibration_suite")
         # After the suite: the stage-1 operating point is placed against the
         # actual sealed captures so at least one known QUERY row is gated,
         # which is what makes the two-stage FUR accounting testable at all.
         self._build_prefilters()
+        self._build_candidate_chain()
+        self.build_suite(self.suite_root)
 
     def rebind_candidate_copy(self, target: Path) -> Path:
         """Copy the candidate tree and rebind its internal fusion path.
@@ -236,12 +245,125 @@ class MiniFixture:
         """
         target = Path(target).resolve()
         shutil.copytree(self.candidate_root, target)
-        manifest_path = target / "bundle" / "bundle_manifest.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest["provenance"]["source_fusion_artifact"] = str(
-            target / "fusion"
+        paths = {
+            "classifier_fusion": target / "classifier_fusion",
+            "rejector_fusion": target / "rejector_fusion",
+            "classifier_bundle": target / "classifier_bundle",
+            "rejector_bundle": target / "rejector_bundle",
+            "staged": target / "staged",
+            "prefilters": target / "prefilters",
+            "frozen": target / "frozen_candidate_contract.json",
+            "evidence": target / "validation_evidence.json",
+            "manifest": target / "release_candidate_manifest.json",
+            "classifier_browser": target / evaluator.CLASSIFIER_BROWSER_ASSET,
+            "rejector_browser": target / evaluator.REJECTOR_BROWSER_ASSET,
+            "openset_browser": target / evaluator.OPENSET_BROWSER_ASSET,
+            "package": target / "staging_package_manifest.json",
+            "binding": target / "time-domain-v3-dual-binding.json",
+        }
+        for role in ("classifier", "rejector"):
+            bundle_manifest_path = paths[f"{role}_bundle"] / "bundle_manifest.json"
+            bundle_manifest = json.loads(
+                bundle_manifest_path.read_text(encoding="utf-8")
+            )
+            bundle_manifest["provenance"]["source_fusion_artifact"] = str(
+                paths[f"{role}_fusion"]
+            )
+            _write_json(bundle_manifest_path, bundle_manifest)
+        staged_metrics_path = paths["staged"] / "openset_metrics.json"
+        staged_metrics = json.loads(staged_metrics_path.read_text(encoding="utf-8"))
+        staged_metrics["fusion"]["directory"] = str(paths["rejector_fusion"])
+        staged_metrics["stage_one"]["directory"] = str(paths["prefilters"])
+        _write_json(staged_metrics_path, staged_metrics)
+
+        frozen = json.loads(paths["frozen"].read_text(encoding="utf-8"))
+        frozen["classifier_fusion_8k_regularized"]["directory"] = str(
+            paths["classifier_fusion"]
         )
-        _write_json(manifest_path, manifest)
+        frozen["rejector_fusion_4k"]["directory"] = str(paths["rejector_fusion"])
+        frozen["stage_one_noise_prefilter"]["directory"] = str(paths["prefilters"])
+        _write_json(paths["frozen"], frozen)
+
+        evidence = json.loads(paths["evidence"].read_text(encoding="utf-8"))
+        evidence["candidate_contract"]["path"] = str(paths["frozen"])
+        evidence["candidate_contract"]["sha256"] = _sha256(paths["frozen"])
+        evidence["validation"]["report"] = str(staged_metrics_path)
+        evidence["validation"]["report_sha256"] = _sha256(staged_metrics_path)
+        evidence["validation_locked_policy_artifacts"]["directory"] = str(
+            paths["staged"]
+        )
+        _write_json(paths["evidence"], evidence)
+
+        binding = json.loads(paths["binding"].read_text(encoding="utf-8"))
+        binding["roles"]["classifier"][
+            "runtime_bundle_manifest_sha256"
+        ] = _sha256(paths["classifier_bundle"] / "bundle_manifest.json")
+        binding["roles"]["rejector"][
+            "runtime_bundle_manifest_sha256"
+        ] = _sha256(paths["rejector_bundle"] / "bundle_manifest.json")
+        binding["openset_policy"][
+            "fitted_rejector_runtime_bundle_manifest_sha256"
+        ] = _sha256(paths["rejector_bundle"] / "bundle_manifest.json")
+        binding["openset_policy"][
+            "staged_validation_report_sha256"
+        ] = _sha256(staged_metrics_path)
+        binding["validation"]["report_sha256"] = _sha256(staged_metrics_path)
+        _write_json(paths["binding"], binding)
+
+        package = json.loads(paths["package"].read_text(encoding="utf-8"))
+        binding_asset = package["assets"][evaluator.DUAL_BINDING_ASSET]
+        binding_asset.update(_record(paths["binding"]))
+        package["dual_binding"] = dict(binding_asset)
+        for role in ("classifier", "rejector"):
+            package["roles"][role][
+                "source_bundle_manifest_sha256"
+            ] = _sha256(paths[f"{role}_bundle"] / "bundle_manifest.json")
+        package["openset_policy"][
+            "fitted_rejector_runtime_bundle_manifest_sha256"
+        ] = _sha256(paths["rejector_bundle"] / "bundle_manifest.json")
+        package["openset_policy"][
+            "staged_validation_report_sha256"
+        ] = _sha256(staged_metrics_path)
+        _write_json(paths["package"], package)
+
+        manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
+        manifest["validation_evidence"] = {
+            "path": str(paths["evidence"]),
+            "sha256": _sha256(paths["evidence"]),
+        }
+        for role in ("classifier", "rejector"):
+            manifest[role]["fusion"]["directory"] = str(paths[f"{role}_fusion"])
+            bundle_manifest_path = paths[f"{role}_bundle"] / "bundle_manifest.json"
+            manifest[role]["runtime_bundle"].update(
+                {
+                    "directory": str(paths[f"{role}_bundle"]),
+                    "manifest_path": str(bundle_manifest_path),
+                    "manifest_sha256": _sha256(bundle_manifest_path),
+                }
+            )
+        manifest["staged_validation"].update(
+            {
+                "directory": str(paths["staged"]),
+                "report_path": str(staged_metrics_path),
+                "report_sha256": _sha256(staged_metrics_path),
+            }
+        )
+        manifest["stage_one_prefilter"]["directory"] = str(paths["prefilters"])
+        for role, key in (
+            ("classifier", "classifier_browser"),
+            ("rejector", "rejector_browser"),
+            ("openset_policy", "openset_browser"),
+        ):
+            manifest["browser_assets"][role]["path"] = str(paths[key])
+        manifest["staging_package_manifest"].update(
+            {
+                "path": str(paths["package"]),
+                "sha256": _sha256(paths["package"]),
+            }
+        )
+        manifest["dual_binding"]["path"] = str(paths["binding"])
+        manifest["dual_binding"]["sha256"] = _sha256(paths["binding"])
+        _write_json(paths["manifest"], manifest)
         return target
 
     # -- the mini fusion artifact -------------------------------------------
@@ -349,6 +471,44 @@ class MiniFixture:
         }
         _write_json(directory / "dev_metrics.json", metrics)
 
+    def _build_classifier_fusion(self) -> None:
+        """Create a deliberately distinct, geometry-compatible classifier."""
+        shutil.copytree(self.rejector_fusion_dir, self.classifier_fusion_dir)
+        directory = self.classifier_fusion_dir
+        prototypes = np.load(directory / "fusion_prototypes.npy")
+        np.save(directory / "fusion_prototypes.npy", prototypes[::-1].copy())
+        mean = np.load(directory / "feature_mean.npy")
+        std = np.load(directory / "feature_std.npy")
+        np.save(directory / "feature_mean.npy", mean + np.float32(0.25))
+        np.save(directory / "feature_std.npy", std * np.float32(1.5))
+        state_path = directory / "fusion_state_dict.pt"
+        state = torch.load(state_path, map_location="cpu", weights_only=True)
+        first = next(
+            name
+            for name, value in state.items()
+            if "branch." in name
+            and name.endswith("weight")
+            and torch.is_floating_point(value)
+            and value.numel()
+        )
+        state[first] = state[first].clone()
+        state[first].view(-1)[0] += 0.125
+        torch.save(state, state_path)
+        metrics_path = directory / "dev_metrics.json"
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        for key in (
+            "state_dict",
+            "prototypes",
+            "real_center",
+            "complex_center",
+            "feature_mean",
+            "feature_std",
+        ):
+            name = metrics["artifacts"][key]
+            metrics["artifacts"][f"{key}_sha256"] = _sha256(directory / name)
+        metrics["seed"] = 434343
+        _write_json(metrics_path, metrics)
+
     # -- the mini runtime bundle --------------------------------------------
 
     def _build_bundle(self) -> None:
@@ -384,6 +544,7 @@ class MiniFixture:
             "kind": evaluator.BUNDLE_KIND,
             "schema": evaluator.BUNDLE_SCHEMA,
             "schema_version": evaluator.BUNDLE_SCHEMA_VERSION,
+            "runtime_role": "known_unknown_rejector",
             "development_only": True,
             "release_evidence": False,
             "sealed_release_data_used": 0,
@@ -449,6 +610,31 @@ class MiniFixture:
             },
         }
         _write_json(directory / "bundle_manifest.json", manifest)
+
+    def _build_classifier_bundle(self) -> None:
+        shutil.copytree(self.rejector_bundle_dir, self.classifier_bundle_dir)
+        directory = self.classifier_bundle_dir
+        for name in (
+            "fusion_prototypes.npy",
+            "real_center.npy",
+            "complex_center.npy",
+            "feature_mean.npy",
+            "feature_std.npy",
+            "fusion_state_dict.pt",
+        ):
+            shutil.copy2(self.classifier_fusion_dir / name, directory / name)
+        manifest_path = directory / "bundle_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for name in manifest["assets"]:
+            manifest["assets"][name] = _record(directory / name)
+        manifest["provenance"]["source_fusion_artifact"] = str(
+            self.classifier_fusion_dir
+        )
+        manifest["runtime_role"] = "accepted_known_classifier"
+        manifest["provenance"]["source_dev_metrics_sha256"] = _sha256(
+            self.classifier_fusion_dir / "dev_metrics.json"
+        )
+        _write_json(manifest_path, manifest)
 
     # -- the mini frozen stage-2 state --------------------------------------
 
@@ -668,6 +854,507 @@ class MiniFixture:
             self._staged_metrics_template,
         )
 
+    def _build_candidate_chain(self) -> None:
+        """Freeze the mini equivalent of the real dual release identity."""
+        classifier_artifact = openset_base.load_fusion_artifact(
+            self.classifier_fusion_dir
+        )
+        rejector_artifact = openset_base.load_fusion_artifact(
+            self.rejector_fusion_dir
+        )
+        self.frozen_contract_path = (
+            self.candidate_root / "frozen_candidate_contract.json"
+        )
+        generic_prefilter_sha = "7" * 64
+        frozen_contract = {
+            "schema": evaluator.CANDIDATE_CONTRACT_SCHEMA,
+            "status": "frozen_before_validation",
+            "candidate_id": evaluator.CANDIDATE_ID,
+            "architecture": {
+                "intentional_dual_fusion": True,
+                "known_label_source": "classifier_fusion_8k_regularized",
+                "known_unknown_source": "rejector_fusion_4k_frozen_policy",
+                "stage_one_short_circuit": True,
+            },
+            "classifier_fusion_8k_regularized": {
+                "directory": str(self.classifier_fusion_dir),
+                "directory_sha256": classifier_artifact.directory_sha256,
+                "file_sha256": dict(classifier_artifact.file_sha256),
+            },
+            "rejector_fusion_4k": {
+                "directory": str(self.rejector_fusion_dir),
+                "directory_sha256": rejector_artifact.directory_sha256,
+                "file_sha256": dict(rejector_artifact.file_sha256),
+            },
+            "stage_one_noise_prefilter": {
+                "directory": str(self.prefilter_dir),
+                "directory_sha256": generic_prefilter_sha,
+            },
+        }
+        _write_json(self.frozen_contract_path, frozen_contract)
+
+        staged_metrics_path = self.staged_dir / "openset_metrics.json"
+        staged_hashes = dict(self._staged_metrics_template["artifacts"])
+        prefilter_set_sha = noise_prefilter.prefilter_set_sha256(
+            self.prefilter_dir
+        )
+        bundle_sha256 = {
+            str(length): noise_prefilter.bundle_sha256(
+                self.prefilter_dir / f"N{length}"
+            )
+            for length in MINI_STAGE_ONE_LENGTHS
+        }
+        self.validation_evidence_path = (
+            self.candidate_root / "validation_evidence.json"
+        )
+        evidence = {
+            "schema": evaluator.CANDIDATE_EVIDENCE_SCHEMA,
+            "status": "development_openset_pass",
+            "candidate_id": evaluator.CANDIDATE_ID,
+            "candidate_contract": {
+                "path": str(self.frozen_contract_path),
+                "sha256": _sha256(self.frozen_contract_path),
+                "committed_before_validation": True,
+                "commit": "mini-pre-validation",
+            },
+            "validation": {
+                "role": "validate",
+                "novelty_seeds_consumed_once": [20260947, 20260948],
+                "report": str(staged_metrics_path),
+                "report_sha256": _sha256(staged_metrics_path),
+                "gates_are_evidence": True,
+                "all_pass": True,
+                "sealed_release_data_used": 0,
+                "consumed_test_rows_used": 0,
+                "release_seed_20260735_used": False,
+            },
+            "validated_rejector": {
+                "fusion_directory_sha256": rejector_artifact.directory_sha256,
+                "canonical_prefilter_set_sha256": prefilter_set_sha,
+                "prefilter_bundle_sha256": bundle_sha256,
+            },
+            "validation_locked_policy_artifacts": {
+                "directory": str(self.staged_dir),
+                **staged_hashes,
+                "novelty_rows_used_to_fit_rank_or_threshold": 0,
+            },
+            "candidate_contract_clarification": {
+                "recorded_value": generic_prefilter_sha,
+                "canonical_behavioral_hash": prefilter_set_sha,
+                "changes_candidate_behavior": False,
+            },
+        }
+        _write_json(self.validation_evidence_path, evidence)
+
+        browser_records: dict[str, dict[str, Any]] = {}
+        for role, file_name in (
+            ("classifier", evaluator.CLASSIFIER_BROWSER_ASSET),
+            ("rejector", evaluator.REJECTOR_BROWSER_ASSET),
+            ("openset_policy", evaluator.OPENSET_BROWSER_ASSET),
+        ):
+            path = self.candidate_root / file_name
+            schema = (
+                evaluator.BROWSER_OPENSET_SCHEMA
+                if role == "openset_policy"
+                else evaluator.BROWSER_FUSION_SCHEMA
+            )
+            schema_version = (
+                evaluator.BROWSER_OPENSET_SCHEMA_VERSION
+                if role == "openset_policy"
+                else evaluator.BROWSER_FUSION_SCHEMA_VERSION
+            )
+            status = evaluator.STAGING_STATUS
+            payload = {
+                "schema": schema,
+                "schema_version": schema_version,
+                "status": status,
+                "role": role,
+            }
+            if role != "openset_policy":
+                payload["runtime_role"] = (
+                    "accepted_known_classifier"
+                    if role == "classifier"
+                    else "known_unknown_rejector"
+                )
+            _write_json(path, payload)
+            browser_records[role] = {
+                "path": str(path),
+                "sha256": _sha256(path),
+                "schema": schema,
+                "status": status,
+            }
+        package_path = self.candidate_root / "staging_package_manifest.json"
+        binding_path = self.candidate_root / "time-domain-v3-dual-binding.json"
+        _write_json(
+            binding_path,
+            {
+                "schema": evaluator.DUAL_BINDING_SCHEMA,
+                "schema_version": evaluator.DUAL_BINDING_SCHEMA_VERSION,
+                "status": evaluator.STAGING_STATUS,
+                "candidate_id": evaluator.CANDIDATE_ID,
+                "frontend": {
+                    "version": "invariant-patch-time-domain-v1",
+                    "patch_length": PATCH_LENGTH,
+                    "patch_count": PATCH_COUNT,
+                    "target_frac": TARGET_FRAC,
+                },
+                "execution_order": [
+                    "stage_one_noise_gate",
+                    "rejector_known_unknown",
+                    "classifier_known_label",
+                ],
+                "roles": {
+                    "classifier": {
+                        "asset": Path(browser_records["classifier"]["path"]).name,
+                        "asset_sha256": browser_records["classifier"]["sha256"],
+                        "fusion_directory_sha256": (
+                            classifier_artifact.directory_sha256
+                        ),
+                        "runtime_bundle_manifest_sha256": _sha256(
+                            self.classifier_bundle_dir / "bundle_manifest.json"
+                        ),
+                        "runtime_role": "accepted_known_classifier",
+                        "responsibility": "accepted_known_label_only",
+                    },
+                    "rejector": {
+                        "asset": Path(browser_records["rejector"]["path"]).name,
+                        "asset_sha256": browser_records["rejector"]["sha256"],
+                        "fusion_directory_sha256": (
+                            rejector_artifact.directory_sha256
+                        ),
+                        "runtime_bundle_manifest_sha256": _sha256(
+                            self.rejector_bundle_dir / "bundle_manifest.json"
+                        ),
+                        "runtime_role": "known_unknown_rejector",
+                        "responsibility": "known_unknown_only",
+                    },
+                },
+                "openset_policy": {
+                    "asset": Path(
+                        browser_records["openset_policy"]["path"]
+                    ).name,
+                    "asset_sha256": browser_records["openset_policy"]["sha256"],
+                    "rejector_asset_sha256": browser_records["rejector"][
+                        "sha256"
+                    ],
+                    "fitted_rejector_runtime_bundle_manifest_sha256": _sha256(
+                        self.rejector_bundle_dir / "bundle_manifest.json"
+                    ),
+                    "staged_validation_report_sha256": _sha256(
+                        staged_metrics_path
+                    ),
+                    "staged_artifacts_sha256": staged_hashes,
+                },
+                "validation": {
+                    "report_sha256": _sha256(staged_metrics_path),
+                    "role": "validate",
+                    "status": "development_openset_pass",
+                    "novelty_seeds": [20260947, 20260948],
+                },
+                "fail_closed": {
+                    "role_assets_bound_by_sha256": True,
+                    "distinct_role_assets": True,
+                    "role_asset_sha256_must_differ": True,
+                    "classifier_runs_only_after_rejector_acceptance": True,
+                    "public_known_label_from_classifier_only": True,
+                },
+            },
+        )
+
+        def asset_record(
+            role: str,
+            path: Path,
+            *,
+            schema: str,
+            schema_version: int,
+            runtime_role: str | None = None,
+        ) -> dict[str, Any]:
+            record = {
+                "path": path.name,
+                **_record(path),
+                "schema": schema,
+                "schema_version": schema_version,
+                "status": evaluator.STAGING_STATUS,
+            }
+            if runtime_role is not None:
+                record["runtime_role"] = runtime_role
+            return record
+
+        classifier_path = Path(browser_records["classifier"]["path"])
+        rejector_path = Path(browser_records["rejector"]["path"])
+        openset_path = Path(browser_records["openset_policy"]["path"])
+        package_assets = {
+            evaluator.CLASSIFIER_BROWSER_ASSET: asset_record(
+                "classifier",
+                classifier_path,
+                schema=evaluator.BROWSER_FUSION_SCHEMA,
+                schema_version=evaluator.BROWSER_FUSION_SCHEMA_VERSION,
+                runtime_role="accepted_known_classifier",
+            ),
+            evaluator.REJECTOR_BROWSER_ASSET: asset_record(
+                "rejector",
+                rejector_path,
+                schema=evaluator.BROWSER_FUSION_SCHEMA,
+                schema_version=evaluator.BROWSER_FUSION_SCHEMA_VERSION,
+                runtime_role="known_unknown_rejector",
+            ),
+            evaluator.OPENSET_BROWSER_ASSET: asset_record(
+                "openset_policy",
+                openset_path,
+                schema=evaluator.BROWSER_OPENSET_SCHEMA,
+                schema_version=evaluator.BROWSER_OPENSET_SCHEMA_VERSION,
+            ),
+            evaluator.DUAL_BINDING_ASSET: asset_record(
+                "dual_binding",
+                binding_path,
+                schema=evaluator.DUAL_BINDING_SCHEMA,
+                schema_version=evaluator.DUAL_BINDING_SCHEMA_VERSION,
+            ),
+        }
+
+        external_paths: dict[str, Path] = {}
+        for directory_name in (
+            "rejector_export",
+            "classifier_export",
+            "openset_export",
+        ):
+            (self.candidate_root / directory_name).mkdir()
+        external_payloads = {
+            "rejector_export_manifest": (
+                self.candidate_root / "rejector_export" / "export-manifest.json",
+                {
+                    "schema": evaluator.FUSION_EXPORT_MANIFEST_SCHEMA,
+                    "schema_version": (
+                        evaluator.FUSION_EXPORT_MANIFEST_SCHEMA_VERSION
+                    ),
+                    "runtime_role": "known_unknown_rejector",
+                },
+            ),
+            "classifier_export_manifest": (
+                self.candidate_root
+                / "classifier_export"
+                / "export-manifest.json",
+                {
+                    "schema": evaluator.FUSION_EXPORT_MANIFEST_SCHEMA,
+                    "schema_version": (
+                        evaluator.FUSION_EXPORT_MANIFEST_SCHEMA_VERSION
+                    ),
+                    "runtime_role": "accepted_known_classifier",
+                },
+            ),
+            "openset_export_manifest": (
+                self.candidate_root / "openset_export" / "manifest.json",
+                {
+                    "schema": evaluator.OPENSET_EXPORT_MANIFEST_SCHEMA,
+                    "schema_version": (
+                        evaluator.OPENSET_EXPORT_MANIFEST_SCHEMA_VERSION
+                    ),
+                    "status": evaluator.STAGING_STATUS,
+                },
+            ),
+            "rejector_probe": (
+                self.candidate_root
+                / "rejector_export"
+                / "time-domain-v3-rejector-probe.json",
+                {"schema": "synthetic-rejector-probe", "cases": []},
+            ),
+            "classifier_probe": (
+                self.candidate_root
+                / "classifier_export"
+                / "time-domain-v3-classifier-probe.json",
+                {"schema": "synthetic-classifier-probe", "cases": []},
+            ),
+            "parity": (
+                self.candidate_root
+                / "openset_export"
+                / "time-domain-openset-parity-v1.json",
+                {
+                    "schema": evaluator.PARITY_SCHEMA,
+                    "schema_version": evaluator.PARITY_SCHEMA_VERSION,
+                    "status": evaluator.STAGING_STATUS,
+                },
+            ),
+        }
+        for name, (path, payload) in external_payloads.items():
+            _write_json(path, payload)
+            external_paths[name] = path
+
+        def external_record(name: str) -> dict[str, Any]:
+            path = external_paths[name]
+            record = {
+                "path": path.relative_to(package_path.parent).as_posix(),
+                **_record(path),
+            }
+            if name == "rejector_export_manifest":
+                record.update(
+                    {
+                        "schema": evaluator.FUSION_EXPORT_MANIFEST_SCHEMA,
+                        "schema_version": (
+                            evaluator.FUSION_EXPORT_MANIFEST_SCHEMA_VERSION
+                        ),
+                        "runtime_role": "known_unknown_rejector",
+                    }
+                )
+            elif name == "classifier_export_manifest":
+                record.update(
+                    {
+                        "schema": evaluator.FUSION_EXPORT_MANIFEST_SCHEMA,
+                        "schema_version": (
+                            evaluator.FUSION_EXPORT_MANIFEST_SCHEMA_VERSION
+                        ),
+                        "runtime_role": "accepted_known_classifier",
+                    }
+                )
+            elif name == "openset_export_manifest":
+                record.update(
+                    {
+                        "schema": evaluator.OPENSET_EXPORT_MANIFEST_SCHEMA,
+                        "schema_version": (
+                            evaluator.OPENSET_EXPORT_MANIFEST_SCHEMA_VERSION
+                        ),
+                        "status": evaluator.STAGING_STATUS,
+                    }
+                )
+            elif name == "parity":
+                record.update(
+                    {
+                        "schema": evaluator.PARITY_SCHEMA,
+                        "schema_version": evaluator.PARITY_SCHEMA_VERSION,
+                        "status": evaluator.STAGING_STATUS,
+                        "packaged": False,
+                    }
+                )
+            return record
+
+        _write_json(
+            package_path,
+            {
+                "schema": evaluator.STAGING_PACKAGE_SCHEMA,
+                "schema_version": evaluator.STAGING_PACKAGE_SCHEMA_VERSION,
+                "status": evaluator.STAGING_STATUS,
+                "candidate_id": evaluator.CANDIDATE_ID,
+                "architecture": {
+                    "execution_order": [
+                        "stage_one_noise_gate",
+                        "rejector_known_unknown",
+                        "classifier_known_label",
+                    ],
+                    "classifier_runs_only_after_rejector_acceptance": True,
+                    "public_known_label_from_classifier_only": True,
+                },
+                "assets": package_assets,
+                "roles": {
+                    "classifier": {
+                        "runtime_role": "accepted_known_classifier",
+                        "responsibility": "accepted_known_label_only",
+                        "asset": package_assets[
+                            evaluator.CLASSIFIER_BROWSER_ASSET
+                        ],
+                        "source_bundle_manifest_sha256": _sha256(
+                            self.classifier_bundle_dir / "bundle_manifest.json"
+                        ),
+                        "fusion_directory_sha256": (
+                            classifier_artifact.directory_sha256
+                        ),
+                    },
+                    "rejector": {
+                        "runtime_role": "known_unknown_rejector",
+                        "responsibility": "known_unknown_only",
+                        "asset": package_assets[
+                            evaluator.REJECTOR_BROWSER_ASSET
+                        ],
+                        "source_bundle_manifest_sha256": _sha256(
+                            self.rejector_bundle_dir / "bundle_manifest.json"
+                        ),
+                        "fusion_directory_sha256": (
+                            rejector_artifact.directory_sha256
+                        ),
+                    },
+                },
+                "openset_policy": {
+                    **package_assets[evaluator.OPENSET_BROWSER_ASSET],
+                    "fitted_rejector_runtime_bundle_manifest_sha256": _sha256(
+                        self.rejector_bundle_dir / "bundle_manifest.json"
+                    ),
+                    "staged_validation_report_sha256": _sha256(
+                        staged_metrics_path
+                    ),
+                    "staged_artifacts_sha256": staged_hashes,
+                },
+                "dual_binding": package_assets[evaluator.DUAL_BINDING_ASSET],
+                "external_evidence": {
+                    name: external_record(name) for name in external_paths
+                },
+                "size_contract": {
+                    "maximum_file_bytes_exclusive": 25 * 1024 * 1024,
+                    "all_deployable_files_below_limit": True,
+                },
+            },
+        )
+
+        def bundle_record(directory: Path) -> dict[str, Any]:
+            manifest_path = directory / "bundle_manifest.json"
+            return {
+                "directory": str(directory),
+                "manifest_path": str(manifest_path),
+                "manifest_sha256": _sha256(manifest_path),
+            }
+
+        self.candidate_manifest_path = (
+            self.candidate_root / "release_candidate_manifest.json"
+        )
+        manifest = {
+            "schema": evaluator.CANDIDATE_MANIFEST_SCHEMA,
+            "status": "release_candidate_frozen",
+            "candidate_id": evaluator.CANDIDATE_ID,
+            "validation_evidence": {
+                "path": str(self.validation_evidence_path),
+                "sha256": _sha256(self.validation_evidence_path),
+            },
+            "classifier": {
+                "role": "known_class_label",
+                "fusion": {
+                    "directory": str(self.classifier_fusion_dir),
+                    "directory_sha256": classifier_artifact.directory_sha256,
+                    "file_sha256": dict(classifier_artifact.file_sha256),
+                },
+                "runtime_bundle": bundle_record(self.classifier_bundle_dir),
+            },
+            "rejector": {
+                "role": "known_unknown_decision",
+                "fusion": {
+                    "directory": str(self.rejector_fusion_dir),
+                    "directory_sha256": rejector_artifact.directory_sha256,
+                    "file_sha256": dict(rejector_artifact.file_sha256),
+                },
+                "runtime_bundle": bundle_record(self.rejector_bundle_dir),
+            },
+            "staged_validation": {
+                "directory": str(self.staged_dir),
+                "report_path": str(staged_metrics_path),
+                "report_sha256": _sha256(staged_metrics_path),
+                "artifact_sha256": staged_hashes,
+            },
+            "stage_one_prefilter": {
+                "directory": str(self.prefilter_dir),
+                "set_sha256": prefilter_set_sha,
+                "bundle_sha256": bundle_sha256,
+            },
+            "browser_assets": browser_records,
+            "staging_package_manifest": {
+                "path": str(package_path),
+                "sha256": _sha256(package_path),
+                "schema": evaluator.STAGING_PACKAGE_SCHEMA,
+                "status": evaluator.STAGING_STATUS,
+            },
+            "dual_binding": {
+                "path": str(binding_path),
+                "sha256": _sha256(binding_path),
+                "schema": evaluator.DUAL_BINDING_SCHEMA,
+            },
+        }
+        _write_json(self.candidate_manifest_path, manifest)
+
     # -- the mini sealed suite ----------------------------------------------
 
     @staticmethod
@@ -835,7 +1522,11 @@ class MiniFixture:
         protocol = evaluator.expected_evaluation_protocol(
             MINI_RELEASE_SEED, MINI_STAGE_ONE_LENGTHS
         )
-        candidate_path = self.bundle_dir / "bundle_manifest.json"
+        candidate_path = getattr(
+            self,
+            "candidate_manifest_path",
+            self.bundle_dir / "bundle_manifest.json",
+        )
         source_records = {
             "launcher": {
                 "path": str(release.LAUNCHER),
@@ -901,8 +1592,11 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
         cls.fixture = MiniFixture(cls.tmp)
         cls.device = torch.device("cpu")
         cls.candidate = evaluator.load_candidate(
-            bundle_dir=cls.fixture.bundle_dir,
-            fusion_dir=cls.fixture.fusion_dir,
+            candidate_manifest_path=cls.fixture.candidate_manifest_path,
+            classifier_bundle_dir=cls.fixture.classifier_bundle_dir,
+            rejector_bundle_dir=cls.fixture.rejector_bundle_dir,
+            classifier_fusion_dir=cls.fixture.classifier_fusion_dir,
+            rejector_fusion_dir=cls.fixture.rejector_fusion_dir,
             staged_dir=cls.fixture.staged_dir,
             prefilter_dir=cls.fixture.prefilter_dir,
             device=cls.device,
@@ -1265,6 +1959,43 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
             counts["256"]["rows"], int(len(self.suite.query_indices))
         )
 
+    def test_classifier_and_rejector_roles_are_independent(self):
+        self.assertFalse(
+            np.array_equal(
+                self.candidate.classifier_feature_mean,
+                self.candidate.rejector_feature_mean,
+            )
+        )
+        self.assertFalse(
+            np.array_equal(
+                self.candidate.classifier_feature_std,
+                self.candidate.rejector_feature_std,
+            )
+        )
+        self.assertFalse(
+            np.array_equal(
+                self.candidate.classifier_fusion_artifact.prototypes,
+                self.candidate.rejector_fusion_artifact.prototypes,
+            )
+        )
+        counts = self.report["staged_known_decisions_per_length"]
+        for length in MINI_LENGTHS:
+            row = counts[str(length)]
+            self.assertEqual(
+                row["accepted_label_source"],
+                "classifier_fusion_8k_regularized",
+            )
+        classifier_prediction = np.asarray([1, 0, 1], dtype=np.int64)
+        rejector_internal_prediction = np.asarray([0, 1, 0], dtype=np.int64)
+        rejected = np.asarray([False, True, False])
+        final = evaluator._final_labels_from_classifier(
+            classifier_prediction, rejected
+        )
+        np.testing.assert_array_equal(final, [1, -1, 1])
+        self.assertFalse(
+            np.array_equal(final[~rejected], rejector_internal_prediction[~rejected])
+        )
+
     # -- determinism and provenance -----------------------------------------
 
     def test_evaluation_is_deterministic(self):
@@ -1279,40 +2010,62 @@ class MiniSuiteEndToEndTests(unittest.TestCase):
         components = self.report["candidate"]["components"]
         self.assertEqual(
             provenance["candidate_sha256"],
-            _sha256(self.fixture.bundle_dir / "bundle_manifest.json"),
+            _sha256(self.fixture.candidate_manifest_path),
         )
         self.assertEqual(
-            components["fusion_directory_sha256"],
-            self.candidate.fusion_artifact.directory_sha256,
+            components["candidate_contract"]["sha256"],
+            _sha256(self.fixture.candidate_manifest_path),
         )
         self.assertEqual(
-            components["prefilter_set_sha256"],
+            components["classifier_fusion"]["directory_sha256"],
+            self.candidate.classifier_fusion_artifact.directory_sha256,
+        )
+        self.assertEqual(
+            components["rejector_fusion"]["directory_sha256"],
+            self.candidate.rejector_fusion_artifact.directory_sha256,
+        )
+        self.assertNotEqual(
+            components["classifier_fusion"]["directory_sha256"],
+            components["rejector_fusion"]["directory_sha256"],
+        )
+        self.assertEqual(
+            components["stage_one_prefilter"]["set_sha256"],
             noise_prefilter.prefilter_set_sha256(self.fixture.prefilter_dir),
         )
         self.assertEqual(
-            set(components["staged_artifact_sha256"]),
+            set(components["staged_validation"]["artifact_sha256"]),
             {
                 "v3_open_policy_stage_two.npz",
                 "v3_branch_lof_components.npz",
                 staged.COMPOSITE_POLICY_FILENAME,
             },
         )
-        self.assertEqual(components["stage_one_capture_lengths"], [256])
         self.assertEqual(
-            components["staged_policy_version"],
+            components["stage_one_prefilter"]["capture_lengths"], [256]
+        )
+        self.assertEqual(
+            components["staged_validation"]["policy_version"],
             staged.STAGED_POLICY_VERSION,
         )
         self.assertEqual(
-            components["staged_threshold"],
+            components["staged_validation"]["staged_threshold"],
             float(self.fixture.composite.threshold),
         )
         self.assertEqual(
-            components["stage_two_threshold"],
+            components["staged_validation"]["stage_two_threshold"],
             float(self.fixture.policy.threshold),
         )
         self.assertEqual(
-            components["composite"]["threshold"],
+            components["staged_validation"]["composite"]["threshold"],
             float(self.fixture.composite.threshold),
+        )
+        self.assertEqual(
+            components["dual_binding_sha256"],
+            components["dual_binding"]["sha256"],
+        )
+        self.assertEqual(
+            set(components["browser_assets"]),
+            {"classifier", "rejector", "openset_policy"},
         )
         self.assertEqual(
             provenance["evaluation_protocol"],
@@ -1379,8 +2132,11 @@ class SuiteTamperTests(unittest.TestCase):
             cls._stack.enter_context(patcher)
         cls.fixture = MiniFixture(cls.tmp)
         cls.candidate = evaluator.load_candidate(
-            bundle_dir=cls.fixture.bundle_dir,
-            fusion_dir=cls.fixture.fusion_dir,
+            candidate_manifest_path=cls.fixture.candidate_manifest_path,
+            classifier_bundle_dir=cls.fixture.classifier_bundle_dir,
+            rejector_bundle_dir=cls.fixture.rejector_bundle_dir,
+            classifier_fusion_dir=cls.fixture.classifier_fusion_dir,
+            rejector_fusion_dir=cls.fixture.rejector_fusion_dir,
             staged_dir=cls.fixture.staged_dir,
             prefilter_dir=cls.fixture.prefilter_dir,
             device=torch.device("cpu"),
@@ -1474,7 +2230,7 @@ class SuiteTamperTests(unittest.TestCase):
             intent["candidate_sha256"] = _sha256(rogue)
 
         self._mutate_intent(root, mutate)
-        with self.assertRaisesRegex(ValueError, "bundle"):
+        with self.assertRaisesRegex(ValueError, "dual release candidate"):
             evaluator.load_v3_release_suite(root, self.candidate)
 
     def test_consumed_release_seed_is_refused(self):
@@ -1557,12 +2313,37 @@ class CandidateTamperTests(unittest.TestCase):
 
     def _load(self, root: Path):
         return evaluator.load_candidate(
-            bundle_dir=root / "bundle",
-            fusion_dir=root / "fusion",
+            candidate_manifest_path=root / "release_candidate_manifest.json",
+            classifier_bundle_dir=root / "classifier_bundle",
+            rejector_bundle_dir=root / "rejector_bundle",
+            classifier_fusion_dir=root / "classifier_fusion",
+            rejector_fusion_dir=root / "rejector_fusion",
             staged_dir=root / "staged",
             prefilter_dir=root / "prefilters",
             device=torch.device("cpu"),
         )
+
+    @staticmethod
+    def _mutate_binding(root: Path, mutate) -> None:
+        binding_path = root / "time-domain-v3-dual-binding.json"
+        binding = json.loads(binding_path.read_text(encoding="utf-8"))
+        mutate(binding)
+        _write_json(binding_path, binding)
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["dual_binding"]["sha256"] = _sha256(binding_path)
+        _write_json(manifest_path, manifest)
+
+    @staticmethod
+    def _mutate_package(root: Path, mutate) -> None:
+        package_path = root / "staging_package_manifest.json"
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+        mutate(package)
+        _write_json(package_path, package)
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["staging_package_manifest"]["sha256"] = _sha256(package_path)
+        _write_json(manifest_path, manifest)
 
     def test_pristine_candidate_loads_and_reports_stage_one_domain(self):
         candidate = self._load(self._copy_candidate())
@@ -1671,7 +2452,7 @@ class CandidateTamperTests(unittest.TestCase):
 
     def test_bundle_asset_tamper_is_refused(self):
         root = self._copy_candidate()
-        target = root / "bundle" / "fusion_prototypes.npy"
+        target = root / "rejector_bundle" / "fusion_prototypes.npy"
         prototypes = np.load(target)
         np.save(target, prototypes + 0.5)
         with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
@@ -1679,11 +2460,316 @@ class CandidateTamperTests(unittest.TestCase):
 
     def test_bundle_bound_to_a_different_fusion_is_refused(self):
         root = self._copy_candidate()
-        manifest_path = root / "bundle" / "bundle_manifest.json"
+        manifest_path = root / "rejector_bundle" / "bundle_manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest["provenance"]["source_dev_metrics_sha256"] = "1" * 64
         _write_json(manifest_path, manifest)
         with self.assertRaisesRegex(ValueError, "source_dev_metrics_sha256"):
+            self._load(root)
+
+    def test_classifier_frontend_source_binding_drift_is_refused(self):
+        root = self._copy_candidate()
+        manifest_path = root / "classifier_bundle" / "bundle_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        source_sha256 = manifest["frontend"]["source_sha256"]
+        first = sorted(source_sha256)[0]
+        source_sha256[first] = "1" * 64
+        _write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(ValueError, "frontend source bindings differ"):
+            self._load(root)
+
+    def test_classifier_fusion_tamper_is_refused(self):
+        root = self._copy_candidate()
+        target = root / "classifier_fusion" / "fusion_prototypes.npy"
+        np.save(target, np.load(target) + np.float32(0.01))
+        with self.assertRaises((ValueError, RuntimeError)):
+            self._load(root)
+
+    def test_swapped_fusion_roles_are_refused(self):
+        root = self._copy_candidate()
+        with self.assertRaises(ValueError):
+            evaluator.load_candidate(
+                candidate_manifest_path=root / "release_candidate_manifest.json",
+                classifier_bundle_dir=root / "classifier_bundle",
+                rejector_bundle_dir=root / "rejector_bundle",
+                classifier_fusion_dir=root / "rejector_fusion",
+                rejector_fusion_dir=root / "classifier_fusion",
+                staged_dir=root / "staged",
+                prefilter_dir=root / "prefilters",
+                device=torch.device("cpu"),
+            )
+
+    def test_old_single_fusion_candidate_schema_is_refused(self):
+        root = self._copy_candidate()
+        path = root / "release_candidate_manifest.json"
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        manifest["schema"] = "time-domain-v3-release-candidate-v0"
+        _write_json(path, manifest)
+        with self.assertRaisesRegex(ValueError, "old or unknown schema"):
+            self._load(root)
+
+    def test_validation_evidence_byte_tamper_is_refused(self):
+        root = self._copy_candidate()
+        path = root / "validation_evidence.json"
+        evidence = json.loads(path.read_text(encoding="utf-8"))
+        evidence["validation"]["all_pass"] = False
+        _write_json(path, evidence)
+        with self.assertRaisesRegex(ValueError, "validation_evidence SHA-256"):
+            self._load(root)
+
+    def test_dual_binding_byte_tamper_is_refused(self):
+        root = self._copy_candidate()
+        path = root / "time-domain-v3-dual-binding.json"
+        binding = json.loads(path.read_text(encoding="utf-8"))
+        binding["tampered"] = True
+        _write_json(path, binding)
+        with self.assertRaisesRegex(ValueError, "dual_binding SHA-256"):
+            self._load(root)
+
+    def test_binding_classifier_asset_cross_link_tamper_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_binding(
+            root,
+            lambda binding: binding["roles"]["classifier"].__setitem__(
+                "asset_sha256", "1" * 64
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "classifier role differs"):
+            self._load(root)
+
+    def test_binding_openset_cross_link_tamper_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_binding(
+            root,
+            lambda binding: binding["openset_policy"].__setitem__(
+                "rejector_asset_sha256", "2" * 64
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "openset policy differs"):
+            self._load(root)
+
+    def test_binding_candidate_id_tamper_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_binding(
+            root,
+            lambda binding: binding.__setitem__("candidate_id", "wrong"),
+        )
+        with self.assertRaisesRegex(ValueError, "identity/execution order"):
+            self._load(root)
+
+    def test_package_candidate_id_cross_link_tamper_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_package(
+            root,
+            lambda package: package.__setitem__("candidate_id", "wrong"),
+        )
+        with self.assertRaisesRegex(ValueError, "candidate_id differs"):
+            self._load(root)
+
+    def test_package_classifier_asset_hash_tamper_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_package(
+            root,
+            lambda package: package["assets"][
+                evaluator.CLASSIFIER_BROWSER_ASSET
+            ].__setitem__("sha256", "3" * 64),
+        )
+        with self.assertRaisesRegex(ValueError, "SHA-256 differs from disk"):
+            self._load(root)
+
+    def test_package_classifier_role_cross_link_tamper_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_package(
+            root,
+            lambda package: package["roles"]["classifier"].__setitem__(
+                "source_bundle_manifest_sha256", "4" * 64
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "classifier role link differs"):
+            self._load(root)
+
+    def test_package_openset_evidence_cross_link_tamper_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_package(
+            root,
+            lambda package: package["openset_policy"].__setitem__(
+                "staged_validation_report_sha256", "5" * 64
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "openset evidence link differs"):
+            self._load(root)
+
+    def test_package_binding_record_cross_link_tamper_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_package(
+            root,
+            lambda package: package["dual_binding"].__setitem__(
+                "status", "release"
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "binding record differs"):
+            self._load(root)
+
+    def test_package_legacy_top_level_alias_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_package(
+            root,
+            lambda package: package.__setitem__(
+                "single_fusion_weights", "legacy"
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "extra or legacy fields"):
+            self._load(root)
+
+    def test_package_asset_legacy_alias_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_package(
+            root,
+            lambda package: package["assets"][
+                evaluator.REJECTOR_BROWSER_ASSET
+            ].__setitem__("legacy_role", "classifier"),
+        )
+        with self.assertRaisesRegex(ValueError, "contains aliases"):
+            self._load(root)
+
+    def test_package_role_legacy_alias_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_package(
+            root,
+            lambda package: package["roles"]["rejector"].__setitem__(
+                "legacy_classifier", False
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "rejector role link differs"):
+            self._load(root)
+
+    def test_package_openset_legacy_alias_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_package(
+            root,
+            lambda package: package["openset_policy"].__setitem__(
+                "single_fusion_threshold", 0.5
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "openset_policy is invalid"):
+            self._load(root)
+
+    def test_package_external_evidence_alias_is_refused(self):
+        root = self._copy_candidate()
+        self._mutate_package(
+            root,
+            lambda package: package["external_evidence"][
+                "classifier_probe"
+            ].__setitem__("packaged", False),
+        )
+        with self.assertRaisesRegex(ValueError, "contains aliases"):
+            self._load(root)
+
+    def test_package_external_evidence_symlink_is_refused(self):
+        root = self._copy_candidate()
+        probe = (
+            root
+            / "rejector_export"
+            / "time-domain-v3-rejector-probe.json"
+        )
+        target = root / "saved-rejector-probe.json"
+        target.write_bytes(probe.read_bytes())
+        probe.unlink()
+        probe.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "regular non-symlink file"):
+            self._load(root)
+
+    def test_package_deployable_asset_symlink_is_refused(self):
+        root = self._copy_candidate()
+        asset = root / evaluator.CLASSIFIER_BROWSER_ASSET
+        saved_dir = root / "saved"
+        saved_dir.mkdir()
+        target = saved_dir / evaluator.CLASSIFIER_BROWSER_ASSET
+        target.write_bytes(asset.read_bytes())
+        asset.unlink()
+        asset.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "regular non-symlink file"):
+            self._load(root)
+
+    def test_legacy_single_fusion_package_schema_is_refused(self):
+        root = self._copy_candidate()
+        package_path = root / "staging_package_manifest.json"
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+        package["schema"] = "atomos.v3.time-domain-classifier.runtime-package"
+        _write_json(package_path, package)
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["staging_package_manifest"].update(
+            {
+                "sha256": _sha256(package_path),
+                "schema": package["schema"],
+            }
+        )
+        _write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(ValueError, "dual-runtime staging"):
+            self._load(root)
+
+    def test_browser_role_asset_tamper_is_refused(self):
+        root = self._copy_candidate()
+        path = root / evaluator.CLASSIFIER_BROWSER_ASSET
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["role"] = "rejector"
+        _write_json(path, payload)
+        with self.assertRaisesRegex(ValueError, "browser_assets.classifier SHA"):
+            self._load(root)
+
+    def test_browser_runtime_role_schema_is_enforced_after_rebinding(self):
+        root = self._copy_candidate()
+        path = root / evaluator.CLASSIFIER_BROWSER_ASSET
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["runtime_role"] = "known_unknown_rejector"
+        _write_json(path, payload)
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["browser_assets"]["classifier"]["sha256"] = _sha256(path)
+        _write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(ValueError, "runtime_role differs"):
+            self._load(root)
+
+    def test_browser_openset_schema_version_is_enforced_after_rebinding(self):
+        root = self._copy_candidate()
+        path = root / evaluator.OPENSET_BROWSER_ASSET
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["schema_version"] = 1
+        _write_json(path, payload)
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["browser_assets"]["openset_policy"]["sha256"] = _sha256(path)
+        _write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(ValueError, "schema/version/status differs"):
+            self._load(root)
+
+    def test_candidate_browser_record_alias_is_refused(self):
+        root = self._copy_candidate()
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["browser_assets"]["classifier"]["legacy_role"] = "classifier"
+        _write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(ValueError, "browser_assets.classifier"):
+            self._load(root)
+
+    def test_candidate_manifest_legacy_alias_is_refused(self):
+        root = self._copy_candidate()
+        manifest_path = root / "release_candidate_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["single_fusion"] = True
+        _write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(ValueError, "extra or legacy fields"):
+            self._load(root)
+
+    def test_staged_report_bound_to_classifier_fusion_is_refused(self):
+        root = self._copy_candidate()
+        metrics_path = root / "staged" / "openset_metrics.json"
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        classifier = openset_base.load_fusion_artifact(root / "classifier_fusion")
+        metrics["fusion"]["directory_sha256"] = classifier.directory_sha256
+        _write_json(metrics_path, metrics)
+        with self.assertRaisesRegex(ValueError, "different fusion"):
             self._load(root)
 
     def test_staged_state_fit_against_another_fusion_is_refused(self):
@@ -1849,14 +2935,29 @@ class ProtocolAndHelperIdentityTests(unittest.TestCase):
         parser = evaluator.build_parser()
         args = parser.parse_args([])
         self.assertEqual(
-            Path(args.bundle_dir).name, "v3_runtime_bundle_seed20260730"
+            Path(args.candidate_manifest).name,
+            "v3_dual_release_candidate.json",
         )
         self.assertEqual(
-            Path(args.fusion_dir).name, "v3_fusion_multilength_seed20260730"
+            Path(args.classifier_bundle_dir).name,
+            "v3_runtime_bundle_classifier8kreg_dual_seed20260730",
+        )
+        self.assertEqual(
+            Path(args.rejector_bundle_dir).name,
+            "v3_runtime_bundle_rejector4k_dual_seed20260730",
+        )
+        self.assertEqual(
+            Path(args.classifier_fusion_dir).name,
+            "v3_fusion_ml8000reg_seed20260730",
+        )
+        self.assertEqual(
+            Path(args.rejector_fusion_dir).name,
+            "v3_fusion_multilength_seed20260730",
         )
         self.assertEqual(
             Path(args.staged_dir).name,
-            "staged_validate_composite_budget001_seed20260730",
+            "staged_validate_decoupled_rejector4k_classifier8k_budget001_"
+            "seeds20260950_20260951",
         )
         self.assertEqual(
             Path(args.prefilter_dir).parent.name,

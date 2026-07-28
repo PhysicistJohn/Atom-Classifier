@@ -26,12 +26,16 @@ strict imported gates: known FUR <= 0.10 and five-shot >= 0.85.
 
 What it verifies, each as an itemised PASS/FAIL check:
 
-* the candidate fusion artifact's recorded asset SHA-256 values against disk;
-* the v3 runtime bundle: schema identity, every asset hash, the binding to the
-  exact candidate fusion (``provenance.source_dev_metrics_sha256``), the bound
-  frontend source hashes against the current repo files, and a full
-  re-execution of the bundle's probe-fixture self-verification (reload from
-  bundle-only inputs, replay the closed-form probes, compare embeddings);
+* both fusion artifacts independently: 8k classifier and 4k rejector tree
+  digests plus every recorded asset SHA-256;
+* both role-labelled runtime bundles: schema identity, explicit runtime role,
+  every asset hash, exact fusion binding, frontend source hashes, and a full
+  replay of each bundle's probe-fixture self-verification;
+* the final dual release-candidate manifest: its independent byte pin and
+  complete evaluator load, transitively checking the validation evidence,
+  pre-validation contract, both role bundles/fusions, validation-locked
+  staged policy, canonical prefilter set, all three browser assets, the
+  dual-runtime staging package and the deploy-time dual binding;
 * the staged noise prefilter: fit-report schema, the per-length bundle hashes
   and the set hash, the architecture-contract keys (``additive_only`` false,
   ``changes_closed_label`` true, ``gates_before_classification`` true), the
@@ -100,7 +104,7 @@ for _path in (TRAINING, ZPAB, V2, HERE):
         sys.path.insert(0, str(_path))
 
 
-REPORT_SCHEMA = "v3-release-preflight-v1"
+REPORT_SCHEMA = "v3-release-preflight-v2-dual-fusion"
 
 # ---------------------------------------------------------------------------
 # frozen expectations
@@ -129,8 +133,60 @@ DEFAULT_PINS: dict[str, Any] = {
     # restores the strict v2 floors and preserves the prior redeclaration only
     # as inactive history.
     "v3_evaluator_sha256": (
-        "427cf4422987bcce940f840f9bae3ce0e9e990609d45acba38aadf9d75d9cb27"
+        "e6875c303c817b553201cc6f2dc317330833cc387b551ead2f99eadde0039149"
     ),
+    "candidate_manifest_schema": "time-domain-v3-dual-release-candidate-v1",
+    # Filled only after the browser package and dual-binding bytes are final.
+    # None is intentionally a hard NO-GO, never a skipped check.
+    "candidate_manifest_sha256": None,
+    "candidate_id": "v3.3-decoupled-8k-classifier-4k-rejector",
+    "staging_package_schema": (
+        "atomos.v3.time-domain-classifier.dual-runtime-package"
+    ),
+    "staging_package_schema_version": 1,
+    "dual_binding_schema": "atomos.v3.time-domain-dual-fusion.binding",
+    "dual_binding_schema_version": 1,
+    "staging_status": "staging_not_release",
+    "validation_evidence_sha256": (
+        "85d01b9154bb1d0e60c3f42d8d5cf1854dbcbb1366b0c918250e1a4bc8c8880e"
+    ),
+    "frozen_candidate_contract_sha256": (
+        "2209a56df22ff0c3ffd152bf2973f94da2d3488536a9cfcbf3904d077a1ba706"
+    ),
+    "classifier_fusion_directory_sha256": (
+        "ecd894281b4cbac0917304b22ad7be194d41f994dcf2c008ca6ea0643b58667b"
+    ),
+    "rejector_fusion_directory_sha256": (
+        "0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5"
+    ),
+    "classifier_bundle_manifest_sha256": (
+        "db216324da9b1ab8ec90cbe710c2b147b347ae29842cba20424f44c2869b99c8"
+    ),
+    "rejector_bundle_manifest_sha256": (
+        "80ee91f3f8577507a30fdae7adc47de7e7b448d9e563558f2d0becbadb4dee78"
+    ),
+    "staged_validation_report_sha256": (
+        "24241bcb2e47c96e855f2b3e1d213ed5c02ee7c392758af8c62ea41557ea848c"
+    ),
+    "staged_artifact_sha256": {
+        "v3_branch_lof_components.npz": (
+            "0a66ca267356bdacf239de5512b9406e010526c990dc38c137cac84342a062a6"
+        ),
+        "v3_open_policy_stage_two.npz": (
+            "9378f6eea893174b4f716f4db5ea6ea2b637d64b04a0e7672bb39b2e50600dd8"
+        ),
+        "v3_staged_composite_policy.npz": (
+            "7a3d5b8b1bdd67053f5f48a16d97cc2eef1fce909bd68f514c89c8bb4a64c133"
+        ),
+    },
+    "prefilter_set_sha256": (
+        "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2"
+    ),
+    "prefilter_bundle_sha256": {
+        "4096": "5ef175f5ddc296ec9ae0ffb8ac6801504fd609d6a852dbd5c4b1bf9a10de0f85",
+        "8192": "e0e972be4d1b7e43929b6c45c69d2dada884b49b39e16555998c375edf744557",
+        "16384": "3d56108fc016d8fb8ff7f4c18f8fc2fa6a1443d5d32d30cd769d52de087384db",
+    },
     # Independent pin for the transparent but inactive seed-20260734 record.
     "historical_gate_redeclaration": {
         "release_seed": 20260734,
@@ -151,7 +207,7 @@ DEFAULT_PINS: dict[str, Any] = {
     # with its historical protocol; v3 reads the seed-20260735 fixture and
     # refuses all four consumed release seeds before generating anything.
     "launcher_sha256": (
-        "c071bf0dbdc17088fae674b441a4b7f89a1c4323d8e2a82e56a4572f5619c50d"
+        "1bf0dc38e66a60e7a57ae8b8a96d2a2947acd27753314642228a0783f6e276a8"
     ),
     "corpus_generator_sha256": (
         "305418a5bc7bd8f9a49799477f3a457b4c07d0c58b637766989fc9557565371b"
@@ -286,22 +342,33 @@ DEFAULT_PINS: dict[str, Any] = {
         "time-domain-v3-expected-evaluation-protocol-seed20260735.json"
     ),
     "v3_protocol_fixture_sha256": (
-        "6dfdab8e8fe7c656230bc0639a0db4e3667d6b8a726e11288a1326125be60fa6"
+        "40ef572beeabd18c38e55fdc5001dbfb0365dcd81dac5ff6ea1b95ceca163f7e"
     ),
     # Bundle schema identity (export_v3_fusion_runtime).
     "bundle_schema": "atomos.v3.time-domain-invariant-fusion.runtime-bundle",
     "bundle_schema_version": 1,
 }
 
-# The default candidate, frozen.  Overridable on the CLI so the test suite can
+# The default dual candidate, frozen.  Overridable on the CLI so tests can
 # exercise every check against synthetic trees, never so a different candidate
 # can be slipped in silently: the resolved paths are recorded in the report.
-DEFAULT_FUSION_DIR = (
+DEFAULT_CLASSIFIER_FUSION_DIR = (
+    V2
+    / "artifacts/invariant_patch/v3_scale/v3_fusion_ml8000reg_seed20260730"
+)
+DEFAULT_REJECTOR_FUSION_DIR = (
     V2
     / "artifacts/invariant_patch/v3_scale/v3_fusion_multilength_seed20260730"
 )
-DEFAULT_BUNDLE_DIR = (
-    V2 / "artifacts/invariant_patch/v3_scale/v3_runtime_bundle_seed20260730"
+DEFAULT_CLASSIFIER_BUNDLE_DIR = (
+    V2
+    / "artifacts/invariant_patch/v3_scale/"
+    "v3_runtime_bundle_classifier8kreg_dual_seed20260730"
+)
+DEFAULT_REJECTOR_BUNDLE_DIR = (
+    V2
+    / "artifacts/invariant_patch/v3_scale/"
+    "v3_runtime_bundle_rejector4k_dual_seed20260730"
 )
 DEFAULT_PREFILTER_ROOT = (
     V2
@@ -310,8 +377,16 @@ DEFAULT_PREFILTER_ROOT = (
 DEFAULT_STAGED_DIR = (
     V2
     / "artifacts/invariant_patch/v3_scale"
-    / "staged_validate_composite_budget001_seed20260730"
+    / "staged_validate_decoupled_rejector4k_classifier8k_budget001_"
+    "seeds20260950_20260951"
 )
+DEFAULT_CANDIDATE_MANIFEST = (
+    HERE / "evidence" / "v3_dual_release_candidate.json"
+)
+# Read-only compatibility aliases for generic helper tests.  The parser and
+# preflight harness expose only the explicit role-named arguments.
+DEFAULT_FUSION_DIR = DEFAULT_REJECTOR_FUSION_DIR
+DEFAULT_BUNDLE_DIR = DEFAULT_REJECTOR_BUNDLE_DIR
 DEFAULT_RELEASES_DIR = TRAINING / "artifacts/releases"
 DEFAULT_ISOLATED_ROOT = Path(
     "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab"
@@ -455,12 +530,18 @@ def _match(name: str, actual: Any, expected: Any) -> Check:
 # ---------------------------------------------------------------------------
 
 
-def check_fusion_artifact(fusion_dir: Path) -> list[Check]:
+def check_fusion_artifact(
+    fusion_dir: Path,
+    *,
+    role: str | None = None,
+    expected_directory_sha256: str | None = None,
+) -> list[Check]:
+    prefix = "fusion" if role is None else f"{role}.fusion"
     checks: list[Check] = []
     metrics = _read_json(Path(fusion_dir) / "dev_metrics.json")
     artifacts = metrics.get("artifacts")
     if not isinstance(artifacts, Mapping):
-        return [("fusion.artifacts_record", False, "no artifacts record")]
+        return [(f"{prefix}.artifacts_record", False, "no artifacts record")]
     bad: list[str] = []
     for file_key, sha_key in FUSION_ASSET_KEYS:
         filename = str(artifacts[file_key])
@@ -470,25 +551,47 @@ def check_fusion_artifact(fusion_dir: Path) -> list[Check]:
             bad.append(f"{filename}: expected {expected}, observed {actual}")
     checks.append(
         (
-            "fusion.asset_sha256",
+            f"{prefix}.asset_sha256",
             not bad,
             "; ".join(bad) if bad else f"{len(FUSION_ASSET_KEYS)} assets match",
         )
     )
     checks.append(
         _match(
-            "fusion.consumed_test_rows_used",
+            f"{prefix}.consumed_test_rows_used",
             metrics.get("consumed_test_rows_used"),
             0,
         )
     )
     checks.append(
         _match(
-            "fusion.sealed_release_data_used",
+            f"{prefix}.sealed_release_data_used",
             metrics.get("sealed_release_data_used"),
             0,
         )
     )
+    if expected_directory_sha256 is not None:
+        try:
+            import fit_v3_openset as openset_base
+
+            observed = openset_base.load_fusion_artifact(
+                Path(fusion_dir)
+            ).directory_sha256
+            checks.append(
+                _match(
+                    f"{prefix}.directory_sha256",
+                    observed,
+                    expected_directory_sha256,
+                )
+            )
+        except Exception as error:  # noqa: BLE001
+            checks.append(
+                (
+                    f"{prefix}.directory_sha256",
+                    False,
+                    f"{type(error).__name__}: {error}",
+                )
+            )
     return checks
 
 
@@ -496,23 +599,28 @@ def check_runtime_bundle(
     bundle_dir: Path,
     fusion_dir: Path,
     pins: Mapping[str, Any],
+    *,
+    role: str | None = None,
+    expected_runtime_role: str | None = None,
+    expected_manifest_sha256: str | None = None,
 ) -> list[Check]:
+    prefix = "bundle" if role is None else f"{role}.bundle"
     checks: list[Check] = []
     bundle_dir = Path(bundle_dir)
     manifest = _read_json(bundle_dir / "bundle_manifest.json")
     checks.append(
-        _match("bundle.schema", manifest.get("schema"), pins["bundle_schema"])
+        _match(f"{prefix}.schema", manifest.get("schema"), pins["bundle_schema"])
     )
     checks.append(
         _match(
-            "bundle.schema_version",
+            f"{prefix}.schema_version",
             manifest.get("schema_version"),
             pins["bundle_schema_version"],
         )
     )
     assets = manifest.get("assets")
     if not isinstance(assets, Mapping) or not assets:
-        checks.append(("bundle.asset_sha256", False, "no assets record"))
+        checks.append((f"{prefix}.asset_sha256", False, "no assets record"))
     else:
         bad = []
         for name, record in sorted(assets.items()):
@@ -524,7 +632,7 @@ def check_runtime_bundle(
                 bad.append(f"{name}: byte count mismatch")
         checks.append(
             (
-                "bundle.asset_sha256",
+                f"{prefix}.asset_sha256",
                 not bad,
                 "; ".join(bad) if bad else f"{len(assets)} assets match",
             )
@@ -533,14 +641,14 @@ def check_runtime_bundle(
     dev_metrics_sha = _sha256(Path(fusion_dir) / "dev_metrics.json")
     checks.append(
         _match(
-            "bundle.bound_to_candidate_fusion",
+            f"{prefix}.bound_to_candidate_fusion",
             provenance.get("source_dev_metrics_sha256"),
             dev_metrics_sha,
         )
     )
     frontend_pins = manifest.get("frontend", {}).get("source_sha256", {})
     if not frontend_pins:
-        checks.append(("bundle.frontend_source_pins", False, "no frontend pins"))
+        checks.append((f"{prefix}.frontend_source_pins", False, "no frontend pins"))
     else:
         bad = []
         for relative, expected in sorted(frontend_pins.items()):
@@ -549,7 +657,7 @@ def check_runtime_bundle(
                 bad.append(f"{relative}: expected {expected}, observed {actual}")
         checks.append(
             (
-                "bundle.frontend_source_pins",
+                f"{prefix}.frontend_source_pins",
                 not bad,
                 "; ".join(bad)
                 if bad
@@ -571,18 +679,41 @@ def check_runtime_bundle(
     )
     checks.append(
         (
-            "bundle.rejection_slot_contract",
+            f"{prefix}.rejection_slot_contract",
             contract_ok,
             "state unset; required contract matches the frozen policy"
             if contract_ok
             else f"state={rejection.get('state')!r}, contract={contract!r}",
         )
     )
+    if expected_runtime_role is not None:
+        checks.append(
+            _match(
+                f"{prefix}.runtime_role",
+                manifest.get("runtime_role"),
+                expected_runtime_role,
+            )
+        )
+    if expected_manifest_sha256 is not None:
+        checks.append(
+            _match(
+                f"{prefix}.manifest_sha256",
+                _sha256(bundle_dir / "bundle_manifest.json"),
+                expected_manifest_sha256,
+            )
+        )
     return checks
 
 
-def check_bundle_self_verification(bundle_dir: Path) -> list[Check]:
+def check_bundle_self_verification(
+    bundle_dir: Path, *, role: str | None = None
+) -> list[Check]:
     """Reload the bundle from its own files and replay the probe fixture."""
+    name = (
+        "bundle.self_verification"
+        if role is None
+        else f"{role}.bundle.self_verification"
+    )
     import export_v3_fusion_runtime as exporter
 
     bundle_dir = Path(bundle_dir)
@@ -593,7 +724,7 @@ def check_bundle_self_verification(bundle_dir: Path) -> list[Check]:
     if fixture_names != expected_names:
         return [
             (
-                "bundle.self_verification",
+                name,
                 False,
                 f"probe cases {fixture_names} != specifications {expected_names}",
             )
@@ -634,7 +765,7 @@ def check_bundle_self_verification(bundle_dir: Path) -> list[Check]:
     worst = float(verification["worst_max_abs_error"])
     return [
         (
-            "bundle.self_verification",
+            name,
             True,
             f"{len(cases)} probe cases replayed from bundle-only inputs, "
             f"worst |error| {worst:.3g} <= {float(fixture['tolerance']):.3g}, "
@@ -657,6 +788,13 @@ def check_prefilter(prefilter_root: Path, pins: Mapping[str, Any]) -> list[Check
     recorded_set = str(report.get("prefilter_set_sha256", ""))
     actual_set = npf.prefilter_set_sha256(bundles_dir)
     checks.append(_match("prefilter.set_sha256", actual_set, recorded_set))
+    checks.append(
+        _match(
+            "prefilter.pinned_set_sha256",
+            actual_set,
+            pins.get("prefilter_set_sha256"),
+        )
+    )
     recorded_each = report.get("bundle_sha256", {})
     expected_names = {f"N{length}" for length in pins["prefilter_lengths"]}
     bad = []
@@ -675,6 +813,18 @@ def check_prefilter(prefilter_root: Path, pins: Mapping[str, Any]) -> list[Check
             "; ".join(bad)
             if bad
             else f"{len(recorded_each)} per-length bundles match",
+        )
+    )
+    observed_each = {
+        str(int(name[1:])): npf.bundle_sha256(bundles_dir / name)
+        for name in sorted(recorded_each)
+        if str(name).startswith("N")
+    }
+    checks.append(
+        _match(
+            "prefilter.pinned_per_length_sha256",
+            observed_each,
+            pins.get("prefilter_bundle_sha256"),
         )
     )
     contract_ok = (
@@ -796,6 +946,8 @@ def check_staged_artifact(
     staged_dir: Path,
     prefilter_root: Path,
     pins: Mapping[str, Any],
+    *,
+    rejector_fusion_dir: Path | None = None,
 ) -> list[Check]:
     """The composite staged validation artifact the sealed run will load.
 
@@ -861,6 +1013,7 @@ def check_staged_artifact(
         and report.get("release_evidence") is False
         and int(report.get("sealed_release_data_used", -1)) == 0
         and int(report.get("consumed_test_rows_used", -1)) == 0
+        and report.get("all_pass") is True
     )
     checks.append(
         (
@@ -978,6 +1131,173 @@ def check_staged_artifact(
     checks.append(
         ("staged.composite_policy_loads", composite_ok, composite_detail)
     )
+    checks.append(
+        _match(
+            "staged.report_sha256",
+            _sha256(staged_dir / "openset_metrics.json"),
+            pins.get("staged_validation_report_sha256"),
+        )
+    )
+    checks.append(
+        _match(
+            "staged.pinned_npz_sha256",
+            {
+                name: _sha256(staged_dir / name)
+                for name in sorted(expected_names)
+                if (staged_dir / name).is_file()
+            },
+            pins.get("staged_artifact_sha256"),
+        )
+    )
+    if rejector_fusion_dir is not None:
+        try:
+            import fit_v3_openset as openset_base
+
+            artifact_sha = openset_base.load_fusion_artifact(
+                Path(rejector_fusion_dir)
+            ).directory_sha256
+            recorded_sha = report.get("fusion", {}).get("directory_sha256")
+            checks.append(
+                (
+                    "staged.rejector_fusion_binding",
+                    recorded_sha == artifact_sha
+                    == pins.get("rejector_fusion_directory_sha256"),
+                    f"report={recorded_sha}, artifact={artifact_sha}, "
+                    f"pin={pins.get('rejector_fusion_directory_sha256')}",
+                )
+            )
+        except Exception as error:  # noqa: BLE001
+            checks.append(
+                (
+                    "staged.rejector_fusion_binding",
+                    False,
+                    f"{type(error).__name__}: {error}",
+                )
+            )
+    return checks
+
+
+def check_dual_candidate(
+    candidate_manifest: Path,
+    classifier_bundle_dir: Path,
+    rejector_bundle_dir: Path,
+    classifier_fusion_dir: Path,
+    rejector_fusion_dir: Path,
+    staged_dir: Path,
+    prefilter_root: Path,
+    pins: Mapping[str, Any],
+) -> list[Check]:
+    """Load the exact evaluator candidate without reading a release corpus."""
+    import evaluate_v3_release_suite as evaluator
+    import torch
+
+    checks: list[Check] = []
+    path = Path(candidate_manifest).expanduser().resolve()
+    manifest = _read_json(path)
+    checks.extend(
+        [
+            _match(
+                "candidate.schema",
+                manifest.get("schema"),
+                pins.get("candidate_manifest_schema"),
+            ),
+            _match(
+                "candidate.status",
+                manifest.get("status"),
+                "release_candidate_frozen",
+            ),
+            _match(
+                "candidate.id",
+                manifest.get("candidate_id"),
+                pins.get("candidate_id"),
+            ),
+        ]
+    )
+    checks.append(
+        (
+            "candidate.package_binding_schemas",
+            evaluator.STAGING_PACKAGE_SCHEMA
+            == pins.get("staging_package_schema")
+            and evaluator.STAGING_PACKAGE_SCHEMA_VERSION
+            == pins.get("staging_package_schema_version")
+            and evaluator.DUAL_BINDING_SCHEMA
+            == pins.get("dual_binding_schema")
+            and evaluator.DUAL_BINDING_SCHEMA_VERSION
+            == pins.get("dual_binding_schema_version")
+            and evaluator.STAGING_STATUS == pins.get("staging_status"),
+            "dual runtime package and dual binding are schema v1 with "
+            "status staging_not_release; legacy single-fusion packages are "
+            "inadmissible",
+        )
+    )
+    observed_sha = _sha256(path)
+    pinned_sha = pins.get("candidate_manifest_sha256")
+    checks.append(
+        (
+            "candidate.manifest_sha256",
+            isinstance(pinned_sha, str)
+            and len(pinned_sha) == 64
+            and observed_sha == pinned_sha,
+            f"observed {observed_sha}; pinned {pinned_sha!r}"
+            + (
+                ""
+                if isinstance(pinned_sha, str) and len(pinned_sha) == 64
+                else " (an unpinned final manifest is a hard NO-GO)"
+            ),
+        )
+    )
+    try:
+        candidate = evaluator.load_candidate(
+            candidate_manifest_path=path,
+            classifier_bundle_dir=Path(classifier_bundle_dir),
+            rejector_bundle_dir=Path(rejector_bundle_dir),
+            classifier_fusion_dir=Path(classifier_fusion_dir),
+            rejector_fusion_dir=Path(rejector_fusion_dir),
+            staged_dir=Path(staged_dir),
+            prefilter_dir=Path(prefilter_root) / "bundles",
+            device=torch.device("cpu"),
+        )
+        exact = (
+            candidate.candidate_manifest_sha256 == observed_sha
+            and candidate.validation_evidence_sha256
+            == pins.get("validation_evidence_sha256")
+            and candidate.frozen_contract_sha256
+            == pins.get("frozen_candidate_contract_sha256")
+            and candidate.classifier_fusion_artifact.directory_sha256
+            == pins.get("classifier_fusion_directory_sha256")
+            and candidate.rejector_fusion_artifact.directory_sha256
+            == pins.get("rejector_fusion_directory_sha256")
+            and candidate.classifier_bundle_manifest_sha256
+            == pins.get("classifier_bundle_manifest_sha256")
+            and candidate.rejector_bundle_manifest_sha256
+            == pins.get("rejector_bundle_manifest_sha256")
+            and candidate.staged_metrics_sha256
+            == pins.get("staged_validation_report_sha256")
+            and dict(candidate.staged_hashes)
+            == dict(pins.get("staged_artifact_sha256", {}))
+            and candidate.prefilter_set_sha256
+            == pins.get("prefilter_set_sha256")
+        )
+        checks.append(
+            (
+                "candidate.complete_binding_chain",
+                exact,
+                "final manifest, validation evidence, pre-validation "
+                "contract, both role bundles/fusions, staged policy, "
+                "prefilter, browser assets, staging package and dual binding "
+                "all load under evaluator schema 3"
+                if exact
+                else "candidate loaded but one independent preflight pin differs",
+            )
+        )
+    except Exception as error:  # noqa: BLE001 - refusal is the finding
+        checks.append(
+            (
+                "candidate.complete_binding_chain",
+                False,
+                f"{type(error).__name__}: {error}",
+            )
+        )
     return checks
 
 
@@ -1058,29 +1378,15 @@ def check_frozen_policy(pins: Mapping[str, Any]) -> list[Check]:
         and new_seed not in staged.SPENT_NOVELTY_SEEDS
         and new_seed not in staged.CONSUMED_SEALED_RELEASE_SEEDS
         and sorted(staged.SPENT_NOVELTY_SEEDS)
-        == [
-            20260938,
-            20260939,
-            20260940,
-            20260941,
-            20260942,
-            20260943,
-            20260944,
-            20260945,
-            20260946,
-            20260947,
-            20260948,
-            20260949,
-        ]
+        == list(range(20260938, 20260952))
         and int(staged.PROPOSED_DESIGN_NOVELTY_SEED)
         == int(pins["staged_design_novelty_seed"])
         and tuple(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS)
         == tuple(pins["staged_validation_novelty_seeds"])
         and int(staged.PROPOSED_DESIGN_NOVELTY_SEED)
         in staged.SPENT_NOVELTY_SEEDS
-        and not (
-            set(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS)
-            & set(staged.SPENT_NOVELTY_SEEDS)
+        and set(staged.DEFAULT_VALIDATION_NOVELTY_SEEDS).issubset(
+            staged.SPENT_NOVELTY_SEEDS
         )
     )
     checks.append(
@@ -1089,7 +1395,7 @@ def check_frozen_policy(pins: Mapping[str, Any]) -> list[Check]:
             ledger_ok,
             f"release seed {new_seed} reserved and unreachable from "
             f"development; consumed releases {consumed_now}; spent novelty "
-            "seeds 20260938-20260949; spent design and reserved validation "
+            "seeds 20260938-20260951; spent design and consumed validation "
             f"{pins['staged_design_novelty_seed']}/"
             f"{list(pins['staged_validation_novelty_seeds'])}"
             if ledger_ok
@@ -1420,6 +1726,28 @@ def check_generation_sources(pins: Mapping[str, Any]) -> list[Check]:
                 ),
             )
         )
+        import evaluate_v3_release_suite as evaluator
+
+        fresh_protocol = evaluator.expected_evaluation_protocol(
+            int(pins["release_seed"]),
+            tuple(
+                sorted(
+                    int(length)
+                    for length in pins["prefilter_bundle_sha256"]
+                )
+            ),
+        )
+        checks.append(
+            (
+                "generation.v3_protocol_fixture_matches_evaluator",
+                protocol == fresh_protocol,
+                "fixture evaluation_protocol exactly matches the final "
+                "evaluator"
+                if protocol == fresh_protocol
+                else "fixture evaluation_protocol is stale relative to the "
+                "final evaluator",
+            )
+        )
         checks.extend(_check_fixture_gate_contract(protocol, pins))
     return checks
 
@@ -1584,7 +1912,7 @@ def check_python_runtime() -> list[Check]:
 
 def build_generation_command(
     pins: Mapping[str, Any],
-    bundle_dir: Path,
+    candidate_manifest: Path,
     isolated_root: Path,
     node_bin_dir: Path,
 ) -> dict[str, Any]:
@@ -1592,12 +1920,19 @@ def build_generation_command(
 
     Reconstructed from the consumed release mechanics and re-aimed at the new
     untouched seed.
-    The candidate file is the runtime bundle's manifest: it embeds the SHA-256
-    of every other bundle asset, so pinning it pins the entire candidate.
+    The candidate file is the final dual release-candidate manifest: it binds
+    both role bundles/fusions, validation evidence, staged/prefilter state,
+    browser assets, staging package and the deploy-time dual binding.
     This function only formats strings; nothing is executed.
     """
-    manifest_path = Path(bundle_dir) / "bundle_manifest.json"
+    manifest_path = Path(candidate_manifest).expanduser().resolve()
     candidate_sha = _sha256(manifest_path)
+    pinned_sha = pins.get("candidate_manifest_sha256")
+    if not isinstance(pinned_sha, str) or candidate_sha != pinned_sha:
+        raise ValueError(
+            "final candidate manifest is unpinned or differs from "
+            "pins.candidate_manifest_sha256"
+        )
     release_root = (
         REPO
         / "training/artifacts/releases"
@@ -1666,8 +2001,11 @@ def run_preflight(
                 {"name": name, "passed": bool(passed), "detail": str(detail)}
             )
 
-    fusion_dir = Path(args.fusion_dir)
-    bundle_dir = Path(args.bundle_dir)
+    candidate_manifest = Path(args.candidate_manifest)
+    classifier_fusion_dir = Path(args.classifier_fusion_dir)
+    rejector_fusion_dir = Path(args.rejector_fusion_dir)
+    classifier_bundle_dir = Path(args.classifier_bundle_dir)
+    rejector_bundle_dir = Path(args.rejector_bundle_dir)
     prefilter_root = Path(args.prefilter_root)
     staged_dir = Path(args.staged_dir)
     releases_dir = Path(args.releases_dir)
@@ -1675,18 +2013,82 @@ def run_preflight(
     evaluator_path = Path(args.evaluator)
     node_bin_dir = Path(args.node_bin_dir)
 
-    run_group("fusion", lambda: check_fusion_artifact(fusion_dir))
     run_group(
-        "bundle", lambda: check_runtime_bundle(bundle_dir, fusion_dir, pins)
+        "classifier.fusion",
+        lambda: check_fusion_artifact(
+            classifier_fusion_dir,
+            role="classifier",
+            expected_directory_sha256=pins[
+                "classifier_fusion_directory_sha256"
+            ],
+        ),
     )
     run_group(
-        "bundle.self_verification",
-        lambda: check_bundle_self_verification(bundle_dir),
+        "rejector.fusion",
+        lambda: check_fusion_artifact(
+            rejector_fusion_dir,
+            role="rejector",
+            expected_directory_sha256=pins[
+                "rejector_fusion_directory_sha256"
+            ],
+        ),
+    )
+    run_group(
+        "classifier.bundle",
+        lambda: check_runtime_bundle(
+            classifier_bundle_dir,
+            classifier_fusion_dir,
+            pins,
+            role="classifier",
+            expected_runtime_role="accepted_known_classifier",
+            expected_manifest_sha256=pins["classifier_bundle_manifest_sha256"],
+        ),
+    )
+    run_group(
+        "rejector.bundle",
+        lambda: check_runtime_bundle(
+            rejector_bundle_dir,
+            rejector_fusion_dir,
+            pins,
+            role="rejector",
+            expected_runtime_role="known_unknown_rejector",
+            expected_manifest_sha256=pins["rejector_bundle_manifest_sha256"],
+        ),
+    )
+    run_group(
+        "classifier.bundle.self_verification",
+        lambda: check_bundle_self_verification(
+            classifier_bundle_dir, role="classifier"
+        ),
+    )
+    run_group(
+        "rejector.bundle.self_verification",
+        lambda: check_bundle_self_verification(
+            rejector_bundle_dir, role="rejector"
+        ),
     )
     run_group("prefilter", lambda: check_prefilter(prefilter_root, pins))
     run_group(
         "staged",
-        lambda: check_staged_artifact(staged_dir, prefilter_root, pins),
+        lambda: check_staged_artifact(
+            staged_dir,
+            prefilter_root,
+            pins,
+            rejector_fusion_dir=rejector_fusion_dir,
+        ),
+    )
+    run_group(
+        "candidate",
+        lambda: check_dual_candidate(
+            candidate_manifest,
+            classifier_bundle_dir,
+            rejector_bundle_dir,
+            classifier_fusion_dir,
+            rejector_fusion_dir,
+            staged_dir,
+            prefilter_root,
+            pins,
+        ),
     )
     run_group("policy", lambda: check_frozen_policy(pins))
     run_group(
@@ -1701,7 +2103,7 @@ def run_preflight(
 
     try:
         generation = build_generation_command(
-            pins, bundle_dir, isolated_root, node_bin_dir
+            pins, candidate_manifest, isolated_root, node_bin_dir
         )
     except Exception as error:  # noqa: BLE001 - reported, not fatal on its own
         generation = {
@@ -1727,8 +2129,11 @@ def run_preflight(
         "pins": copy.deepcopy(dict(pins)),
         "observed": observed,
         "paths": {
-            "fusion_dir": str(fusion_dir),
-            "bundle_dir": str(bundle_dir),
+            "candidate_manifest": str(candidate_manifest),
+            "classifier_fusion_dir": str(classifier_fusion_dir),
+            "rejector_fusion_dir": str(rejector_fusion_dir),
+            "classifier_bundle_dir": str(classifier_bundle_dir),
+            "rejector_bundle_dir": str(rejector_bundle_dir),
             "prefilter_root": str(prefilter_root),
             "staged_dir": str(staged_dir),
             "releases_dir": str(releases_dir),
@@ -1778,8 +2183,21 @@ def _print_report(report: Mapping[str, Any], stream=None) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--fusion-dir", default=str(DEFAULT_FUSION_DIR))
-    parser.add_argument("--bundle-dir", default=str(DEFAULT_BUNDLE_DIR))
+    parser.add_argument(
+        "--candidate-manifest", default=str(DEFAULT_CANDIDATE_MANIFEST)
+    )
+    parser.add_argument(
+        "--classifier-fusion-dir", default=str(DEFAULT_CLASSIFIER_FUSION_DIR)
+    )
+    parser.add_argument(
+        "--rejector-fusion-dir", default=str(DEFAULT_REJECTOR_FUSION_DIR)
+    )
+    parser.add_argument(
+        "--classifier-bundle-dir", default=str(DEFAULT_CLASSIFIER_BUNDLE_DIR)
+    )
+    parser.add_argument(
+        "--rejector-bundle-dir", default=str(DEFAULT_REJECTOR_BUNDLE_DIR)
+    )
     parser.add_argument("--prefilter-root", default=str(DEFAULT_PREFILTER_ROOT))
     parser.add_argument("--staged-dir", default=str(DEFAULT_STAGED_DIR))
     parser.add_argument("--releases-dir", default=str(DEFAULT_RELEASES_DIR))

@@ -5,6 +5,9 @@
     "v3-staged-openset-policy-v2-composite-survivor: composite survivor score",
     "max(stage2_enrollment_rank, stage1_score_enrollment_rank), staged unknown",
     "threshold = frozen q95 of the composite over enrollment stage-1 survivors;",
+    "the regularized 8k fusion supplies accepted known labels while the frozen",
+    "4k fusion exclusively supplies the known/unknown decision; stage 1 still",
+    "short-circuits both fusions;",
     "stage-1 fitted lengths 4096/8192/16384 from the tightened 0.01-budget set",
     "noise_prefilter_fit20261001_budget001, N32768 gated through the",
     "causal-prefix rule). This protocol restores the strict imported v2 gates:",
@@ -56,6 +59,7 @@
       "scale_pair_embedding_cosine": 0.8,
       "scale_pair_prediction_agreement": 0.75
     },
+    "high_snr_db": 18,
     "historical_gate_redeclaration": {
       "active_for_current_protocol": false,
       "current_protocol_gate_source": "imported_v2_gate_floors_unchanged",
@@ -73,7 +77,6 @@
       },
       "release_seed": 20260734
     },
-    "high_snr_db": 18,
     "length_observation_rule": "generate maximum capture length once; every shorter observed and clean row is a bit-exact cf32le prefix of the corresponding maximum-length row",
     "matched_capture_length": 16384,
     "minimum_target_per_class": 80,
@@ -92,9 +95,18 @@
     "open_set": {
       "additive_only": false,
       "architecture": "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry",
+      "candidate_architecture": "dual_fusion_classifier8k_rejector4k",
       "changes_closed_label": true,
+      "classifier_role": "the regularized 8k fusion supplies every accepted known-class label and every closed/five-shot/clean/length/scale gate input",
+      "decision_order": [
+        "stage-one causal-prefix noise gate",
+        "4k rejector fusion and frozen staged known/unknown policy",
+        "8k classifier fusion nearest-prototype known label for accepted rows"
+      ],
       "gates_before_classification": true,
+      "intentional_dual_fusion": true,
       "known_false_unknown_accounting": "counts both stages: a known row gated by the stage-1 noise prefilter and a known survivor whose COMPOSITE score exceeds the frozen staged threshold (q95 of the composite over enrollment survivors) are both false-unknown, and every per-length open report attributes each rejected known row to the stage that rejected it. The additive control arm uses the stage-2 policy's own untouched threshold",
+      "rejector_role": "the frozen 4k fusion supplies every stage-2 known/unknown score and every open-set gate input; it never supplies the final accepted known-class label",
       "score_axis": "Stage-2 scores are enrollment empirical ranks in [0, 1).  A stage-1 survivor's staged score is the COMPOSITE max(stage2_enrollment_rank, stage1_score_enrollment_rank), also in [0, 1), where the stage-1 rank is the empirical enrollment rank of the stage-1 log-odds fit on ENROLLMENT stage-1 survivors only (searchsorted-left, the stage-2 convention).  A row gated at stage 1 has no stage-2 score at all -- that is the short circuit -- and is placed at 1.0 + a bounded monotone map (softsign) of its stage-1 log-odds, i.e. in (1, 2), above every survivor.  The staged unknown threshold is the frozen q95 of the composite over enrollment survivors, so the staged score is a single axis on which 'score > staged threshold' is exactly the staged decision 'gated at stage 1, or composite-rejected at stage 2', which is asserted row by row.  AUROC and threshold recall computed from it are properties of the staged system, not of either stage read in isolation.",
       "stage_one_capture_lengths": [
         4096,
@@ -136,6 +148,6 @@
       16384,
       32768
     ],
-    "version": "time-domain-v3-release-evaluation-v2"
+    "version": "time-domain-v3-release-evaluation-v3-dual-fusion"
   }
 }

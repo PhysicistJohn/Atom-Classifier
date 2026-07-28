@@ -263,6 +263,54 @@ class RuntimeBundleCheckTest(TempDirTestCase):
         checks = _by_name(preflight.check_runtime_bundle(bundle, fusion, pins))
         self.assertFalse(checks["bundle.rejection_slot_contract"]["passed"])
 
+    def test_wrong_explicit_runtime_role_fails(self) -> None:
+        bundle, fusion, pins = self._fake_bundle_and_fusion()
+        manifest_path = bundle / "bundle_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["runtime_role"] = "known_unknown_rejector"
+        manifest_path.write_text(json.dumps(manifest))
+        checks = _by_name(
+            preflight.check_runtime_bundle(
+                bundle,
+                fusion,
+                pins,
+                role="classifier",
+                expected_runtime_role="accepted_known_classifier",
+            )
+        )
+        self.assertFalse(checks["classifier.bundle.runtime_role"]["passed"])
+
+
+class DualCandidateAdmissionTest(TempDirTestCase):
+    def test_old_single_fusion_schema_and_unpinned_sha_fail_closed(self) -> None:
+        root = Path(self.tmpdir())
+        manifest = root / "candidate.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "schema": "atomos.v3.single-fusion-candidate",
+                    "status": "release_candidate_frozen",
+                    "candidate_id": preflight.DEFAULT_PINS["candidate_id"],
+                }
+            )
+        )
+        checks = _by_name(
+            preflight.check_dual_candidate(
+                manifest,
+                root / "classifier_bundle",
+                root / "rejector_bundle",
+                root / "classifier_fusion",
+                root / "rejector_fusion",
+                root / "staged",
+                root / "prefilter",
+                preflight.DEFAULT_PINS,
+            )
+        )
+        self.assertFalse(checks["candidate.schema"]["passed"])
+        self.assertFalse(checks["candidate.manifest_sha256"]["passed"])
+        self.assertFalse(checks["candidate.complete_binding_chain"]["passed"])
+        self.assertTrue(checks["candidate.package_binding_schemas"]["passed"])
+
 
 @unittest.skipUnless(
     preflight.DEFAULT_BUNDLE_DIR.is_dir(),
@@ -653,13 +701,23 @@ class NodeRuntimeCheckTest(TempDirTestCase):
 class GenerationCommandTest(TempDirTestCase):
     """The reconstructed one-shot command: right values, never executed."""
 
-    @unittest.skipUnless(
-        preflight.DEFAULT_BUNDLE_DIR.is_dir(), "real runtime bundle missing"
-    )
     def test_command_matches_sealed_mechanics_for_seed_20260735(self) -> None:
+        candidate = Path(self.tmpdir()) / "candidate.json"
+        candidate.write_text(
+            json.dumps(
+                {
+                    "schema": preflight.DEFAULT_PINS[
+                        "candidate_manifest_schema"
+                    ],
+                    "status": "release_candidate_frozen",
+                }
+            )
+        )
+        pins = copy.deepcopy(preflight.DEFAULT_PINS)
+        pins["candidate_manifest_sha256"] = preflight._sha256(candidate)
         generation = preflight.build_generation_command(
-            preflight.DEFAULT_PINS,
-            preflight.DEFAULT_BUNDLE_DIR,
+            pins,
+            candidate,
             preflight.DEFAULT_ISOLATED_ROOT,
             preflight.DEFAULT_NODE_BIN_DIR,
         )
@@ -670,13 +728,11 @@ class GenerationCommandTest(TempDirTestCase):
         self.assertEqual(environment["RELEASE_TARGET_PER_CLASS"], "192")
         self.assertEqual(
             environment["CANDIDATE_PATH"],
-            str(preflight.DEFAULT_BUNDLE_DIR / "bundle_manifest.json"),
+            str(candidate.resolve()),
         )
         self.assertEqual(
             environment["CANDIDATE_SHA256"],
-            preflight._sha256(
-                preflight.DEFAULT_BUNDLE_DIR / "bundle_manifest.json"
-            ),
+            preflight._sha256(candidate),
         )
         self.assertEqual(
             environment["SIGNALLAB_ROOT"],
@@ -703,8 +759,19 @@ class HarnessTest(TempDirTestCase):
 
     def _args(self, **overrides) -> object:
         defaults = {
-            "fusion_dir": str(preflight.DEFAULT_FUSION_DIR),
-            "bundle_dir": str(preflight.DEFAULT_BUNDLE_DIR),
+            "candidate_manifest": str(preflight.DEFAULT_CANDIDATE_MANIFEST),
+            "classifier_fusion_dir": str(
+                preflight.DEFAULT_CLASSIFIER_FUSION_DIR
+            ),
+            "rejector_fusion_dir": str(
+                preflight.DEFAULT_REJECTOR_FUSION_DIR
+            ),
+            "classifier_bundle_dir": str(
+                preflight.DEFAULT_CLASSIFIER_BUNDLE_DIR
+            ),
+            "rejector_bundle_dir": str(
+                preflight.DEFAULT_REJECTOR_BUNDLE_DIR
+            ),
             "prefilter_root": str(preflight.DEFAULT_PREFILTER_ROOT),
             "releases_dir": str(preflight.DEFAULT_RELEASES_DIR),
             "isolated_root": str(preflight.DEFAULT_ISOLATED_ROOT),
@@ -724,8 +791,11 @@ class HarnessTest(TempDirTestCase):
     def test_crashing_group_becomes_a_failed_check(self) -> None:
         gone = Path(self.tmpdir()) / "gone"
         args = self._args(
-            fusion_dir=str(gone / "fusion"),
-            bundle_dir=str(gone / "bundle"),
+            candidate_manifest=str(gone / "candidate.json"),
+            classifier_fusion_dir=str(gone / "classifier_fusion"),
+            rejector_fusion_dir=str(gone / "rejector_fusion"),
+            classifier_bundle_dir=str(gone / "classifier_bundle"),
+            rejector_bundle_dir=str(gone / "rejector_bundle"),
             prefilter_root=str(gone / "prefilter"),
             releases_dir=str(gone / "releases"),
             isolated_root=str(gone / "isolated"),
@@ -736,12 +806,12 @@ class HarnessTest(TempDirTestCase):
         self.assertFalse(report["go"])
         names = {item["name"] for item in report["checks"]}
         # The crashed groups surface under their group labels.
-        self.assertIn("fusion", names)
-        self.assertIn("bundle", names)
+        self.assertIn("classifier.fusion", names)
+        self.assertIn("rejector.bundle", names)
         failed = {
             item["name"] for item in report["checks"] if not item["passed"]
         }
-        self.assertIn("fusion", failed)
+        self.assertIn("classifier.fusion", failed)
         # Groups that need nothing from the missing paths still ran.
         self.assertIn("policy.kind", names)
 
@@ -821,9 +891,9 @@ class HarnessTest(TempDirTestCase):
     "full frozen environment not present",
 )
 class EndToEndTest(TempDirTestCase):
-    """The real preflight stays NO-GO until seed49/50/51 evidence exists."""
+    """The real preflight stays NO-GO until the final manifest is pinned."""
 
-    def test_full_preflight_blocks_the_stale_v32_validation_artifact(self) -> None:
+    def test_full_preflight_blocks_an_unpinned_final_manifest(self) -> None:
         tmp = Path(self.tmpdir())
         output = tmp / "preflight_report.json"
         previous = os.environ.get("PYTHONWARNINGS")
@@ -855,7 +925,10 @@ class EndToEndTest(TempDirTestCase):
         report = json.loads(output.read_text())
         self.assertFalse(report["go"])
         failed = [item["name"] for item in report["checks"] if not item["passed"]]
-        self.assertEqual(failed, ["staged.evidence_seeds"])
+        self.assertEqual(
+            failed,
+            ["candidate", "generation.command_reconstruction"],
+        )
         self.assertGreaterEqual(len(report["checks"]), 40)
         # The report carries full provenance: the real evaluator's hash both
         # observed and equal to the redeclaration pin.
@@ -884,11 +957,19 @@ class EndToEndTest(TempDirTestCase):
             path.name for path in preflight.DEFAULT_RELEASES_DIR.iterdir()
         )
         self.assertEqual(releases_before, releases_after)
-        # The generation command in the report is the v2 mechanics on the
-        # new seed, and was not run: its release root must not exist.
-        environment = report["generation_command"]["environment"]
-        self.assertEqual(environment["RELEASE_SEED"], "20260735")
-        self.assertFalse(Path(environment["RELEASE_ROOT"]).exists())
+        # No command is emitted until the exact final-manifest SHA is pinned.
+        generation_error = report["generation_command"]["error"]
+        self.assertTrue(
+            "unpinned" in generation_error
+            or "No such file or directory" in generation_error,
+            generation_error,
+        )
+        release_root = (
+            preflight.REPO
+            / "training/artifacts/releases"
+            / "invariant_fusion_v3_sealed_seed20260735"
+        )
+        self.assertFalse(release_root.exists())
 
 
 if __name__ == "__main__":

@@ -174,7 +174,10 @@ test('v3 protocol fixture is the evaluator-printed object, self-consistent', () 
   );
   assert.equal(wrapper.release_seed, 20260735);
   const protocol = wrapper.evaluation_protocol;
-  assert.equal(protocol.version, 'time-domain-v3-release-evaluation-v2');
+  assert.equal(
+    protocol.version,
+    'time-domain-v3-release-evaluation-v3-dual-fusion',
+  );
   assert.equal(protocol.novelty.seed, 20260735);
   assert.deepEqual(protocol.required_capture_lengths, [4096, 8192, 16384, 32768]);
   assert.equal(protocol.open_set.additive_only, false);
@@ -305,7 +308,7 @@ test('v3 intent embeds the evaluator-printed protocol object verbatim', {
   // The v2 provenance constant remains selectable and untouched.
   assert.equal(
     intent.evaluation_protocol.version,
-    'time-domain-v3-release-evaluation-v2',
+    'time-domain-v3-release-evaluation-v3-dual-fusion',
   );
 });
 

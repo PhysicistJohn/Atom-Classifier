@@ -171,7 +171,8 @@ const V3_EXPECTED_PROTOCOL_FIXTURE = resolve(
   HERE,
   'time-domain-v3-expected-evaluation-protocol-seed20260735.json',
 );
-const V3_EVALUATION_VERSION = 'time-domain-v3-release-evaluation-v2';
+const V3_EVALUATION_VERSION =
+  'time-domain-v3-release-evaluation-v3-dual-fusion';
 /**
  * Seed hygiene mirrored from `evaluate_v3_release_suite.validate_release_seed`
  * so a refused seed fails here, before any corpus generation, instead of at

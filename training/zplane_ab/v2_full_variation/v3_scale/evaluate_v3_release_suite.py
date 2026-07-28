@@ -22,29 +22,40 @@ did not change, and states precisely where the staged rejector forced a change:
   on.  ``development_data_loaded`` is ``False``: unlike the dev harnesses this
   evaluator never opens the development corpus at all.
 
-THE CANDIDATE is four frozen components, transitively bound to the single
-``candidate_sha256`` the release intent records:
+THE CANDIDATE is an explicitly decoupled, hash-bound system.  The release
+intent binds one aggregate validation-evidence JSON file, not a runtime-bundle
+manifest.  That evidence file binds the pre-validation candidate contract,
+the untouched validation report, both fusion artifacts, the validated staged
+policy bytes, and the canonical stage-1 prefilter hashes:
 
-1. ``--bundle-dir``     the self-verified v3 runtime bundle.  Its
-                        ``bundle_manifest.json`` is the intent-bound candidate
-                        file; the manifest pins every fusion asset by SHA-256.
-2. ``--fusion-dir``     the fusion artifact the bundle was exported from,
-                        bound by ``provenance.source_dev_metrics_sha256``.
-3. ``--staged-dir``     the frozen fitted stage-2 state (branch-LOF ensemble
-                        npz + frozen policy npz) from the staged validation
-                        run, bound to the same fusion by its recorded
-                        ``fusion.directory_sha256`` and to its own npz bytes
-                        by its recorded artifact hashes.
-4. ``--prefilter-dir``  the fitted per-length stage-1 noise prefilter set,
-                        bound by the staged artifact's recorded
-                        ``stage_one.set_sha256``.
+1. ``--candidate-manifest``      the final release-candidate JSON, which
+                                 binds the post-validation evidence, all
+                                 Python/browser assets and dual binding.
+2. ``--classifier-bundle-dir``   the self-verified runtime bundle exported
+                                 from the regularized 8k classifier fusion.
+3. ``--rejector-bundle-dir``     the self-verified runtime bundle exported
+                                 from the frozen 4k rejector fusion.
+4. ``--classifier-fusion-dir``   the regularized 8k fusion used only for
+                                 known-class labels and closed/five-shot/
+                                 clean/length/scale metrics.
+5. ``--rejector-fusion-dir``     the frozen 4k fusion used only for the
+                                 known/unknown decision and its open metrics.
+6. ``--staged-dir``              the exact validation-locked 4k stage-2 and
+                                 composite-policy artifacts.
+7. ``--prefilter-dir``           the exact validation-locked stage-1 set.
+
+The two fusions are intentionally different complete models.  Their weights,
+centers, feature moments and prototypes are loaded independently.  The
+evaluator never assumes that any of those arrays are interchangeable.
 
 ARCHITECTURE CONTRACT (stated here and carried in the emitted JSON): the v3
 rejector is STAGED and is not additive.  When the stage-1 noise prefilter
-fires, the capture is rejected as noise before classification and downstream
-work (encoder forward, fusion, prototype distance, branch LOF, frozen policy)
-is never computed for that row inside the staged scoring pass.  Stage 2 stays
-additive for the rows it sees and the closed label is asserted unchanged.
+fires, the capture is rejected as noise before either fusion runs.  Stage-1
+survivors run the 4k fusion and frozen staged policy to decide known/unknown.
+Only accepted rows receive the 8k fusion's nearest-prototype known label.
+The sealed evaluator computes the 8k additive control for every known row
+because the unchanged closed and invariance gates require it, but never uses
+that control to make an open-set decision.
 
 Predeclared v3 semantics, all bound into the sealed ``evaluation_protocol``
 object the release intent must embed (see ``expected_evaluation_protocol``):
@@ -152,9 +163,39 @@ from v3_time_domain_openset import (  # noqa: E402
 # identity with the v2 evaluator: imported objects, never re-typed values
 # ---------------------------------------------------------------------------
 
-EVALUATOR_SCHEMA = 2
-EVALUATION_VERSION = "time-domain-v3-release-evaluation-v2"
+EVALUATOR_SCHEMA = 3
+EVALUATION_VERSION = "time-domain-v3-release-evaluation-v3-dual-fusion"
 RELEASE_PROTOCOL = release.RELEASE_PROTOCOL
+
+CANDIDATE_MANIFEST_SCHEMA = "time-domain-v3-dual-release-candidate-v1"
+CANDIDATE_EVIDENCE_SCHEMA = "time-domain-v3-decoupled-validation-evidence-v1"
+CANDIDATE_CONTRACT_SCHEMA = "time-domain-v3-decoupled-candidate-v1"
+CANDIDATE_ID = "v3.3-decoupled-8k-classifier-4k-rejector"
+STAGING_PACKAGE_SCHEMA = "atomos.v3.time-domain-classifier.dual-runtime-package"
+STAGING_PACKAGE_SCHEMA_VERSION = 1
+DUAL_BINDING_SCHEMA = "atomos.v3.time-domain-dual-fusion.binding"
+DUAL_BINDING_SCHEMA_VERSION = 1
+STAGING_STATUS = "staging_not_release"
+BROWSER_FUSION_SCHEMA = (
+    "atomos.v3.time-domain-invariant-fusion.browser-weights"
+)
+BROWSER_FUSION_SCHEMA_VERSION = 1
+BROWSER_OPENSET_SCHEMA = "atomos.v3.time-domain-openset.staged"
+BROWSER_OPENSET_SCHEMA_VERSION = 2
+REJECTOR_BROWSER_ASSET = "time-domain-v3-rejector-weights.json"
+CLASSIFIER_BROWSER_ASSET = "time-domain-v3-classifier-weights.json"
+OPENSET_BROWSER_ASSET = "time-domain-v3-openset-policy.json"
+DUAL_BINDING_ASSET = "time-domain-v3-dual-binding.json"
+FUSION_EXPORT_MANIFEST_SCHEMA = (
+    "atomos.v3.time-domain-invariant-fusion.browser-weights.export-manifest"
+)
+FUSION_EXPORT_MANIFEST_SCHEMA_VERSION = 2
+OPENSET_EXPORT_MANIFEST_SCHEMA = (
+    "time-domain-v3-dual-openset-staging-manifest-v1"
+)
+OPENSET_EXPORT_MANIFEST_SCHEMA_VERSION = 1
+PARITY_SCHEMA = "time-domain-openset-parity-v1"
+PARITY_SCHEMA_VERSION = 3
 
 GATE_FLOORS = release.GATE_FLOORS
 FIVE_SHOT_K = release.FIVE_SHOT_K
@@ -181,25 +222,26 @@ _write_json_exclusive = release._write_json_exclusive
 resolve_device = release.resolve_device
 
 #: The one frozen candidate directory set this evaluator was written for.
-DEFAULT_BUNDLE_DIR = (
+DEFAULT_REJECTOR_BUNDLE_DIR = (
     V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "v3_runtime_bundle_seed20260730"
+    / "v3_runtime_bundle_rejector4k_dual_seed20260730"
 )
-DEFAULT_FUSION_DIR = (
+DEFAULT_CLASSIFIER_BUNDLE_DIR = (
+    V2 / "artifacts" / "invariant_patch" / "v3_scale"
+    / "v3_runtime_bundle_classifier8kreg_dual_seed20260730"
+)
+DEFAULT_CLASSIFIER_FUSION_DIR = (
+    V2 / "artifacts" / "invariant_patch" / "v3_scale"
+    / "v3_fusion_ml8000reg_seed20260730"
+)
+DEFAULT_REJECTOR_FUSION_DIR = (
     V2 / "artifacts" / "invariant_patch" / "v3_scale"
     / "v3_fusion_multilength_seed20260730"
 )
-#: The staged-policy-version-2 (composite survivor) validation artifact this
-#: evaluator expects: the single validation run on untouched seeds
-#: 20260947/20260948 writes here.  Until that run exists this default fails
-#: loudly (FileNotFoundError, or the policy-version refusal below against any
-#: older artifact) -- the version-1 artifacts
-#: ``staged_validate_prefixrule_seed20260730`` (sealed at 20260731) and
-#: ``staged_validate_budget001_seed20260730`` (v3.1, frozen fail) are
-#: consumed evidence and can no longer be candidates.
 DEFAULT_STAGED_DIR = (
     V2 / "artifacts" / "invariant_patch" / "v3_scale"
-    / "staged_validate_composite_budget001_seed20260730"
+    / "staged_validate_decoupled_rejector4k_classifier8k_budget001_"
+    "seeds20260950_20260951"
 )
 #: The tightened stage-1 gate: the 0.01 enrollment-budget threshold set.
 #: Coefficients are bit-identical to the 0.02 set; only the operating points
@@ -207,6 +249,10 @@ DEFAULT_STAGED_DIR = (
 DEFAULT_PREFILTER_DIR = (
     V2 / "artifacts" / "invariant_patch" / "v3_scale"
     / "noise_prefilter_fit20261001_budget001" / "bundles"
+)
+DEFAULT_CANDIDATE_MANIFEST = (
+    HERE / "evidence"
+    / "v3_dual_release_candidate.json"
 )
 
 BUNDLE_KIND = "v3-time-domain-centered-invariant-fusion"
@@ -506,6 +552,22 @@ def expected_evaluation_protocol(
     )
     protocol["open_set"] = {
         "architecture": staged.STAGED_POLICY_KIND,
+        "candidate_architecture": "dual_fusion_classifier8k_rejector4k",
+        "classifier_role": (
+            "the regularized 8k fusion supplies every accepted known-class "
+            "label and every closed/five-shot/clean/length/scale gate input"
+        ),
+        "rejector_role": (
+            "the frozen 4k fusion supplies every stage-2 known/unknown score "
+            "and every open-set gate input; it never supplies the final "
+            "accepted known-class label"
+        ),
+        "decision_order": [
+            "stage-one causal-prefix noise gate",
+            "4k rejector fusion and frozen staged known/unknown policy",
+            "8k classifier fusion nearest-prototype known label for accepted rows",
+        ],
+        "intentional_dual_fusion": True,
         "staged_policy_schema": int(staged.STAGED_POLICY_SCHEMA),
         "staged_policy_version": staged.STAGED_POLICY_VERSION,
         "additive_only": False,
@@ -550,15 +612,34 @@ def expected_evaluation_protocol(
 
 @dataclass
 class V3Candidate:
-    bundle_dir: Path
-    bundle_manifest_path: Path
-    bundle_manifest_sha256: str
-    bundle_manifest: dict[str, Any]
-    bundle_arrays: dict[str, np.ndarray]
-    fusion_dir: Path
-    fusion_artifact: Any  # openset_base.FusionArtifact
-    fusion_module: torch.nn.Module  # CenteredInvariantFusion
+    candidate_manifest_path: Path
+    candidate_manifest_sha256: str
+    candidate_manifest: dict[str, Any]
+    validation_evidence_path: Path
+    validation_evidence_sha256: str
+    validation_evidence: dict[str, Any]
+    frozen_contract_path: Path
+    frozen_contract_sha256: str
+    frozen_contract: dict[str, Any]
+    classifier_bundle_dir: Path
+    classifier_bundle_manifest_path: Path
+    classifier_bundle_manifest_sha256: str
+    classifier_bundle_manifest: dict[str, Any]
+    classifier_bundle_arrays: dict[str, np.ndarray]
+    rejector_bundle_dir: Path
+    rejector_bundle_manifest_path: Path
+    rejector_bundle_manifest_sha256: str
+    rejector_bundle_manifest: dict[str, Any]
+    rejector_bundle_arrays: dict[str, np.ndarray]
+    classifier_fusion_dir: Path
+    classifier_fusion_artifact: Any  # openset_base.FusionArtifact
+    classifier_fusion_module: torch.nn.Module  # CenteredInvariantFusion
+    rejector_fusion_dir: Path
+    rejector_fusion_artifact: Any  # openset_base.FusionArtifact
+    rejector_fusion_module: torch.nn.Module  # CenteredInvariantFusion
     staged_dir: Path
+    staged_metrics_path: Path
+    staged_metrics_sha256: str
     staged_metrics: dict[str, Any]
     staged_hashes: dict[str, str]
     prefilter_dir: Path
@@ -573,13 +654,59 @@ class V3Candidate:
     patch_length: int
     patch_count: int
     target_frac: float
-    feature_mean: np.ndarray
-    feature_std: np.ndarray
+    classifier_feature_mean: np.ndarray
+    classifier_feature_std: np.ndarray
+    rejector_feature_mean: np.ndarray
+    rejector_feature_std: np.ndarray
     #: The STAGED decision threshold: the composite policy's frozen q95.
     threshold: float
     #: The stage-2 policy's own untouched threshold (the additive control).
     stage_two_threshold: float
     source_report: dict[str, Any]
+
+    # Compatibility aliases are deliberately read-only and point to the
+    # rejector role.  New callers must use the explicit role-named fields;
+    # the CLI and report schemas no longer accept the old single-fusion
+    # contract.
+    @property
+    def fusion_dir(self) -> Path:
+        return self.rejector_fusion_dir
+
+    @property
+    def fusion_artifact(self) -> Any:
+        return self.rejector_fusion_artifact
+
+    @property
+    def fusion_module(self) -> torch.nn.Module:
+        return self.rejector_fusion_module
+
+    @property
+    def feature_mean(self) -> np.ndarray:
+        return self.rejector_feature_mean
+
+    @property
+    def feature_std(self) -> np.ndarray:
+        return self.rejector_feature_std
+
+    @property
+    def bundle_dir(self) -> Path:
+        return self.rejector_bundle_dir
+
+    @property
+    def bundle_manifest_path(self) -> Path:
+        return self.rejector_bundle_manifest_path
+
+    @property
+    def bundle_manifest_sha256(self) -> str:
+        return self.rejector_bundle_manifest_sha256
+
+    @property
+    def bundle_manifest(self) -> dict[str, Any]:
+        return self.rejector_bundle_manifest
+
+    @property
+    def bundle_arrays(self) -> dict[str, np.ndarray]:
+        return self.rejector_bundle_arrays
 
 
 def _verify_source_contract(
@@ -654,20 +781,1043 @@ def _load_bundle(bundle_dir: Path) -> dict[str, Any]:
     }
 
 
+def _resolve_frozen_path(value: Any, *, field: str) -> Path:
+    """Resolve an absolute or repository-relative frozen-artifact path."""
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field} must be a non-empty path string")
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = REPO / path
+    return path.resolve()
+
+
+def _require_sha256(value: Any, *, field: str) -> str:
+    digest = str(value).lower()
+    if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+        raise ValueError(f"{field} is not a lowercase SHA-256 digest")
+    return digest
+
+
+def _verify_json_binding(
+    record: Mapping[str, Any],
+    *,
+    field: str,
+    expected_path: Path | None = None,
+    expected_schema: str | None = None,
+    expected_status: str | None = None,
+) -> tuple[Path, str, dict[str, Any]]:
+    path = _resolve_frozen_path(record.get("path"), field=f"{field}.path")
+    if expected_path is not None and path != Path(expected_path).resolve():
+        raise ValueError(
+            f"{field}.path is {path}, expected the supplied frozen path "
+            f"{Path(expected_path).resolve()}"
+        )
+    digest = _require_sha256(record.get("sha256"), field=f"{field}.sha256")
+    if _sha256(path) != digest:
+        raise ValueError(f"{field} SHA-256 does not match its current bytes")
+    payload = _read_candidate_json(path)
+    schema = record.get("schema")
+    status = record.get("status")
+    if expected_schema is not None and payload.get("schema") != expected_schema:
+        raise ValueError(
+            f"{field} JSON schema={payload.get('schema')!r}, expected "
+            f"{expected_schema!r}"
+        )
+    if expected_status is not None and payload.get("status") != expected_status:
+        raise ValueError(
+            f"{field} JSON status={payload.get('status')!r}, expected "
+            f"{expected_status!r}"
+        )
+    if schema is not None and payload.get("schema") != schema:
+        raise ValueError(f"{field} schema differs from the referenced JSON")
+    if status is not None and payload.get("status") != status:
+        raise ValueError(f"{field} status differs from the referenced JSON")
+    return path, digest, payload
+
+
+def _package_record_path(
+    value: Any,
+    package_path: Path,
+    *,
+    field: str,
+) -> Path:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field} must be a non-empty path")
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        raise ValueError(f"{field} must be package-manifest-parent-relative")
+    return package_path.parent / path
+
+
+def _verify_package_file_record(
+    record: Mapping[str, Any],
+    package_path: Path,
+    *,
+    field: str,
+) -> Path:
+    path = _package_record_path(record.get("path"), package_path, field=field)
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"{field} must reference a regular non-symlink file")
+    digest = _require_sha256(record.get("sha256"), field=f"{field}.sha256")
+    size = record.get("bytes")
+    if (
+        isinstance(size, bool)
+        or not isinstance(size, int)
+        or size <= 0
+        or path.stat().st_size != size
+    ):
+        raise ValueError(f"{field} byte count differs from disk")
+    if _sha256(path) != digest:
+        raise ValueError(f"{field} SHA-256 differs from disk")
+    return path.resolve()
+
+
+def _validate_staging_package(
+    *,
+    package_path: Path,
+    package_payload: Mapping[str, Any],
+    verified_browser: Mapping[str, Mapping[str, Any]],
+    binding_path: Path,
+    binding_sha256: str,
+    binding_payload: Mapping[str, Any],
+    classifier_artifact: Any,
+    rejector_artifact: Any,
+    classifier_bundle: Mapping[str, Any],
+    rejector_bundle: Mapping[str, Any],
+    staged_report_sha256: str,
+    staged_hashes: Mapping[str, str],
+) -> None:
+    expected_top = {
+        "schema",
+        "schema_version",
+        "status",
+        "candidate_id",
+        "architecture",
+        "assets",
+        "roles",
+        "openset_policy",
+        "dual_binding",
+        "external_evidence",
+        "size_contract",
+    }
+    if set(package_payload) != expected_top:
+        raise ValueError(
+            "dual runtime package contains missing, extra or legacy fields"
+        )
+    if package_payload.get("candidate_id") != CANDIDATE_ID:
+        raise ValueError("dual runtime package candidate_id differs")
+    if package_payload.get("architecture") != {
+        "execution_order": [
+            "stage_one_noise_gate",
+            "rejector_known_unknown",
+            "classifier_known_label",
+        ],
+        "classifier_runs_only_after_rejector_acceptance": True,
+        "public_known_label_from_classifier_only": True,
+    }:
+        raise ValueError("dual runtime package architecture differs")
+
+    asset_names = {
+        "classifier": CLASSIFIER_BROWSER_ASSET,
+        "rejector": REJECTOR_BROWSER_ASSET,
+        "openset_policy": OPENSET_BROWSER_ASSET,
+        "dual_binding": DUAL_BINDING_ASSET,
+    }
+    assets = package_payload.get("assets")
+    if not isinstance(assets, Mapping) or set(assets) != set(
+        asset_names.values()
+    ):
+        raise ValueError(
+            "dual runtime package deployable asset set is not the exact four "
+            "dual-fusion files"
+        )
+    expected_asset_contract = {
+        "classifier": (
+            verified_browser["classifier"],
+            BROWSER_FUSION_SCHEMA,
+            BROWSER_FUSION_SCHEMA_VERSION,
+            "accepted_known_classifier",
+        ),
+        "rejector": (
+            verified_browser["rejector"],
+            BROWSER_FUSION_SCHEMA,
+            BROWSER_FUSION_SCHEMA_VERSION,
+            "known_unknown_rejector",
+        ),
+        "openset_policy": (
+            verified_browser["openset_policy"],
+            BROWSER_OPENSET_SCHEMA,
+            BROWSER_OPENSET_SCHEMA_VERSION,
+            None,
+        ),
+        "dual_binding": (
+            {
+                "path": binding_path,
+                "sha256": binding_sha256,
+            },
+            DUAL_BINDING_SCHEMA,
+            DUAL_BINDING_SCHEMA_VERSION,
+            None,
+        ),
+    }
+    for role, (
+        candidate_record,
+        expected_schema,
+        expected_version,
+        expected_runtime_role,
+    ) in expected_asset_contract.items():
+        name = asset_names[role]
+        record = assets[name]
+        if not isinstance(record, Mapping):
+            raise ValueError(f"dual runtime package asset {name} is invalid")
+        expected_keys = {
+            "path",
+            "bytes",
+            "sha256",
+            "schema",
+            "schema_version",
+            "status",
+        }
+        if expected_runtime_role is not None:
+            expected_keys.add("runtime_role")
+        if set(record) != expected_keys or record.get("path") != name:
+            raise ValueError(
+                f"dual runtime package asset {name} contains aliases"
+            )
+        path = _verify_package_file_record(
+            record, package_path, field=f"staging_package.assets.{name}"
+        )
+        if (
+            path != Path(candidate_record["path"]).resolve()
+            or record.get("sha256") != candidate_record["sha256"]
+            or record.get("schema") != expected_schema
+            or record.get("schema_version") != expected_version
+            or record.get("status") != STAGING_STATUS
+        ):
+            raise ValueError(
+                f"dual runtime package asset {name} differs from candidate"
+            )
+        if (
+            expected_runtime_role is not None
+            and record.get("runtime_role") != expected_runtime_role
+        ):
+            raise ValueError(
+                f"dual runtime package asset {name} runtime_role differs"
+            )
+
+    roles = package_payload.get("roles")
+    if not isinstance(roles, Mapping) or set(roles) != {
+        "classifier",
+        "rejector",
+    }:
+        raise ValueError("dual runtime package role set differs")
+    for role, artifact, bundle, runtime_role, responsibility in (
+        (
+            "classifier",
+            classifier_artifact,
+            classifier_bundle,
+            "accepted_known_classifier",
+            "accepted_known_label_only",
+        ),
+        (
+            "rejector",
+            rejector_artifact,
+            rejector_bundle,
+            "known_unknown_rejector",
+            "known_unknown_only",
+        ),
+    ):
+        role_record = roles[role]
+        asset_record = assets[asset_names[role]]
+        if (
+            not isinstance(role_record, Mapping)
+            or set(role_record)
+            != {
+                "runtime_role",
+                "responsibility",
+                "asset",
+                "source_bundle_manifest_sha256",
+                "fusion_directory_sha256",
+            }
+            or role_record.get("runtime_role") != runtime_role
+            or role_record.get("responsibility") != responsibility
+            or role_record.get("asset") != asset_record
+            or role_record.get("source_bundle_manifest_sha256")
+            != bundle["manifest_sha256"]
+            or role_record.get("fusion_directory_sha256")
+            != artifact.directory_sha256
+        ):
+            raise ValueError(f"dual runtime package {role} role link differs")
+
+    openset_record = package_payload.get("openset_policy")
+    openset_asset = assets[OPENSET_BROWSER_ASSET]
+    if (
+        not isinstance(openset_record, Mapping)
+        or set(openset_record)
+        != {
+            *openset_asset,
+            "fitted_rejector_runtime_bundle_manifest_sha256",
+            "staged_validation_report_sha256",
+            "staged_artifacts_sha256",
+        }
+    ):
+        raise ValueError("dual runtime package openset_policy is invalid")
+    for key, value in openset_asset.items():
+        if openset_record.get(key) != value:
+            raise ValueError("dual runtime package openset asset link differs")
+    if (
+        openset_record.get(
+            "fitted_rejector_runtime_bundle_manifest_sha256"
+        )
+        != rejector_bundle["manifest_sha256"]
+        or openset_record.get("staged_validation_report_sha256")
+        != staged_report_sha256
+        or openset_record.get("staged_artifacts_sha256")
+        != dict(staged_hashes)
+    ):
+        raise ValueError("dual runtime package openset evidence link differs")
+    dual_binding_record = package_payload.get("dual_binding")
+    if (
+        not isinstance(dual_binding_record, Mapping)
+        or set(dual_binding_record) != set(assets[DUAL_BINDING_ASSET])
+        or dual_binding_record != assets[DUAL_BINDING_ASSET]
+    ):
+        raise ValueError("dual runtime package binding record differs")
+
+    external = package_payload.get("external_evidence")
+    expected_external = {
+        "rejector_export_manifest",
+        "classifier_export_manifest",
+        "openset_export_manifest",
+        "rejector_probe",
+        "classifier_probe",
+        "parity",
+    }
+    if not isinstance(external, Mapping) or set(external) != expected_external:
+        raise ValueError("dual runtime package external evidence set differs")
+    for name, record in external.items():
+        if not isinstance(record, Mapping):
+            raise ValueError(f"staging package external_evidence.{name} invalid")
+        expected_record_keys = {"path", "bytes", "sha256"}
+        if name in {"rejector_export_manifest", "classifier_export_manifest"}:
+            expected_record_keys.update(
+                {"schema", "schema_version", "runtime_role"}
+            )
+        elif name == "openset_export_manifest":
+            expected_record_keys.update({"schema", "schema_version", "status"})
+        elif name == "parity":
+            expected_record_keys.update(
+                {"schema", "schema_version", "status", "packaged"}
+            )
+        if set(record) != expected_record_keys:
+            raise ValueError(
+                f"staging package external_evidence.{name} contains aliases"
+            )
+        path = _verify_package_file_record(
+            record,
+            package_path,
+            field=f"staging_package.external_evidence.{name}",
+        )
+        if name in {
+            "rejector_export_manifest",
+            "classifier_export_manifest",
+            "openset_export_manifest",
+            "parity",
+        }:
+            payload = _read_candidate_json(path)
+            for key in ("schema", "schema_version"):
+                if payload.get(key) != record.get(key):
+                    raise ValueError(
+                        f"staging package external {name} {key} differs"
+                    )
+            if "status" in record and payload.get("status") != record.get(
+                "status"
+            ):
+                raise ValueError(
+                    f"staging package external {name} status differs"
+                )
+        if name == "rejector_export_manifest":
+            expected = (
+                FUSION_EXPORT_MANIFEST_SCHEMA,
+                FUSION_EXPORT_MANIFEST_SCHEMA_VERSION,
+                "known_unknown_rejector",
+            )
+            if (
+                record.get("schema"),
+                record.get("schema_version"),
+                record.get("runtime_role"),
+            ) != expected:
+                raise ValueError("rejector export-manifest contract differs")
+        elif name == "classifier_export_manifest":
+            expected = (
+                FUSION_EXPORT_MANIFEST_SCHEMA,
+                FUSION_EXPORT_MANIFEST_SCHEMA_VERSION,
+                "accepted_known_classifier",
+            )
+            if (
+                record.get("schema"),
+                record.get("schema_version"),
+                record.get("runtime_role"),
+            ) != expected:
+                raise ValueError("classifier export-manifest contract differs")
+        elif name == "openset_export_manifest":
+            if (
+                record.get("schema") != OPENSET_EXPORT_MANIFEST_SCHEMA
+                or record.get("schema_version")
+                != OPENSET_EXPORT_MANIFEST_SCHEMA_VERSION
+                or record.get("status") != STAGING_STATUS
+            ):
+                raise ValueError("openset export-manifest contract differs")
+        elif name == "parity":
+            if (
+                record.get("schema") != PARITY_SCHEMA
+                or record.get("schema_version") != PARITY_SCHEMA_VERSION
+                or record.get("status") != STAGING_STATUS
+                or record.get("packaged") is not False
+            ):
+                raise ValueError("parity external-evidence contract differs")
+    size_contract = package_payload.get("size_contract")
+    maximum = 25 * 1024 * 1024
+    if (
+        size_contract
+        != {
+            "maximum_file_bytes_exclusive": maximum,
+            "all_deployable_files_below_limit": True,
+        }
+        or any(int(record["bytes"]) >= maximum for record in assets.values())
+    ):
+        raise ValueError("dual runtime package size contract differs")
+    if binding_payload.get("candidate_id") != package_payload.get("candidate_id"):
+        raise ValueError("package and binding candidate_id differ")
+
+
+def _verify_fusion_binding(
+    record: Mapping[str, Any],
+    artifact: Any,
+    *,
+    field: str,
+) -> None:
+    path = _resolve_frozen_path(record.get("directory"), field=f"{field}.directory")
+    if path != artifact.directory:
+        raise ValueError(
+            f"{field} directory is {path}, not the supplied {artifact.directory}"
+        )
+    digest = _require_sha256(
+        record.get("directory_sha256"), field=f"{field}.directory_sha256"
+    )
+    if digest != artifact.directory_sha256:
+        raise ValueError(f"{field} directory SHA-256 does not match")
+    file_sha256 = record.get("file_sha256")
+    if not isinstance(file_sha256, Mapping) or dict(file_sha256) != dict(
+        artifact.file_sha256
+    ):
+        raise ValueError(f"{field} file SHA-256 map does not match")
+
+
+def _verify_bundle_binding(
+    record: Mapping[str, Any],
+    bundle: Mapping[str, Any],
+    *,
+    field: str,
+) -> None:
+    directory = _resolve_frozen_path(
+        record.get("directory"), field=f"{field}.directory"
+    )
+    if directory != bundle["directory"]:
+        raise ValueError(
+            f"{field} directory is {directory}, not {bundle['directory']}"
+        )
+    manifest_path = _resolve_frozen_path(
+        record.get("manifest_path"), field=f"{field}.manifest_path"
+    )
+    if manifest_path != bundle["manifest_path"]:
+        raise ValueError(f"{field} manifest_path does not match")
+    digest = _require_sha256(
+        record.get("manifest_sha256"), field=f"{field}.manifest_sha256"
+    )
+    if digest != bundle["manifest_sha256"]:
+        raise ValueError(f"{field} manifest SHA-256 does not match")
+
+
+def _fusion_geometry_signature(artifact: Any) -> dict[str, Any]:
+    """The dimensions that must agree across the two independently fit nets."""
+    metrics = artifact.metrics
+    architecture = metrics.get("architecture", {})
+    source_config = (
+        metrics.get("source_index_contract", {})
+        .get("contract", {})
+        .get("config", {})
+    )
+    signature: dict[str, Any] = {
+        "source_config": {
+            key: source_config.get(key)
+            for key in ("patch_length", "patch_count", "target_frac")
+        },
+        "prototype_shape": tuple(int(v) for v in artifact.prototypes.shape),
+        "feature_count": int(len(artifact.feature_mean)),
+    }
+    for branch in ("real", "complex"):
+        config = architecture.get(branch, {})
+        signature[branch] = {
+            key: config.get(key)
+            for key in (
+                "encoder",
+                "patch_length",
+                "patch_count",
+                "patch_dim",
+                "hidden",
+                "embed_dim",
+                "n_features",
+                "set_pool",
+            )
+        }
+    signature["fusion_embed_dim"] = architecture.get("embed_dim")
+    return signature
+
+
+def _validate_candidate_manifest(
+    *,
+    candidate_manifest_path: Path,
+    classifier_bundle: Mapping[str, Any],
+    rejector_bundle: Mapping[str, Any],
+    classifier_artifact: Any,
+    rejector_artifact: Any,
+    staged_metrics_path: Path,
+    staged_hashes: Mapping[str, str],
+    prefilter_path: Path,
+    prefilter_set_sha256: str,
+    stage_one_lengths: Sequence[int],
+) -> dict[str, Any]:
+    """Verify the final release-candidate manifest and its complete chain."""
+    manifest_path = Path(candidate_manifest_path).expanduser().resolve()
+    manifest = _read_candidate_json(manifest_path)
+    expected_manifest_keys = {
+        "schema",
+        "status",
+        "candidate_id",
+        "validation_evidence",
+        "classifier",
+        "rejector",
+        "staged_validation",
+        "stage_one_prefilter",
+        "browser_assets",
+        "staging_package_manifest",
+        "dual_binding",
+    }
+    if set(manifest) != expected_manifest_keys:
+        raise ValueError(
+            "candidate manifest contains missing, extra or legacy fields"
+        )
+    if manifest.get("schema") != CANDIDATE_MANIFEST_SCHEMA:
+        raise ValueError(
+            "candidate manifest uses an old or unknown schema; the dual-fusion "
+            "release evaluator fails closed"
+        )
+    if manifest.get("status") != "release_candidate_frozen":
+        raise ValueError("candidate manifest is not frozen for release")
+    if manifest.get("candidate_id") != CANDIDATE_ID:
+        raise ValueError("candidate manifest identifies another candidate")
+
+    for role, role_record, bundle, artifact, expected_role in (
+        (
+            "classifier",
+            manifest.get("classifier"),
+            classifier_bundle,
+            classifier_artifact,
+            "known_class_label",
+        ),
+        (
+            "rejector",
+            manifest.get("rejector"),
+            rejector_bundle,
+            rejector_artifact,
+            "known_unknown_decision",
+        ),
+    ):
+        if not isinstance(role_record, Mapping):
+            raise ValueError(f"candidate manifest has no {role} role")
+        if role_record.get("role") != expected_role:
+            raise ValueError(
+                f"candidate manifest {role}.role must be {expected_role!r}"
+            )
+        fusion_record = role_record.get("fusion")
+        bundle_record = role_record.get("runtime_bundle")
+        if not isinstance(fusion_record, Mapping) or not isinstance(
+            bundle_record, Mapping
+        ):
+            raise ValueError(f"candidate manifest {role} bindings are incomplete")
+        _verify_fusion_binding(
+            fusion_record, artifact, field=f"candidate.{role}.fusion"
+        )
+        _verify_bundle_binding(
+            bundle_record, bundle, field=f"candidate.{role}.runtime_bundle"
+        )
+
+    validation_record = manifest.get("validation_evidence")
+    if not isinstance(validation_record, Mapping):
+        raise ValueError("candidate manifest has no validation_evidence binding")
+    evidence_path, evidence_sha256, evidence = _verify_json_binding(
+        validation_record,
+        field="candidate.validation_evidence",
+        expected_schema=CANDIDATE_EVIDENCE_SCHEMA,
+    )
+    if (
+        evidence.get("status") != "development_openset_pass"
+        or evidence.get("candidate_id") != CANDIDATE_ID
+    ):
+        raise ValueError("validation evidence is not the passing dual candidate")
+
+    contract_record = evidence.get("candidate_contract")
+    if not isinstance(contract_record, Mapping):
+        raise ValueError("validation evidence has no pre-validation contract")
+    frozen_path, frozen_sha256, frozen_contract = _verify_json_binding(
+        contract_record,
+        field="validation_evidence.candidate_contract",
+        expected_schema=CANDIDATE_CONTRACT_SCHEMA,
+    )
+    if (
+        frozen_contract.get("status") != "frozen_before_validation"
+        or frozen_contract.get("candidate_id") != CANDIDATE_ID
+        or contract_record.get("committed_before_validation") is not True
+    ):
+        raise ValueError("pre-validation candidate contract is not frozen")
+    architecture = frozen_contract.get("architecture", {})
+    for key, expected in (
+        ("intentional_dual_fusion", True),
+        ("known_label_source", "classifier_fusion_8k_regularized"),
+        ("known_unknown_source", "rejector_fusion_4k_frozen_policy"),
+        ("stage_one_short_circuit", True),
+    ):
+        if architecture.get(key) != expected:
+            raise ValueError(
+                f"pre-validation architecture.{key}={architecture.get(key)!r}, "
+                f"expected {expected!r}"
+            )
+
+    for field, artifact in (
+        ("classifier_fusion_8k_regularized", classifier_artifact),
+        ("rejector_fusion_4k", rejector_artifact),
+    ):
+        record = frozen_contract.get(field)
+        if not isinstance(record, Mapping):
+            raise ValueError(f"pre-validation contract has no {field}")
+        _verify_fusion_binding(record, artifact, field=f"frozen_contract.{field}")
+
+    validation = evidence.get("validation", {})
+    for key, expected in (
+        ("role", "validate"),
+        ("gates_are_evidence", True),
+        ("all_pass", True),
+        ("sealed_release_data_used", 0),
+        ("consumed_test_rows_used", 0),
+        ("release_seed_20260735_used", False),
+    ):
+        if validation.get(key) != expected:
+            raise ValueError(
+                f"validation evidence records {key}={validation.get(key)!r}, "
+                f"expected {expected!r}"
+            )
+    report_path = _resolve_frozen_path(
+        validation.get("report"), field="validation.report"
+    )
+    if report_path != staged_metrics_path:
+        raise ValueError("validation evidence binds another staged report")
+    report_sha256 = _require_sha256(
+        validation.get("report_sha256"), field="validation.report_sha256"
+    )
+    if _sha256(staged_metrics_path) != report_sha256:
+        raise ValueError("validation report SHA-256 does not match")
+
+    validated_rejector = evidence.get("validated_rejector", {})
+    if (
+        validated_rejector.get("fusion_directory_sha256")
+        != rejector_artifact.directory_sha256
+    ):
+        raise ValueError("validation evidence binds another rejector fusion")
+    if (
+        validated_rejector.get("canonical_prefilter_set_sha256")
+        != prefilter_set_sha256
+    ):
+        raise ValueError("validation evidence binds another prefilter set")
+    expected_bundle_hashes = {
+        str(int(length)): noise_prefilter.bundle_sha256(
+            prefilter_path / f"N{int(length)}"
+        )
+        for length in stage_one_lengths
+    }
+    if validated_rejector.get("prefilter_bundle_sha256") != expected_bundle_hashes:
+        raise ValueError("validation evidence prefilter bundle hashes differ")
+
+    locked = evidence.get("validation_locked_policy_artifacts", {})
+    locked_dir = _resolve_frozen_path(
+        locked.get("directory"), field="validation_locked_policy_artifacts.directory"
+    )
+    if locked_dir != staged_metrics_path.parent:
+        raise ValueError("validation evidence binds another staged directory")
+    for name, digest in staged_hashes.items():
+        if locked.get(name) != digest:
+            raise ValueError(
+                f"validation evidence does not bind the loaded staged {name}"
+            )
+    if locked.get("novelty_rows_used_to_fit_rank_or_threshold") != 0:
+        raise ValueError("validation novelty was used to fit the staged policy")
+
+    stage_one_contract = frozen_contract.get("stage_one_noise_prefilter", {})
+    if _resolve_frozen_path(
+        stage_one_contract.get("directory"),
+        field="frozen_contract.stage_one_noise_prefilter.directory",
+    ) != prefilter_path:
+        raise ValueError("pre-validation contract binds another prefilter path")
+    clarification = evidence.get("candidate_contract_clarification", {})
+    if (
+        clarification.get("recorded_value")
+        != stage_one_contract.get("directory_sha256")
+        or clarification.get("canonical_behavioral_hash")
+        != prefilter_set_sha256
+        or clarification.get("changes_candidate_behavior") is not False
+    ):
+        raise ValueError("prefilter hash clarification is missing or inconsistent")
+
+    staged_record = manifest.get("staged_validation")
+    if not isinstance(staged_record, Mapping):
+        raise ValueError("candidate manifest has no staged_validation binding")
+    staged_dir = _resolve_frozen_path(
+        staged_record.get("directory"), field="candidate.staged_validation.directory"
+    )
+    if staged_dir != staged_metrics_path.parent:
+        raise ValueError("candidate manifest binds another staged directory")
+    staged_report_path = _resolve_frozen_path(
+        staged_record.get("report_path"),
+        field="candidate.staged_validation.report_path",
+    )
+    if staged_report_path != staged_metrics_path:
+        raise ValueError("candidate manifest binds another staged report path")
+    if _require_sha256(
+        staged_record.get("report_sha256"),
+        field="candidate.staged_validation.report_sha256",
+    ) != report_sha256:
+        raise ValueError("candidate manifest staged report hash differs")
+    if staged_record.get("artifact_sha256") != dict(staged_hashes):
+        raise ValueError("candidate manifest staged artifact hashes differ")
+
+    prefilter_record = manifest.get("stage_one_prefilter")
+    if not isinstance(prefilter_record, Mapping):
+        raise ValueError("candidate manifest has no stage_one_prefilter binding")
+    if _resolve_frozen_path(
+        prefilter_record.get("directory"),
+        field="candidate.stage_one_prefilter.directory",
+    ) != prefilter_path:
+        raise ValueError("candidate manifest binds another prefilter directory")
+    if prefilter_record.get("set_sha256") != prefilter_set_sha256:
+        raise ValueError("candidate manifest prefilter set hash differs")
+    if prefilter_record.get("bundle_sha256") != expected_bundle_hashes:
+        raise ValueError("candidate manifest prefilter bundle hashes differ")
+
+    browser_assets = manifest.get("browser_assets")
+    if not isinstance(browser_assets, Mapping) or set(browser_assets) != {
+        "classifier",
+        "rejector",
+        "openset_policy",
+    }:
+        raise ValueError("candidate manifest browser_assets roles are incomplete")
+    verified_browser: dict[str, Any] = {}
+    browser_contract = {
+        "classifier": (
+            BROWSER_FUSION_SCHEMA,
+            BROWSER_FUSION_SCHEMA_VERSION,
+            "accepted_known_classifier",
+        ),
+        "rejector": (
+            BROWSER_FUSION_SCHEMA,
+            BROWSER_FUSION_SCHEMA_VERSION,
+            "known_unknown_rejector",
+        ),
+        "openset_policy": (
+            BROWSER_OPENSET_SCHEMA,
+            BROWSER_OPENSET_SCHEMA_VERSION,
+            None,
+        ),
+    }
+    for role, (
+        expected_browser_schema,
+        expected_browser_version,
+        expected_runtime_role,
+    ) in browser_contract.items():
+        record = browser_assets[role]
+        if (
+            not isinstance(record, Mapping)
+            or set(record) != {"path", "sha256", "schema", "status"}
+        ):
+            raise ValueError(f"candidate browser_assets.{role} is invalid")
+        if not isinstance(record.get("schema"), str) or not isinstance(
+            record.get("status"), str
+        ):
+            raise ValueError(
+                f"candidate browser_assets.{role} must bind schema and status"
+            )
+        if record.get("status") != STAGING_STATUS:
+            raise ValueError(
+                f"candidate browser_assets.{role} is not staging_not_release"
+            )
+        path, digest, payload = _verify_json_binding(
+            record, field=f"candidate.browser_assets.{role}"
+        )
+        if (
+            payload.get("schema") != expected_browser_schema
+            or payload.get("schema_version") != expected_browser_version
+            or payload.get("status") != STAGING_STATUS
+        ):
+            raise ValueError(
+                f"candidate browser_assets.{role} schema/version/status differs"
+            )
+        if (
+            expected_runtime_role is not None
+            and payload.get("runtime_role") != expected_runtime_role
+        ):
+            raise ValueError(
+                f"candidate browser_assets.{role} runtime_role differs"
+            )
+        verified_browser[role] = {
+            "path": path,
+            "sha256": digest,
+            "schema": payload.get("schema"),
+            "status": payload.get("status"),
+        }
+    package_record = manifest.get("staging_package_manifest")
+    if (
+        not isinstance(package_record, Mapping)
+        or set(package_record) != {"path", "sha256", "schema", "status"}
+    ):
+        raise ValueError("candidate manifest has no staging_package_manifest")
+    if not isinstance(package_record.get("schema"), str) or not isinstance(
+        package_record.get("status"), str
+    ):
+        raise ValueError(
+            "candidate staging_package_manifest must bind schema and status"
+        )
+    if (
+        package_record.get("schema") != STAGING_PACKAGE_SCHEMA
+        or package_record.get("status") != STAGING_STATUS
+    ):
+        raise ValueError(
+            "candidate staging package is not the frozen dual-runtime staging "
+            "schema/status"
+        )
+    package_path, package_sha256, package_payload = _verify_json_binding(
+        package_record, field="candidate.staging_package_manifest"
+    )
+    if (
+        package_payload.get("schema_version") != STAGING_PACKAGE_SCHEMA_VERSION
+    ):
+        raise ValueError("candidate staging package schema_version is not 1")
+    binding_record = manifest.get("dual_binding")
+    if (
+        not isinstance(binding_record, Mapping)
+        or set(binding_record) != {"path", "sha256", "schema"}
+    ):
+        raise ValueError("candidate manifest has no dual_binding")
+    if not isinstance(binding_record.get("schema"), str):
+        raise ValueError("candidate dual_binding must bind its schema")
+    if binding_record.get("schema") != DUAL_BINDING_SCHEMA:
+        raise ValueError("candidate dual_binding uses an old or unknown schema")
+    binding_path, binding_sha256, binding_payload = _verify_json_binding(
+        binding_record, field="candidate.dual_binding"
+    )
+    if (
+        binding_payload.get("schema_version") != DUAL_BINDING_SCHEMA_VERSION
+        or binding_payload.get("status") != STAGING_STATUS
+    ):
+        raise ValueError(
+            "candidate dual_binding must be schema version 1 and "
+            "staging_not_release"
+        )
+    expected_binding_keys = {
+        "schema",
+        "schema_version",
+        "status",
+        "candidate_id",
+        "frontend",
+        "execution_order",
+        "roles",
+        "openset_policy",
+        "validation",
+        "fail_closed",
+    }
+    if set(binding_payload) != expected_binding_keys:
+        raise ValueError(
+            "candidate dual_binding contains missing, extra or legacy fields"
+        )
+    if (
+        binding_payload.get("candidate_id") != CANDIDATE_ID
+        or binding_payload.get("execution_order")
+        != [
+            "stage_one_noise_gate",
+            "rejector_known_unknown",
+            "classifier_known_label",
+        ]
+    ):
+        raise ValueError("candidate dual_binding identity/execution order differs")
+    binding_roles = binding_payload.get("roles")
+    if not isinstance(binding_roles, Mapping) or set(binding_roles) != {
+        "classifier",
+        "rejector",
+    }:
+        raise ValueError("candidate dual_binding role set differs")
+    for role, artifact, bundle, runtime_role, responsibility in (
+        (
+            "classifier",
+            classifier_artifact,
+            classifier_bundle,
+            "accepted_known_classifier",
+            "accepted_known_label_only",
+        ),
+        (
+            "rejector",
+            rejector_artifact,
+            rejector_bundle,
+            "known_unknown_rejector",
+            "known_unknown_only",
+        ),
+    ):
+        record = binding_roles[role]
+        browser = verified_browser[role]
+        if (
+            not isinstance(record, Mapping)
+            or record.get("asset") != browser["path"].name
+            or record.get("asset_sha256") != browser["sha256"]
+            or record.get("fusion_directory_sha256")
+            != artifact.directory_sha256
+            or record.get("runtime_bundle_manifest_sha256")
+            != bundle["manifest_sha256"]
+            or record.get("runtime_role") != runtime_role
+            or record.get("responsibility") != responsibility
+        ):
+            raise ValueError(f"candidate dual_binding {role} role differs")
+    binding_openset = binding_payload.get("openset_policy")
+    openset_browser = verified_browser["openset_policy"]
+    if (
+        not isinstance(binding_openset, Mapping)
+        or binding_openset.get("asset") != openset_browser["path"].name
+        or binding_openset.get("asset_sha256") != openset_browser["sha256"]
+        or binding_openset.get("rejector_asset_sha256")
+        != verified_browser["rejector"]["sha256"]
+        or binding_openset.get(
+            "fitted_rejector_runtime_bundle_manifest_sha256"
+        )
+        != rejector_bundle["manifest_sha256"]
+        or binding_openset.get("staged_validation_report_sha256")
+        != report_sha256
+        or binding_openset.get("staged_artifacts_sha256")
+        != dict(staged_hashes)
+    ):
+        raise ValueError("candidate dual_binding openset policy differs")
+    binding_validation = binding_payload.get("validation")
+    if (
+        not isinstance(binding_validation, Mapping)
+        or binding_validation.get("report_sha256") != report_sha256
+        or binding_validation.get("role") != "validate"
+        or binding_validation.get("status") != "development_openset_pass"
+        or binding_validation.get("novelty_seeds")
+        != list(validation.get("novelty_seeds_consumed_once", ()))
+    ):
+        raise ValueError("candidate dual_binding validation record differs")
+    expected_fail_closed = {
+        "role_assets_bound_by_sha256": True,
+        "distinct_role_assets": True,
+        "role_asset_sha256_must_differ": True,
+        "classifier_runs_only_after_rejector_acceptance": True,
+        "public_known_label_from_classifier_only": True,
+    }
+    if binding_payload.get("fail_closed") != expected_fail_closed:
+        raise ValueError("candidate dual_binding fail_closed contract differs")
+    if (
+        verified_browser["classifier"]["sha256"]
+        == verified_browser["rejector"]["sha256"]
+    ):
+        raise ValueError("candidate browser role assets may not alias")
+    _validate_staging_package(
+        package_path=package_path,
+        package_payload=package_payload,
+        verified_browser=verified_browser,
+        binding_path=binding_path,
+        binding_sha256=binding_sha256,
+        binding_payload=binding_payload,
+        classifier_artifact=classifier_artifact,
+        rejector_artifact=rejector_artifact,
+        classifier_bundle=classifier_bundle,
+        rejector_bundle=rejector_bundle,
+        staged_report_sha256=report_sha256,
+        staged_hashes=staged_hashes,
+    )
+
+    if classifier_artifact.directory_sha256 == rejector_artifact.directory_sha256:
+        raise ValueError("dual candidate may not alias its two fusion roles")
+    if _fusion_geometry_signature(classifier_artifact) != _fusion_geometry_signature(
+        rejector_artifact
+    ):
+        raise ValueError("classifier and rejector frontend geometry differs")
+
+    return {
+        "manifest_path": manifest_path,
+        "manifest_sha256": _sha256(manifest_path),
+        "manifest": manifest,
+        "validation_evidence_path": evidence_path,
+        "validation_evidence_sha256": evidence_sha256,
+        "validation_evidence": evidence,
+        "frozen_contract_path": frozen_path,
+        "frozen_contract_sha256": frozen_sha256,
+        "frozen_contract": frozen_contract,
+        "validation_report_sha256": report_sha256,
+        "prefilter_bundle_sha256": expected_bundle_hashes,
+        "browser_assets": verified_browser,
+        "staging_package_manifest": {
+            "path": package_path,
+            "sha256": package_sha256,
+            "schema": package_payload.get("schema"),
+            "status": package_payload.get("status"),
+        },
+        "dual_binding": {
+            "path": binding_path,
+            "sha256": binding_sha256,
+            "schema": binding_payload.get("schema"),
+        },
+    }
+
+
 def load_candidate(
     *,
-    bundle_dir: Path,
-    fusion_dir: Path,
+    candidate_manifest_path: Path,
+    classifier_bundle_dir: Path,
+    rejector_bundle_dir: Path,
+    classifier_fusion_dir: Path,
+    rejector_fusion_dir: Path,
     staged_dir: Path,
     prefilter_dir: Path,
     device: torch.device,
 ) -> V3Candidate:
-    """Load the four frozen components and prove they are one candidate."""
-    bundle = _load_bundle(bundle_dir)
+    """Load every frozen component and prove the dual-role binding chain."""
+    classifier_bundle = _load_bundle(classifier_bundle_dir)
+    rejector_bundle = _load_bundle(rejector_bundle_dir)
+    if classifier_bundle["manifest"].get("runtime_role") != (
+        "accepted_known_classifier"
+    ):
+        raise ValueError("classifier bundle runtime_role is not accepted_known_classifier")
+    if rejector_bundle["manifest"].get("runtime_role") != (
+        "known_unknown_rejector"
+    ):
+        raise ValueError("rejector bundle runtime_role is not known_unknown_rejector")
+    bundle = rejector_bundle
     manifest = bundle["manifest"]
 
-    # --- the fusion artifact, and the bundle's binding to it ---------------
-    fusion_artifact = openset_base.load_fusion_artifact(Path(fusion_dir))
+    # --- independent fusion artifacts and each bundle's binding to it ------
+    classifier_artifact = openset_base.load_fusion_artifact(
+        Path(classifier_fusion_dir)
+    )
+    rejector_artifact = openset_base.load_fusion_artifact(
+        Path(rejector_fusion_dir)
+    )
+    fusion_artifact = rejector_artifact
+    fusion_dir = rejector_fusion_dir
     provenance = manifest.get("provenance")
     if not isinstance(provenance, Mapping):
         raise ValueError("bundle manifest has no provenance block")
@@ -708,6 +1858,57 @@ def load_candidate(
     ):
         raise ValueError(
             "bundle fusion_state_dict.pt differs from the fusion artifact's"
+        )
+    rejector_fusion_module = fusion_module
+
+    classifier_manifest = classifier_bundle["manifest"]
+    classifier_provenance = classifier_manifest.get("provenance")
+    if not isinstance(classifier_provenance, Mapping):
+        raise ValueError("classifier bundle manifest has no provenance block")
+    classifier_recorded_fusion = _resolve_frozen_path(
+        classifier_provenance.get("source_fusion_artifact"),
+        field="classifier bundle provenance.source_fusion_artifact",
+    )
+    if classifier_recorded_fusion != classifier_artifact.directory:
+        raise ValueError(
+            "classifier runtime bundle was exported from another fusion"
+        )
+    if (
+        classifier_provenance.get("source_dev_metrics_sha256")
+        != classifier_artifact.file_sha256["dev_metrics.json"]
+    ):
+        raise ValueError(
+            "classifier bundle provenance.source_dev_metrics_sha256 does not "
+            "match the classifier fusion artifact"
+        )
+    for asset_name, fusion_value in (
+        ("real_center.npy", classifier_artifact.real_center),
+        ("complex_center.npy", classifier_artifact.complex_center),
+        ("fusion_prototypes.npy", classifier_artifact.prototypes),
+        ("feature_mean.npy", classifier_artifact.feature_mean),
+        ("feature_std.npy", classifier_artifact.feature_std),
+    ):
+        if not np.array_equal(
+            np.asarray(classifier_bundle["arrays"][asset_name], dtype=np.float32),
+            np.asarray(fusion_value, dtype=np.float32),
+        ):
+            raise ValueError(
+                f"classifier runtime bundle {asset_name} differs from its "
+                "fusion artifact"
+            )
+    classifier_loaded = measure.load_fusion_artifact(
+        Path(classifier_fusion_dir)
+    )
+    classifier_fusion_module = classifier_loaded["fusion"].to(device).eval()
+    classifier_state_name = str(
+        classifier_artifact.metrics["artifacts"]["state_dict"]
+    )
+    if _sha256(
+        classifier_bundle["directory"] / "fusion_state_dict.pt"
+    ) != classifier_artifact.file_sha256[classifier_state_name]:
+        raise ValueError(
+            "classifier bundle fusion_state_dict.pt differs from its fusion "
+            "artifact"
         )
 
     # --- the frozen staged stage-2 state -----------------------------------
@@ -855,7 +2056,28 @@ def load_candidate(
             origin="the runtime bundle assembly record",
         )
     )
+    checked.update(
+        _verify_source_contract(
+            classifier_manifest.get("provenance", {}).get(
+                "assembly_source_sha256", {}
+            ),
+            BUNDLE_ASSEMBLY_SOURCE_HARD_CONTRACT,
+            origin="the classifier runtime bundle assembly record",
+        )
+    )
     frontend_recorded = manifest.get("frontend", {}).get("source_sha256", {})
+    classifier_frontend_recorded = classifier_manifest.get("frontend", {}).get(
+        "source_sha256", {}
+    )
+    if (
+        not isinstance(frontend_recorded, Mapping)
+        or not isinstance(classifier_frontend_recorded, Mapping)
+        or dict(classifier_frontend_recorded) != dict(frontend_recorded)
+    ):
+        raise ValueError(
+            "classifier and rejector runtime bundle frontend source bindings "
+            "differ"
+        )
     for name, expected in dict(frontend_recorded).items():
         short = str(name).split("/")[-1]
         current = _sha256(_source_path(short))
@@ -898,14 +2120,49 @@ def load_candidate(
             )
     if metadata["version"] != frontend["version"]:
         raise ValueError("current frontend version differs from the bundle's")
+    classifier_frontend = classifier_manifest.get("frontend", {})
+    for key in ("version", "patch_length", "patch_count", "target_frac"):
+        if classifier_frontend.get(key) != frontend.get(key):
+            raise ValueError(
+                "classifier and rejector runtime bundle frontend geometry differs"
+            )
     classes = tuple(str(name) for name in manifest["classification"]["classes"])
     if not classes or list(classes) != sorted(classes):
         raise ValueError("bundle classes must be a sorted non-empty list")
+    classifier_classes = tuple(
+        str(name)
+        for name in classifier_manifest.get("classification", {}).get(
+            "classes", ()
+        )
+    )
+    if classifier_classes != classes:
+        raise ValueError("classifier and rejector runtime bundle classes differ")
+    for role, artifact in (
+        ("classifier", classifier_artifact),
+        ("rejector", rejector_artifact),
+    ):
+        if artifact.prototypes.shape[0] != len(classes):
+            raise ValueError(
+                f"{role} fusion prototype count differs from the class contract"
+            )
+
+    binding = _validate_candidate_manifest(
+        candidate_manifest_path=Path(candidate_manifest_path),
+        classifier_bundle=classifier_bundle,
+        rejector_bundle=rejector_bundle,
+        classifier_artifact=classifier_artifact,
+        rejector_artifact=rejector_artifact,
+        staged_metrics_path=staged_metrics_path,
+        staged_hashes=staged_hashes,
+        prefilter_path=prefilter_path,
+        prefilter_set_sha256=set_sha256,
+        stage_one_lengths=stage_one.lengths,
+    )
 
     rejector = openset_base.Rejector(
         nets={
-            "real": fusion_module.real_branch,
-            "complex": fusion_module.complex_branch,
+            "real": rejector_fusion_module.real_branch,
+            "complex": rejector_fusion_module.complex_branch,
         },
         real_center=fusion_artifact.real_center,
         complex_center=fusion_artifact.complex_center,
@@ -916,15 +2173,34 @@ def load_candidate(
     )
 
     return V3Candidate(
-        bundle_dir=bundle["directory"],
-        bundle_manifest_path=bundle["manifest_path"],
-        bundle_manifest_sha256=bundle["manifest_sha256"],
-        bundle_manifest=manifest,
-        bundle_arrays=bundle["arrays"],
-        fusion_dir=fusion_artifact.directory,
-        fusion_artifact=fusion_artifact,
-        fusion_module=fusion_module,
+        candidate_manifest_path=binding["manifest_path"],
+        candidate_manifest_sha256=binding["manifest_sha256"],
+        candidate_manifest=binding["manifest"],
+        validation_evidence_path=binding["validation_evidence_path"],
+        validation_evidence_sha256=binding["validation_evidence_sha256"],
+        validation_evidence=binding["validation_evidence"],
+        frozen_contract_path=binding["frozen_contract_path"],
+        frozen_contract_sha256=binding["frozen_contract_sha256"],
+        frozen_contract=binding["frozen_contract"],
+        classifier_bundle_dir=classifier_bundle["directory"],
+        classifier_bundle_manifest_path=classifier_bundle["manifest_path"],
+        classifier_bundle_manifest_sha256=classifier_bundle["manifest_sha256"],
+        classifier_bundle_manifest=classifier_manifest,
+        classifier_bundle_arrays=classifier_bundle["arrays"],
+        rejector_bundle_dir=bundle["directory"],
+        rejector_bundle_manifest_path=bundle["manifest_path"],
+        rejector_bundle_manifest_sha256=bundle["manifest_sha256"],
+        rejector_bundle_manifest=manifest,
+        rejector_bundle_arrays=bundle["arrays"],
+        classifier_fusion_dir=classifier_artifact.directory,
+        classifier_fusion_artifact=classifier_artifact,
+        classifier_fusion_module=classifier_fusion_module,
+        rejector_fusion_dir=fusion_artifact.directory,
+        rejector_fusion_artifact=fusion_artifact,
+        rejector_fusion_module=rejector_fusion_module,
         staged_dir=staged_metrics_path.parent,
+        staged_metrics_path=staged_metrics_path,
+        staged_metrics_sha256=binding["validation_report_sha256"],
         staged_metrics=staged_metrics,
         staged_hashes=staged_hashes,
         prefilter_dir=prefilter_path,
@@ -939,10 +2215,16 @@ def load_candidate(
         patch_length=int(frontend["patch_length"]),
         patch_count=int(frontend["patch_count"]),
         target_frac=float(frontend["target_frac"]),
-        feature_mean=np.asarray(
+        classifier_feature_mean=np.asarray(
+            classifier_bundle["arrays"]["feature_mean.npy"], dtype=np.float32
+        ),
+        classifier_feature_std=np.asarray(
+            classifier_bundle["arrays"]["feature_std.npy"], dtype=np.float32
+        ),
+        rejector_feature_mean=np.asarray(
             bundle["arrays"]["feature_mean.npy"], dtype=np.float32
         ),
-        feature_std=np.asarray(
+        rejector_feature_std=np.asarray(
             bundle["arrays"]["feature_std.npy"], dtype=np.float32
         ),
         threshold=float(composite.threshold),
@@ -956,32 +2238,112 @@ def load_candidate(
 
 
 def candidate_provenance(candidate: V3Candidate) -> dict[str, Any]:
+    prefilter_bundle_sha256 = {
+        str(int(length)): noise_prefilter.bundle_sha256(
+            candidate.prefilter_dir / f"N{int(length)}"
+        )
+        for length in candidate.stage_one_lengths
+    }
+    browser_assets = {
+        role: dict(record)
+        for role, record in candidate.candidate_manifest["browser_assets"].items()
+    }
     return {
-        "bundle_dir": str(candidate.bundle_dir),
-        "bundle_manifest_sha256": candidate.bundle_manifest_sha256,
-        "bundle_assets": {
-            name: dict(record)
-            for name, record in candidate.bundle_manifest["assets"].items()
+        "candidate_contract": {
+            "path": str(candidate.candidate_manifest_path),
+            "sha256": candidate.candidate_manifest_sha256,
+            "schema": CANDIDATE_MANIFEST_SCHEMA,
+            "candidate_id": CANDIDATE_ID,
+            "status": candidate.candidate_manifest["status"],
         },
-        "fusion_dir": str(candidate.fusion_dir),
-        "fusion_directory_sha256": candidate.fusion_artifact.directory_sha256,
-        "fusion_file_sha256": dict(candidate.fusion_artifact.file_sha256),
-        "fusion_seed": int(candidate.fusion_artifact.seed),
-        "staged_dir": str(candidate.staged_dir),
-        "staged_artifact_sha256": dict(candidate.staged_hashes),
-        "staged_status": candidate.staged_metrics["status"],
-        "staged_novelty_seeds": list(
-            candidate.staged_metrics["seeds"]["novelty_seeds"]
+        "validation_evidence": {
+            "path": str(candidate.validation_evidence_path),
+            "sha256": candidate.validation_evidence_sha256,
+            "schema": CANDIDATE_EVIDENCE_SCHEMA,
+            "status": candidate.validation_evidence["status"],
+        },
+        "frozen_prevalidation_contract": {
+            "path": str(candidate.frozen_contract_path),
+            "sha256": candidate.frozen_contract_sha256,
+            "schema": CANDIDATE_CONTRACT_SCHEMA,
+            "status": candidate.frozen_contract["status"],
+        },
+        "classifier_runtime_bundle": {
+            "directory": str(candidate.classifier_bundle_dir),
+            "manifest_path": str(candidate.classifier_bundle_manifest_path),
+            "manifest_sha256": candidate.classifier_bundle_manifest_sha256,
+            "schema": BUNDLE_SCHEMA,
+            "schema_version": BUNDLE_SCHEMA_VERSION,
+            "kind": BUNDLE_KIND,
+            "assets": {
+                name: dict(record)
+                for name, record in candidate.classifier_bundle_manifest[
+                    "assets"
+                ].items()
+            },
+        },
+        "rejector_runtime_bundle": {
+            "directory": str(candidate.rejector_bundle_dir),
+            "manifest_path": str(candidate.rejector_bundle_manifest_path),
+            "manifest_sha256": candidate.rejector_bundle_manifest_sha256,
+            "schema": BUNDLE_SCHEMA,
+            "schema_version": BUNDLE_SCHEMA_VERSION,
+            "kind": BUNDLE_KIND,
+            "assets": {
+                name: dict(record)
+                for name, record in candidate.rejector_bundle_manifest[
+                    "assets"
+                ].items()
+            },
+        },
+        "classifier_fusion": {
+            "directory": str(candidate.classifier_fusion_dir),
+            "directory_sha256": (
+                candidate.classifier_fusion_artifact.directory_sha256
+            ),
+            "file_sha256": dict(
+                candidate.classifier_fusion_artifact.file_sha256
+            ),
+            "seed": int(candidate.classifier_fusion_artifact.seed),
+            "role": "known_class_label",
+        },
+        "rejector_fusion": {
+            "directory": str(candidate.rejector_fusion_dir),
+            "directory_sha256": candidate.rejector_fusion_artifact.directory_sha256,
+            "file_sha256": dict(candidate.rejector_fusion_artifact.file_sha256),
+            "seed": int(candidate.rejector_fusion_artifact.seed),
+            "role": "known_unknown_decision",
+        },
+        "staged_validation": {
+            "directory": str(candidate.staged_dir),
+            "report_path": str(candidate.staged_metrics_path),
+            "report_sha256": candidate.staged_metrics_sha256,
+            "status": candidate.staged_metrics["status"],
+            "novelty_seeds": list(
+                candidate.staged_metrics["seeds"]["novelty_seeds"]
+            ),
+            "artifact_sha256": dict(candidate.staged_hashes),
+            "policy_version": staged.STAGED_POLICY_VERSION,
+            "staged_threshold": candidate.threshold,
+            "stage_two_threshold": candidate.stage_two_threshold,
+            "composite": candidate.composite.provenance(),
+        },
+        "stage_one_prefilter": {
+            "directory": str(candidate.prefilter_dir),
+            "set_sha256": candidate.prefilter_set_sha256,
+            "bundle_sha256": prefilter_bundle_sha256,
+            "capture_lengths": [
+                int(length) for length in candidate.stage_one_lengths
+            ],
+        },
+        "browser_assets": browser_assets,
+        "staging_package_manifest": dict(
+            candidate.candidate_manifest["staging_package_manifest"]
         ),
-        "prefilter_dir": str(candidate.prefilter_dir),
-        "prefilter_set_sha256": candidate.prefilter_set_sha256,
-        "stage_one_capture_lengths": [
-            int(length) for length in candidate.stage_one_lengths
+        "dual_binding": dict(candidate.candidate_manifest["dual_binding"]),
+        "dual_binding_sha256": candidate.candidate_manifest["dual_binding"][
+            "sha256"
         ],
-        "staged_policy_version": staged.STAGED_POLICY_VERSION,
-        "staged_threshold": candidate.threshold,
-        "stage_two_threshold": candidate.stage_two_threshold,
-        "composite": candidate.composite.provenance(),
         "source_sha256": candidate.source_report,
     }
 
@@ -1021,8 +2383,9 @@ def load_v3_release_suite(
     nesting, derivation records, start probe, dependency provenance, split) is
     the imported v2 function.  The two v3-specific changes are the expected
     ``evaluation_protocol`` object and the candidate binding: the intent's
-    ``candidate_path`` must be the runtime bundle's manifest file, whose
-    SHA-256 transitively pins all four candidate components.
+    ``candidate_path`` must be the final dual release-candidate manifest,
+    whose SHA-256 transitively pins both runtime bundles, both fusion trees,
+    the passing validation evidence and exact staged/prefilter/browser bytes.
     """
     root = Path(release_root).expanduser().resolve()
     if not root.is_dir() or root.is_symlink():
@@ -1143,25 +2506,28 @@ def load_v3_release_suite(
     )
     signal_lab_root = Path(dependency_report["signallab"]["root"])
 
-    # Candidate binding: the intent-bound file is the bundle manifest.
+    # Candidate binding: the intent-bound file is the final dual manifest.
     candidate_path = (
         Path(str(intent.get("candidate_path", ""))).expanduser().resolve()
     )
-    if candidate_path != candidate.bundle_manifest_path:
+    if candidate_path != candidate.candidate_manifest_path:
         raise ValueError(
-            "RELEASE_INTENT candidate_path is not the v3 runtime bundle "
-            f"manifest: {candidate_path} != {candidate.bundle_manifest_path}"
+            "RELEASE_INTENT candidate_path is not the frozen dual release "
+            f"candidate manifest: {candidate_path} != "
+            f"{candidate.candidate_manifest_path}"
         )
     if _is_below(candidate_path, root):
         raise ValueError("candidate must be frozen outside the release output root")
     candidate_hash = str(intent.get("candidate_sha256", "")).lower()
-    if candidate_hash != candidate.bundle_manifest_sha256:
+    if candidate_hash != candidate.candidate_manifest_sha256:
         raise ValueError(
-            "candidate bundle-manifest SHA-256 does not match RELEASE_INTENT"
+            "candidate dual-manifest SHA-256 does not match RELEASE_INTENT"
         )
     for directory in (
-        candidate.bundle_dir,
-        candidate.fusion_dir,
+        candidate.classifier_bundle_dir,
+        candidate.rejector_bundle_dir,
+        candidate.classifier_fusion_dir,
+        candidate.rejector_fusion_dir,
         candidate.staged_dir,
         candidate.prefilter_dir,
     ):
@@ -1169,6 +2535,31 @@ def load_v3_release_suite(
             raise ValueError(
                 "every candidate component must live outside the release root"
             )
+    bound_files = (
+        candidate.candidate_manifest_path,
+        candidate.validation_evidence_path,
+        candidate.frozen_contract_path,
+        candidate.staged_metrics_path,
+        *(
+            _resolve_frozen_path(record["path"], field=f"browser_assets.{role}")
+            for role, record in candidate.candidate_manifest[
+                "browser_assets"
+            ].items()
+        ),
+        _resolve_frozen_path(
+            candidate.candidate_manifest["staging_package_manifest"]["path"],
+            field="staging_package_manifest.path",
+        ),
+        _resolve_frozen_path(
+            candidate.candidate_manifest["dual_binding"]["path"],
+            field="dual_binding.path",
+        ),
+    )
+    if any(_is_below(path, root) for path in bound_files):
+        raise ValueError(
+            "every candidate manifest component must live outside the "
+            "release output root"
+        )
 
     target_per_class = _integer(
         intent.get("target_per_class"), "target_per_class", MIN_TARGET_PER_CLASS
@@ -1368,7 +2759,7 @@ def _preprocess_iq_rows(
     captures: Sequence[np.ndarray],
     candidate: V3Candidate,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """v3 time-domain frontend + the bundle's frozen feature standardization."""
+    """Run the shared frontend and return packed I/Q plus RAW features."""
     if not len(captures):
         raise ValueError("preprocessing requires at least one capture")
     packed = np.empty(
@@ -1379,9 +2770,7 @@ def _preprocess_iq_rows(
         ),
         dtype=np.float32,
     )
-    features = np.empty(
-        (len(captures), len(candidate.feature_mean)), dtype=np.float32
-    )
+    features = np.empty((len(captures), len(candidate.feature_mean)), dtype=np.float32)
     for row, raw in enumerate(captures):
         channels, raw_features, _context = td_preprocess.preprocess(
             raw,
@@ -1390,38 +2779,111 @@ def _preprocess_iq_rows(
             target_frac=candidate.target_frac,
         )
         packed[row] = np.asarray(channels, dtype=np.float32)
-        features[row] = (
-            np.asarray(raw_features, dtype=np.float32) - candidate.feature_mean
-        ) / candidate.feature_std
+        features[row] = np.asarray(raw_features, dtype=np.float32)
     if not np.isfinite(packed).all() or not np.isfinite(features).all():
         raise RuntimeError("v3 frontend produced non-finite preprocessing")
     return packed, features
 
 
-def _embed_additive(
-    candidate: V3Candidate,
+def _standardize_features(
+    raw_features: np.ndarray,
+    mean: np.ndarray,
+    std: np.ndarray,
+    *,
+    role: str,
+) -> np.ndarray:
+    features = (
+        np.asarray(raw_features, dtype=np.float32)
+        - np.asarray(mean, dtype=np.float32)
+    ) / np.asarray(std, dtype=np.float32)
+    if not np.isfinite(features).all():
+        raise RuntimeError(f"{role} feature standardization produced non-finite")
+    return features.astype(np.float32, copy=False)
+
+
+def _embed_fusion(
+    fusion_module: torch.nn.Module,
+    fusion_artifact: Any,
     packed: np.ndarray,
     features: np.ndarray,
     device: torch.device,
+    *,
+    role: str,
 ) -> dict[str, np.ndarray]:
-    """Branch and fused embeddings for every row (the additive sub-path)."""
+    """Branch and fused embeddings for one explicitly named fusion role."""
     real = embed_all(
-        candidate.rejector.nets["real"], packed, features, device
+        fusion_module.real_branch, packed, features, device
     ).astype(np.float32, copy=False)
     complex_embedding = embed_all(
-        candidate.rejector.nets["complex"], packed, features, device
+        fusion_module.complex_branch, packed, features, device
     ).astype(np.float32, copy=False)
     fused = assemble.fuse_numpy(
         real,
         complex_embedding,
-        candidate.rejector.real_center,
-        candidate.rejector.complex_center,
-        weight_real=candidate.rejector.weight_real,
+        fusion_artifact.real_center,
+        fusion_artifact.complex_center,
+        weight_real=fusion_artifact.weight_real,
     )
     result = {"real": real, "complex": complex_embedding, "fusion": fused}
     if any(not np.isfinite(value).all() for value in result.values()):
-        raise RuntimeError("runtime produced non-finite embeddings")
+        raise RuntimeError(f"{role} runtime produced non-finite embeddings")
     return result
+
+
+def _embed_classifier(
+    candidate: V3Candidate,
+    packed: np.ndarray,
+    raw_features: np.ndarray,
+    device: torch.device,
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    features = _standardize_features(
+        raw_features,
+        candidate.classifier_feature_mean,
+        candidate.classifier_feature_std,
+        role="classifier",
+    )
+    return features, _embed_fusion(
+        candidate.classifier_fusion_module,
+        candidate.classifier_fusion_artifact,
+        packed,
+        features,
+        device,
+        role="classifier",
+    )
+
+
+def _embed_rejector(
+    candidate: V3Candidate,
+    packed: np.ndarray,
+    raw_features: np.ndarray,
+    device: torch.device,
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    features = _standardize_features(
+        raw_features,
+        candidate.rejector_feature_mean,
+        candidate.rejector_feature_std,
+        role="rejector",
+    )
+    return features, _embed_fusion(
+        candidate.rejector_fusion_module,
+        candidate.rejector_fusion_artifact,
+        packed,
+        features,
+        device,
+        role="rejector",
+    )
+
+
+def _final_labels_from_classifier(
+    classifier_prediction: np.ndarray,
+    rejected: np.ndarray,
+) -> np.ndarray:
+    """Apply the rejector mask without ever substituting its class guess."""
+    labels = np.asarray(classifier_prediction, dtype=np.int64)
+    mask = np.asarray(rejected, dtype=bool)
+    if labels.ndim != 1 or mask.shape != labels.shape:
+        raise ValueError("classifier predictions and rejection mask must align")
+    return np.where(mask, np.int64(-1), labels)
 
 
 def _unstaged_scores(
@@ -1572,9 +3034,7 @@ def _staged_scores(
             ),
         }
     prediction = np.asarray(unstaged_prediction, dtype=np.int64).copy()
-    final_label = np.where(
-        gated | (staged_score > threshold), np.int64(-1), prediction
-    )
+    rejected = gated | (staged_score > threshold)
     return {
         "stage_one_active": bool(active),
         "stage_one_feature_length": (
@@ -1582,8 +3042,9 @@ def _staged_scores(
         ),
         "stage_one_prefix_rule_applied": bool(prefix_applied),
         "gated": gated,
+        "rejected": rejected,
+        "rejector_internal_prediction": prediction,
         "staged_score": staged_score,
-        "final_label_or_unknown": final_label,
         "gated_fraction": float(np.mean(gated)) if rows else 0.0,
         "rejected_fraction": (
             float(np.mean(staged_score > threshold)) if rows else 0.0
@@ -1828,15 +3289,16 @@ def _scale_sweep(
                 for raw in base_captures
             ]
         )
-        packed, features = _preprocess_iq_rows(captures, candidate)
-        embeddings = _embed_additive(candidate, packed, features, device)[
-            "fusion"
-        ]
+        packed, raw_features = _preprocess_iq_rows(captures, candidate)
+        _features, classifier_embeddings = _embed_classifier(
+            candidate, packed, raw_features, device
+        )
+        embeddings = classifier_embeddings["fusion"]
         embeddings_by_factor[factor] = embeddings
         closed, prediction = release._simple_closed_report(
             embeddings,
             wanted,
-            candidate.rejector.prototypes,
+            candidate.classifier_fusion_artifact.prototypes,
             candidate.classes,
         )
         predictions_by_factor[factor] = prediction
@@ -1936,7 +3398,9 @@ def evaluate_release(
         suite.release_seed, longest
     )
 
-    embeddings_by_length: dict[int, dict[str, np.ndarray]] = {}
+    classifier_embeddings_by_length: dict[
+        int, dict[str, np.ndarray]
+    ] = {}
     closed_by_length: dict[str, Any] = {}
     open_by_length: dict[str, Any] = {}
     staged_known_by_length: dict[int, dict[str, Any]] = {}
@@ -1949,25 +3413,30 @@ def evaluate_release(
         captures = release._raw_rows(
             spec, np.arange(int(spec.manifest["count"]), dtype=np.int64)
         )
-        packed, features = _preprocess_iq_rows(captures, candidate)
-        embeddings = _embed_additive(candidate, packed, features, device)
-        embeddings_by_length[length] = embeddings
+        packed, raw_features = _preprocess_iq_rows(captures, candidate)
+        _classifier_features, classifier_embeddings = _embed_classifier(
+            candidate, packed, raw_features, device
+        )
+        rejector_features, rejector_embeddings = _embed_rejector(
+            candidate, packed, raw_features, device
+        )
+        classifier_embeddings_by_length[length] = classifier_embeddings
         labels, snr, impaired = release._labels_and_snr(spec, candidate.classes)
         labels_by_length[length] = labels
         snr_by_length[length] = snr
 
-        closed, _prediction = release._closed_report(
-            embeddings["fusion"][query],
+        closed, classifier_prediction = release._closed_report(
+            classifier_embeddings["fusion"][query],
             labels[query],
             snr[query],
             impaired[query],
-            candidate.rejector.prototypes,
+            candidate.classifier_fusion_artifact.prototypes,
             candidate.classes,
         )
         closed_by_length[str(length)] = closed
 
         query_embeddings = {
-            name: embeddings[name][query]
+            name: rejector_embeddings[name][query]
             for name in ("real", "complex", "fusion")
         }
         unstaged_prediction, unstaged_score = _unstaged_scores(
@@ -1977,7 +3446,7 @@ def evaluate_release(
             candidate,
             [captures[int(index)] for index in query],
             packed[query],
-            features[query],
+            rejector_features[query],
             unstaged_prediction,
             unstaged_score,
             device,
@@ -1985,16 +3454,20 @@ def evaluate_release(
             population=f"n{length}-known-query",
         )
         known_staged["unstaged_score"] = unstaged_score
+        known_staged["final_label_or_unknown"] = _final_labels_from_classifier(
+            classifier_prediction,
+            known_staged["rejected"],
+        )
         staged_known_by_length[length] = known_staged
 
         novelty_by_family: dict[str, dict[str, Any]] = {}
         for family in NOVELTY_FAMILIES:
             prefixes = [row[:length] for row in novelty_rows[family]]
-            novelty_packed, novelty_features = _preprocess_iq_rows(
+            novelty_packed, novelty_raw_features = _preprocess_iq_rows(
                 prefixes, candidate
             )
-            novelty_embeddings = _embed_additive(
-                candidate, novelty_packed, novelty_features, device
+            novelty_features, novelty_embeddings = _embed_rejector(
+                candidate, novelty_packed, novelty_raw_features, device
             )
             family_prediction, family_score = _unstaged_scores(
                 candidate, novelty_embeddings, novelty_packed
@@ -2016,7 +3489,9 @@ def evaluate_release(
             known_staged, novelty_by_family, candidate, novelty_provenance
         )
 
-    matched_enrollment = embeddings_by_length[MATCHED_CAPTURE_LENGTH]["fusion"]
+    matched_enrollment = classifier_embeddings_by_length[
+        MATCHED_CAPTURE_LENGTH
+    ]["fusion"]
     matched_labels = labels_by_length[MATCHED_CAPTURE_LENGTH]
     five_shot_by_length: dict[str, Any] = {}
     for length in lengths:
@@ -2024,22 +3499,24 @@ def evaluate_release(
             raise AssertionError("matched release label arrays differ by length")
         five_shot_by_length[str(length)] = release._five_shot_report(
             matched_enrollment,
-            embeddings_by_length[length]["fusion"],
+            classifier_embeddings_by_length[length]["fusion"],
             matched_labels,
             suite.support_indices,
             suite.query_indices,
             candidate.classes,
         )
 
-    reference = embeddings_by_length[MATCHED_CAPTURE_LENGTH]["fusion"][query]
+    reference = classifier_embeddings_by_length[MATCHED_CAPTURE_LENGTH][
+        "fusion"
+    ][query]
     reference_prediction, _ = release._nearest(
-        reference, candidate.rejector.prototypes
+        reference, candidate.classifier_fusion_artifact.prototypes
     )
     length_rows = []
     for length in lengths:
-        current = embeddings_by_length[length]["fusion"][query]
+        current = classifier_embeddings_by_length[length]["fusion"][query]
         prediction, _ = release._nearest(
-            current, candidate.rejector.prototypes
+            current, candidate.classifier_fusion_artifact.prototypes
         )
         closed = closed_by_length[str(length)]
         paired = release._paired_invariance_report(
@@ -2137,6 +3614,22 @@ def evaluate_release(
             "gated_at_stage_one": int(
                 np.count_nonzero(staged_known_by_length[length]["gated"])
             ),
+            "accepted_rows": int(
+                np.count_nonzero(~staged_known_by_length[length]["rejected"])
+            ),
+            "accepted_label_source": "classifier_fusion_8k_regularized",
+            "accepted_classifier_rejector_label_agreement": float(
+                np.mean(
+                    staged_known_by_length[length]["final_label_or_unknown"][
+                        ~staged_known_by_length[length]["rejected"]
+                    ]
+                    == staged_known_by_length[length][
+                        "rejector_internal_prediction"
+                    ][~staged_known_by_length[length]["rejected"]]
+                )
+            )
+            if np.any(~staged_known_by_length[length]["rejected"])
+            else None,
         }
         for length in lengths
     }
@@ -2150,6 +3643,17 @@ def evaluate_release(
         "retraining_performed": False,
         "recalibration_performed": False,
         "architecture_contract": {
+            "candidate_architecture": "dual_fusion_classifier8k_rejector4k",
+            "intentional_dual_fusion": True,
+            "decision_order": [
+                "stage-one causal-prefix noise gate",
+                "4k rejector fusion and staged known/unknown policy",
+                "8k classifier nearest-prototype label for accepted rows",
+            ],
+            "known_label_source": "classifier_fusion_8k_regularized",
+            "known_unknown_source": "rejector_fusion_4k_frozen_policy",
+            "closed_gate_source": "classifier_fusion_8k_regularized",
+            "open_gate_source": "rejector_fusion_4k_frozen_policy",
             "additive_only": False,
             "changes_closed_label": True,
             "gates_before_classification": True,
@@ -2182,18 +3686,18 @@ def evaluate_release(
             ),
         },
         "candidate": {
-            "path": str(candidate.bundle_manifest_path),
+            "path": str(candidate.candidate_manifest_path),
             "sha256": suite.candidate_sha256,
-            "runtime_schema": BUNDLE_SCHEMA,
-            "runtime_schema_version": BUNDLE_SCHEMA_VERSION,
-            "runtime_kind": BUNDLE_KIND,
+            "schema": CANDIDATE_MANIFEST_SCHEMA,
+            "candidate_id": CANDIDATE_ID,
             "classes": list(candidate.classes),
             "components": candidate_provenance(candidate),
             "frozen_assets_used": [
-                "fusion state dict (both branches, centers, alphas, weight, eps)",
-                "training-only branch centers",
-                "training-only feature mean/std",
-                "enrollment-only fused prototypes",
+                "8k classifier fusion state, centers, feature moments and "
+                "enrollment-only prototypes",
+                "4k rejector fusion state, centers, feature moments and "
+                "enrollment-only prototypes",
+                "both self-verified runtime bundle manifests and assets",
                 "frozen stage-1 per-length noise-prefilter bundles",
                 "frozen stage-2 branch-LOF ensemble (training reference, "
                 "enrollment ranks)",
@@ -2319,8 +3823,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         return {"expected_evaluation_protocol": protocol}
     device = resolve_device(args.device)
     candidate = load_candidate(
-        bundle_dir=Path(args.bundle_dir),
-        fusion_dir=Path(args.fusion_dir),
+        candidate_manifest_path=Path(args.candidate_manifest),
+        classifier_bundle_dir=Path(args.classifier_bundle_dir),
+        rejector_bundle_dir=Path(args.rejector_bundle_dir),
+        classifier_fusion_dir=Path(args.classifier_fusion_dir),
+        rejector_fusion_dir=Path(args.rejector_fusion_dir),
         staged_dir=Path(args.staged_dir),
         prefilter_dir=Path(args.prefilter_dir),
         device=device,
@@ -2358,14 +3865,32 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output")
     parser.add_argument("--device", choices=("cpu", "mps"), default="cpu")
     parser.add_argument(
-        "--bundle-dir",
-        default=str(DEFAULT_BUNDLE_DIR),
-        help="the self-verified v3 runtime bundle directory",
+        "--candidate-manifest",
+        default=str(DEFAULT_CANDIDATE_MANIFEST),
+        help=(
+            "the final frozen dual release-candidate manifest; this exact "
+            "file is bound by RELEASE_INTENT candidate_path/candidate_sha256"
+        ),
     )
     parser.add_argument(
-        "--fusion-dir",
-        default=str(DEFAULT_FUSION_DIR),
-        help="the v3 fusion artifact the bundle was exported from",
+        "--classifier-bundle-dir",
+        default=str(DEFAULT_CLASSIFIER_BUNDLE_DIR),
+        help="the self-verified 8k classifier runtime bundle",
+    )
+    parser.add_argument(
+        "--rejector-bundle-dir",
+        default=str(DEFAULT_REJECTOR_BUNDLE_DIR),
+        help="the self-verified 4k rejector runtime bundle",
+    )
+    parser.add_argument(
+        "--classifier-fusion-dir",
+        default=str(DEFAULT_CLASSIFIER_FUSION_DIR),
+        help="the regularized 8k known-class fusion artifact",
+    )
+    parser.add_argument(
+        "--rejector-fusion-dir",
+        default=str(DEFAULT_REJECTOR_FUSION_DIR),
+        help="the frozen 4k known/unknown fusion artifact",
     )
     parser.add_argument(
         "--staged-dir",
