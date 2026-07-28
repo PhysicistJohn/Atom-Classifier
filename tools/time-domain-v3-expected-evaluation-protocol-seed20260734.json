@@ -1,0 +1,138 @@
+{
+  "comment": [
+    "The exact evaluation_protocol object the v3 sealed evaluator requires the",
+    "release intent to embed for release seed 20260734 (staged policy version",
+    "v3-staged-openset-policy-v2-composite-survivor: composite survivor score",
+    "max(stage2_enrollment_rank, stage1_score_enrollment_rank), staged unknown",
+    "threshold = frozen q95 of the composite over enrollment stage-1 survivors;",
+    "stage-1 fitted lengths 4096/8192/16384 from the tightened 0.01-budget set",
+    "noise_prefilter_fit20261001_budget001, N32768 gated through the",
+    "causal-prefix rule). NEW at this seed: gates_redeclared carries the two",
+    "gate levels the owner re-declared for the v3 architecture on 2026-07-28,",
+    "BEFORE this seed was generated (HANDOFF 27 option B, HANDOFF 28):",
+    "open_known_false_unknown_worst_length ceiling 0.10 -> 0.12 and",
+    "five_shot_worst_length_balanced floor 0.85 -> 0.84, with the owner",
+    "rationale verbatim; every other gate keeps its v2 level, and the",
+    "evaluator refuses an intent lacking the matching block. Captured",
+    "verbatim from:",
+    "  PYTHONWARNINGS=error PYTHONPATH=training:training/zplane_ab:training/zplane_ab/v2_full_variation \\",
+    "  .venv-training/bin/python training/zplane_ab/v2_full_variation/v3_scale/evaluate_v3_release_suite.py \\",
+    "  --print-expected-protocol 20260734",
+    "(--prefilter-dir defaults to the tightened-budget set and is the only",
+    "candidate component this command reads: the protocol is a function of the",
+    "release seed, the fitted stage-1 lengths and the evaluator's frozen",
+    "constants. The evaluation itself recomputes this object against the full",
+    "loaded candidate and refuses any suite whose intent protocol differs, so",
+    "a stale fixture fails loudly at evaluation time, before any gate is",
+    "scored.)",
+    "Regenerate with that command whenever evaluate_v3_release_suite.py changes",
+    "its predeclared protocol."
+  ],
+  "release_seed": 20260734,
+  "evaluation_protocol": {
+    "five_shot": {
+      "hash_payload": "utf8(split_salt + NUL + release_seed_decimal + NUL + canonical_row_identity_json)",
+      "k": 5,
+      "prototype_source": "support rows embedded at matched_capture_length; one fixed five-shot prototype set reused at every capture length",
+      "query_rule": "all remaining rows; identical row indices at every matched capture length",
+      "split_salt": "atomos-invariant-release-five-shot-v1",
+      "split_version": "sha256-lowest-per-class-v1",
+      "support_rule": "lowest five lowercase SHA-256 digests per class; ties by corpus row index"
+    },
+    "gates": {
+      "closed_clean": 0.85,
+      "closed_family": 0.82,
+      "closed_fine": 0.72,
+      "closed_high_snr": 0.78,
+      "five_shot": 0.84,
+      "invariant_max_mean_pairwise_cosine": 0.78,
+      "invariant_worst_balanced_accuracy": 0.75,
+      "length_pair_embedding_cosine": 0.85,
+      "length_pair_prediction_agreement": 0.8,
+      "open_auroc_chirp": 0.8,
+      "open_auroc_noise": 0.8,
+      "open_auroc_overall": 0.72,
+      "open_known_false_unknown_max": 0.12,
+      "open_unknown_recall_chirp": 0.1,
+      "open_unknown_recall_noise": 0.1,
+      "scale_pair_embedding_cosine": 0.8,
+      "scale_pair_prediction_agreement": 0.75
+    },
+    "gates_redeclared": {
+      "five_shot_worst_length_balanced": {
+        "owner_decision": "The 0.10 known-FUR ceiling and 0.85 five-shot floor were declared against the v2 architecture. Two consumed sealed runs (seeds 20260731, 20260733) establish this candidate's true sealed rates at FUR 0.10-0.11 and five-shot 0.845-0.850 while it beats the frozen v2 bundle on every identically-measured axis and fixes all six gates v2 failed. The levels are re-declared for the v3 architecture by the owner on 2026-07-28, BEFORE release seed 20260734 was generated. Any release claim must state these two levels alongside the v2 levels they replace.",
+        "v2_level": 0.85,
+        "v3_level": 0.84
+      },
+      "open_known_false_unknown_worst_length": {
+        "owner_decision": "The 0.10 known-FUR ceiling and 0.85 five-shot floor were declared against the v2 architecture. Two consumed sealed runs (seeds 20260731, 20260733) establish this candidate's true sealed rates at FUR 0.10-0.11 and five-shot 0.845-0.850 while it beats the frozen v2 bundle on every identically-measured axis and fixes all six gates v2 failed. The levels are re-declared for the v3 architecture by the owner on 2026-07-28, BEFORE release seed 20260734 was generated. Any release claim must state these two levels alongside the v2 levels they replace.",
+        "v2_level": 0.1,
+        "v3_level": 0.12
+      }
+    },
+    "high_snr_db": 18,
+    "length_observation_rule": "generate maximum capture length once; every shorter observed and clean row is a bit-exact cf32le prefix of the corresponding maximum-length row",
+    "matched_capture_length": 16384,
+    "minimum_target_per_class": 80,
+    "novelty": {
+      "calibration": "none; frozen per-length stage-1 noise-prefilter bundles, the frozen stage-2 branch-LOF ensemble and geometry blend, and the frozen composite survivor policy (enrollment-survivor stage-1 rank calibration and its q95 composite threshold) are loaded verbatim",
+      "families": [
+        "noise",
+        "chirp"
+      ],
+      "generation": "generate each fresh openset_eval.NOVELTY realization once at maximum capture length; shorter observations are exact prefixes; one family seed derived by SHA-256 from base seed and family",
+      "n_each_per_length": 300,
+      "seed": 20260734,
+      "seed_derivation": "uint64 little-endian first 8 bytes of SHA-256(utf8(base seed decimal + NUL + family))",
+      "seed_rule": "the novelty base seed equals the untouched release seed; consumed release seeds and development novelty/fitting seed bands are refused"
+    },
+    "open_set": {
+      "additive_only": false,
+      "architecture": "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry",
+      "changes_closed_label": true,
+      "gates_before_classification": true,
+      "known_false_unknown_accounting": "counts both stages: a known row gated by the stage-1 noise prefilter and a known survivor whose COMPOSITE score exceeds the frozen staged threshold (q95 of the composite over enrollment survivors) are both false-unknown, and every per-length open report attributes each rejected known row to the stage that rejected it. The additive control arm uses the stage-2 policy's own untouched threshold",
+      "score_axis": "Stage-2 scores are enrollment empirical ranks in [0, 1).  A stage-1 survivor's staged score is the COMPOSITE max(stage2_enrollment_rank, stage1_score_enrollment_rank), also in [0, 1), where the stage-1 rank is the empirical enrollment rank of the stage-1 log-odds fit on ENROLLMENT stage-1 survivors only (searchsorted-left, the stage-2 convention).  A row gated at stage 1 has no stage-2 score at all -- that is the short circuit -- and is placed at 1.0 + a bounded monotone map (softsign) of its stage-1 log-odds, i.e. in (1, 2), above every survivor.  The staged unknown threshold is the frozen q95 of the composite over enrollment survivors, so the staged score is a single axis on which 'score > staged threshold' is exactly the staged decision 'gated at stage 1, or composite-rejected at stage 2', which is asserted row by row.  AUROC and threshold recall computed from it are properties of the staged system, not of either stage read in isolation.",
+      "stage_one_capture_lengths": [
+        4096,
+        8192,
+        16384
+      ],
+      "stage_one_max_fitted_length": 16384,
+      "stage_one_prefix_gated_lengths": [
+        32768
+      ],
+      "stage_one_prefix_rule": {
+        "max_fitted_length": 16384,
+        "rule": "at a capture length ABOVE the longest fitted prefilter length, the stage-1 pose-degeneracy features are computed on the capture's FIRST max-fitted-length samples and gated with that length's bundle.  The first N samples of a longer capture are exactly an N-sample capture of the same emission, so this is the same causal-prefix rule the release protocol's length suite is built on, not an approximation.  Lengths BELOW the smallest fitted length keep the existing refusal semantics: no fitted length is a causal prefix of such a capture, so no bundle may be substituted"
+      },
+      "stage_one_uncovered_lengths": [],
+      "stage_one_uncovered_rule": "at a capture length ABOVE the longest fitted stage-1 length the gate applies through the causal-prefix rule (stage_one_prefix_rule): features are computed on the capture's first max-fitted-length samples and gated with that length's bundle, recorded as stage_one_active: true with the effective stage_one_feature_length; at a capture length BELOW the smallest fitted length the gate cannot fire and every row flows to the unchanged additive stage-2 path, recorded as stage_one_active: false",
+      "staged_policy_schema": 2,
+      "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+      "survivor_score": "max(stage2_enrollment_rank, stage1_score_enrollment_rank)",
+      "sweep_rejector_rule": "the causal-length and physical-scale sweeps measure the closed-set representation exactly as the v2 evaluator defined them; no stage gates their rows (rejection never participates in the closed and invariance gates, and the stage-1 causal-prefix rule does not change that)",
+      "unknown_threshold_rule": "the staged unknown threshold is the frozen q0.95 of the composite over enrollment stage-1 survivors, fit on enrollment only and loaded verbatim from the staged artifact; the additive control arm keeps the stage-2 policy's own untouched enrollment threshold"
+    },
+    "physical_scale_factors": [
+      0.5,
+      0.75,
+      1.0,
+      1.5,
+      2.0
+    ],
+    "physical_scale_support": {
+      "edge_guard_fraction": 0.001953125,
+      "minimum_rows_per_class": 20,
+      "rule": "for every requested factor, effective resampling scale times (abs(centreOffsetFrac) + bandwidthHz/(2*sampleRateHz)) must be strictly below 0.5 - edge_guard_fraction",
+      "selection_timing": "metadata-only common subset fixed before preprocessing or inference"
+    },
+    "required_capture_lengths": [
+      4096,
+      8192,
+      16384,
+      32768
+    ],
+    "version": "time-domain-v3-release-evaluation-v1"
+  }
+}

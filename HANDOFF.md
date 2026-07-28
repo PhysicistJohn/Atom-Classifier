@@ -1649,3 +1649,55 @@ B. **Re-declare the two gate levels for the v3 architecture, BEFORE seed #3, in 
    done. This is the owner's call, not the agent's.
 
 Seed ledger: releases 20260729, 20260731, 20260733 consumed. Next unused: 20260734.
+
+## 28. OWNER DECISION: two gate levels re-declared for v3, BEFORE seed #3
+
+On 2026-07-28 the owner chose section 27's OPTION B. The candidate is UNCHANGED: the v3.2
+composite exactly as sealed run #2 evaluated it (fusion
+`v3_fusion_multilength_seed20260730`, runtime bundle `v3_runtime_bundle_seed20260730`,
+prefilter `noise_prefilter_fit20261001_budget001`, staged composite policy from
+`staged_validate_composite_budget001_seed20260730`). Exactly two gate levels are
+re-declared for the v3 architecture; every other gate keeps its v2 level unchanged:
+
+| gate | v2 level | v3 level |
+|---|---:|---:|
+| open_known_false_unknown_worst_length | ceiling 0.10 | **ceiling 0.12** |
+| five_shot_worst_length_balanced | floor 0.85 | **floor 0.84** |
+
+The rationale, recorded verbatim in `evaluate_v3_release_suite.V3_GATE_REDECLARATION` and
+in the predeclared protocol:
+
+> "The 0.10 known-FUR ceiling and 0.85 five-shot floor were declared against the v2
+> architecture. Two consumed sealed runs (seeds 20260731, 20260733) establish this
+> candidate's true sealed rates at FUR 0.10-0.11 and five-shot 0.845-0.850 while it beats
+> the frozen v2 bundle on every identically-measured axis and fixes all six gates v2
+> failed. The levels are re-declared for the v3 architecture by the owner on 2026-07-28,
+> BEFORE release seed 20260734 was generated. Any release claim must state these two
+> levels alongside the v2 levels they replace."
+
+TIMING: the decision was made and mechanized BEFORE release seed 20260734 was generated.
+No suite, corpus, or evaluation exists for 20260734 at the time of this writing; the
+declaration is enforced pre-generation, not asserted after a result. Editing levels after
+a sealed result remains forbidden and has not been done.
+
+Mechanics (all in lockstep):
+
+* `evaluate_v3_release_suite.py`: `V3_GATE_REDECLARATION` maps the two gate names to
+  {v2_level, v3_level, owner_decision}; each v2_level is cross-checked against the
+  imported v2 `GATE_FLOORS` (the import stays, so every other floor still cannot drift).
+  The v2 gate assembler runs verbatim, then `_apply_gate_redeclaration` re-levels exactly
+  the two entries, attaching the redeclaration record to each. The predeclared protocol
+  (`--print-expected-protocol`) and the emitted RELEASE_EVALUATION both carry a
+  `gates_redeclared` block; the evaluator REFUSES a release root whose intent lacks the
+  matching block, which is what makes the declaration provably pre-generation. Seed
+  20260733 joined the consumed-seed refusal list.
+* Launcher: `V3_EXPECTED_PROTOCOL_FIXTURE` re-aimed at the pinned
+  `tools/time-domain-v3-expected-evaluation-protocol-seed20260734.json` (captured verbatim
+  from `--print-expected-protocol 20260734`; carries the `gates_redeclared` block);
+  consumed-seed map gains 20260733.
+* Tests: the gate-identity test is now identity-except-the-two-redeclared-entries, each
+  asserted to carry the rationale; an intent without (or with a tampered)
+  `gates_redeclared` block is asserted refused; seed-hygiene tests moved to 20260734.
+
+Seed ledger: releases 20260729, 20260731, 20260733 consumed. Next unused: 20260734 (never
+consumed by hand; the orchestrator spends it).
