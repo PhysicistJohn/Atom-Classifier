@@ -53,11 +53,30 @@ REPO = TRAINING.parent
 BUNDLE_SCHEMA_ID = "atomos.v3.time-domain-invariant-fusion.runtime-bundle"
 BROWSER_SCHEMA_ID = "atomos.v3.time-domain-invariant-fusion.browser-weights"
 BROWSER_SCHEMA_VERSION = 1
+EXPORT_MANIFEST_SCHEMA_VERSION = 2
+
+RUNTIME_ROLE_REJECTOR = "known_unknown_rejector"
+RUNTIME_ROLE_CLASSIFIER = "accepted_known_classifier"
+RUNTIME_ROLES = frozenset(
+    {RUNTIME_ROLE_REJECTOR, RUNTIME_ROLE_CLASSIFIER}
+)
 
 MANIFEST_NAME = "bundle_manifest.json"
 PROBE_NAME = "probe_fixture.json"
+# Legacy aliases remain importable for old callers.  Newly emitted dual assets
+# use the role-specific names below and carry the same role inside their bytes.
 WEIGHTS_NAME = "time-domain-fusion-weights-v3.json"
 FIXTURE_COPY_NAME = "time-domain-probe-fixture-v3.json"
+ROLE_OUTPUT_NAMES = {
+    RUNTIME_ROLE_REJECTOR: (
+        "time-domain-v3-rejector-weights.json",
+        "time-domain-v3-rejector-probe.json",
+    ),
+    RUNTIME_ROLE_CLASSIFIER: (
+        "time-domain-v3-classifier-weights.json",
+        "time-domain-v3-classifier-probe.json",
+    ),
+}
 EXPORT_MANIFEST_NAME = "export-manifest.json"
 
 # torch defaults baked into the trained modules; recorded explicitly so the
@@ -108,8 +127,8 @@ def _write_json(path: Path, payload: Any) -> None:
         json.dump(
             _jsonable(payload),
             handle,
-            indent=2,
             sort_keys=True,
+            separators=(",", ":"),
             allow_nan=False,
         )
         handle.write("\n")
@@ -165,13 +184,24 @@ def load_verified_bundle(bundle_dir: Path) -> dict[str, Any]:
     return {"dir": bundle_dir, "manifest": manifest}
 
 
-def validate_external_staged_rejection(manifest: Mapping[str, Any]) -> None:
+def validate_runtime_role(manifest: Mapping[str, Any]) -> str:
+    role = str(manifest.get("runtime_role"))
+    if role not in RUNTIME_ROLES:
+        raise ValueError(
+            f"runtime bundle role must be one of {sorted(RUNTIME_ROLES)}, "
+            f"got {role!r}"
+        )
+    return role
+
+
+def validate_external_staged_rejection(manifest: Mapping[str, Any]) -> str:
     """Require the classifier bundle's explicit external-policy separation.
 
     The browser fusion export contains no rejector.  Accepting a bundle with a
     fitted legacy additive slot, or an older "not refit yet" placeholder, would
     silently describe a different classifier from the staged release path.
     """
+    role = validate_runtime_role(manifest)
     rejection = manifest.get("rejection")
     if not isinstance(rejection, Mapping):
         raise ValueError("runtime bundle carries no rejection contract")
@@ -193,6 +223,37 @@ def validate_external_staged_rejection(manifest: Mapping[str, Any]) -> None:
             "runtime bundle rejection contract does not scope stage two to "
             "stage-one survivors"
         )
+    if role == RUNTIME_ROLE_REJECTOR:
+        required = {
+            "this_bundle_supplies_known_unknown_decision": True,
+            "this_bundle_supplies_public_known_label": False,
+        }
+        if "this exact fusion assembly" not in str(
+            contract.get("must_be_fit_against", "")
+        ):
+            raise ValueError(
+                "rejector bundle does not require the policy fitted against "
+                "its exact fusion"
+            )
+    else:
+        required = {
+            "this_bundle_supplies_known_unknown_decision": False,
+            "this_bundle_supplies_public_known_label": True,
+            "classifier_runs_only_after_rejector_acceptance": True,
+            "must_not_be_fit_against_this_classifier": True,
+        }
+        if "known_unknown_rejector" not in str(
+            contract.get("must_be_fit_against", "")
+        ):
+            raise ValueError(
+                "classifier bundle does not delegate rejection to the "
+                "role-bound rejector"
+            )
+    for key, expected in required.items():
+        if contract.get(key) is not expected:
+            raise ValueError(
+                f"{role} rejection contract {key!r} is not {expected!r}"
+            )
     blockers = manifest.get("release_blockers")
     if not isinstance(blockers, list) or not blockers:
         raise ValueError("runtime bundle carries no release requirements")
@@ -203,6 +264,7 @@ def validate_external_staged_rejection(manifest: Mapping[str, Any]) -> None:
         raise ValueError(
             f"runtime bundle carries stale release blockers: {found}"
         )
+    return role
 
 
 def _f32_vector(tensor: torch.Tensor, name: str, shape: tuple[int, ...]) -> list:
@@ -346,7 +408,7 @@ def _scalar(state: Mapping[str, torch.Tensor], name: str) -> float:
 
 def build_payload(bundle: dict[str, Any]) -> dict[str, Any]:
     manifest = bundle["manifest"]
-    validate_external_staged_rejection(manifest)
+    runtime_role = validate_external_staged_rejection(manifest)
     bundle_dir: Path = bundle["dir"]
     architecture = manifest["architecture"]
     state = torch.load(
@@ -404,6 +466,7 @@ def build_payload(bundle: dict[str, Any]) -> dict[str, Any]:
         "status": "staging_not_release",
         "development_only": True,
         "kind": manifest["kind"],
+        "runtime_role": runtime_role,
         "packed_length": int(manifest["frontend"]["packed_length"]),
         "parameter_count": int(manifest["parameter_count"]),
         "frontend": {
@@ -456,6 +519,9 @@ def build_payload(bundle: dict[str, Any]) -> dict[str, Any]:
         ),
         "provenance": {
             "source_bundle_schema": manifest["schema"],
+            "source_bundle_manifest_sha256": _sha256(
+                bundle_dir / MANIFEST_NAME
+            ),
             "source_bundle_assets_sha256": {
                 name: record["sha256"]
                 for name, record in manifest["assets"].items()
@@ -472,16 +538,18 @@ def build_payload(bundle: dict[str, Any]) -> dict[str, Any]:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     bundle = load_verified_bundle(Path(args.bundle))
+    runtime_role = validate_runtime_role(bundle["manifest"])
+    weights_name, fixture_name = ROLE_OUTPUT_NAMES[runtime_role]
     output = validate_empty_output(Path(args.output))
     output.mkdir(parents=True, exist_ok=True)
 
     payload = build_payload(bundle)
-    weights_path = output / WEIGHTS_NAME
+    weights_path = output / weights_name
     _write_json(weights_path, payload)
 
     # Byte-identical fixture copy: the parity anchor keeps its bundle SHA.
     fixture_source = bundle["dir"] / PROBE_NAME
-    fixture_path = output / FIXTURE_COPY_NAME
+    fixture_path = output / fixture_name
     shutil.copyfile(fixture_source, fixture_path)
     fixture_sha = _sha256(fixture_path)
     recorded = bundle["manifest"]["assets"][PROBE_NAME]["sha256"]
@@ -492,20 +560,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     export_manifest = {
         "schema": f"{BROWSER_SCHEMA_ID}.export-manifest",
-        "schema_version": BROWSER_SCHEMA_VERSION,
+        "schema_version": EXPORT_MANIFEST_SCHEMA_VERSION,
+        "runtime_role": runtime_role,
         "source_bundle": str(bundle["dir"].relative_to(REPO)),
         "source_bundle_manifest_sha256": _sha256(
             bundle["dir"] / MANIFEST_NAME
         ),
         "emitted": {
-            WEIGHTS_NAME: {"sha256": _sha256(weights_path),
+            weights_name: {"sha256": _sha256(weights_path),
                            "bytes": weights_path.stat().st_size},
-            FIXTURE_COPY_NAME: {"sha256": fixture_sha,
+            fixture_name: {"sha256": fixture_sha,
                                 "bytes": fixture_path.stat().st_size},
         },
         "probe_fixture_is_byte_identical_to_bundle": True,
         "deterministic": {
             "json_sort_keys": True,
+            "compact_json": True,
             "timestamps_recorded": False,
             "float_serialization": (
                 "shortest round-trip decimal of the exact float32 value "

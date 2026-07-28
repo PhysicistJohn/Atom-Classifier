@@ -76,6 +76,15 @@ from invariant_patch_cnn import (  # noqa: E402
 SCHEMA_ID = "atomos.v3.time-domain-invariant-fusion.runtime-bundle"
 SCHEMA_VERSION = 1
 
+# A dual-fusion release must never infer a model's responsibility from a file
+# name or from which argument position it occupied.  The role is serialized in
+# both the bundle and browser asset, then hash-bound by the dual binding.
+RUNTIME_ROLE_REJECTOR = "known_unknown_rejector"
+RUNTIME_ROLE_CLASSIFIER = "accepted_known_classifier"
+RUNTIME_ROLES = frozenset(
+    {RUNTIME_ROLE_REJECTOR, RUNTIME_ROLE_CLASSIFIER}
+)
+
 # Schema names a v3 bundle must never adopt.  The first two are the v2/hybrid
 # frontend contracts; the third is the v2 paired-real staging export.
 FORBIDDEN_SCHEMA_IDS = frozenset(
@@ -649,9 +658,19 @@ def _closed_set(
 # ---------------------------------------------------------------------------
 
 
-def required_rejector_contract() -> dict[str, Any]:
+def validate_runtime_role(value: Any) -> str:
+    role = str(value)
+    if role not in RUNTIME_ROLES:
+        raise ValueError(
+            f"runtime role must be one of {sorted(RUNTIME_ROLES)}, got {role!r}"
+        )
+    return role
+
+
+def required_rejector_contract(runtime_role: str) -> dict[str, Any]:
     """The stage-2 contract an external staged v3 policy must satisfy."""
-    return {
+    role = validate_runtime_role(runtime_role)
+    contract = {
         "module": "v3_time_domain_openset",
         "policy_schema": int(openset.FROZEN_POLICY_SCHEMA),
         "policy_kind": str(openset.FROZEN_POLICY_KIND),
@@ -661,40 +680,75 @@ def required_rejector_contract() -> dict[str, Any]:
         "threshold_quantile": float(openset.FROZEN_THRESHOLD_QUANTILE),
         "density_fit_population": "training only",
         "rank_and_threshold_population": "enrollment only",
-        "must_be_fit_against": (
-            "the embeddings of this exact fusion assembly, identified by "
-            "provenance.source_dev_metrics_sha256"
-        ),
         "scope": (
             "stage two on stage-one survivors only; the validated stage-one "
             "gate and composite survivor policy are separate artifacts"
         ),
         "cannot_change_closed_label": True,
     }
+    if role == RUNTIME_ROLE_REJECTOR:
+        contract.update(
+            {
+                "must_be_fit_against": (
+                    "the embeddings of this exact fusion assembly, identified "
+                    "by provenance.source_dev_metrics_sha256"
+                ),
+                "this_bundle_supplies_known_unknown_decision": True,
+                "this_bundle_supplies_public_known_label": False,
+            }
+        )
+    else:
+        contract.update(
+            {
+                "must_be_fit_against": (
+                    "the distinct role-bound known_unknown_rejector bundle, "
+                    "never this accepted-known classifier bundle"
+                ),
+                "must_not_be_fit_against_this_classifier": True,
+                "this_bundle_supplies_known_unknown_decision": False,
+                "this_bundle_supplies_public_known_label": True,
+                "classifier_runs_only_after_rejector_acceptance": True,
+            }
+        )
+    return contract
 
 
-def unset_rejection_slot() -> dict[str, Any]:
+def unset_rejection_slot(runtime_role: str) -> dict[str, Any]:
     """The explicit, non-null description of an absent rejector."""
+    role = validate_runtime_role(runtime_role)
+    if role == RUNTIME_ROLE_REJECTOR:
+        reason = (
+            "this bundle supplies the embeddings used by the separately "
+            "validated staged rejector; the stage-1 gate, stage-2 fitted state, "
+            "composite survivor policy and validation report remain separate "
+            "hash-bound artifacts"
+        )
+        behaviour = (
+            "known/unknown decisions require the separately validated staged "
+            "v3 policy fitted against this exact rejector fusion; this bundle "
+            "must never substitute a v2 or unvalidated policy"
+        )
+    else:
+        reason = (
+            "this bundle is the accepted-known classifier only; rejection is "
+            "owned by a distinct role-bound known_unknown_rejector bundle and "
+            "its separately validated staged policy"
+        )
+        behaviour = (
+            "run only after the role-bound rejector accepts the capture, and "
+            "use only this bundle's nearest-prototype winner as the public "
+            "known label"
+        )
     return {
         "state": "unset",
         "fitted": False,
         "policy": None,
         "asset_directory": None,
-        "reason": (
-            "the release candidate uses a staged rejector whose stage-1 gate, "
-            "stage-2 fitted state, composite survivor policy and validation "
-            "report are exported and hash-bound separately; this classifier "
-            "bundle must not collapse those artifacts into an unvalidated "
-            "additive slot"
-        ),
-        "runtime_behaviour": (
-            "classifier-only unless a separately validated staged v3 policy "
-            "is supplied; a consumer must not abstain from this slot alone and "
-            "must never substitute a v2 or unvalidated rejector"
-        ),
+        "reason": reason,
+        "runtime_behaviour": behaviour,
         "external_staged_policy_required_for_abstention": True,
         "cannot_change_closed_label": True,
-        "required_contract": required_rejector_contract(),
+        "required_contract": required_rejector_contract(role),
     }
 
 
@@ -776,7 +830,7 @@ def _write_rejector(
         "sha256": _sha256(provenance_path),
         "bytes": int(provenance_path.stat().st_size),
     }
-    contract = required_rejector_contract()
+    contract = required_rejector_contract(RUNTIME_ROLE_REJECTOR)
     return {
         "slot": {
             "state": "fitted",
@@ -953,12 +1007,14 @@ def export_bundle(
     source_dir: Path,
     output_dir: Path,
     *,
+    runtime_role: str = RUNTIME_ROLE_REJECTOR,
     rejector_dir: Path | None = None,
     specifications: Sequence[Mapping[str, Any]] = PROBE_SPECIFICATIONS,
     tolerance: float = SELF_VERIFICATION_TOLERANCE,
 ) -> dict[str, Any]:
     """Write the deterministic v3 runtime bundle and return its manifest."""
     validate_schema_identity()
+    role = validate_runtime_role(runtime_role)
     source = reject_sealed_path(Path(source_dir), "source")
     output = _validate_output_path(source, output_dir)
     loaded = load_fusion_artifact(source)
@@ -992,8 +1048,13 @@ def export_bundle(
         assets[name] = {"sha256": digest, "bytes": int(destination.stat().st_size)}
 
     if rejector_dir is None:
-        rejection = unset_rejection_slot()
+        rejection = unset_rejection_slot(role)
     else:
+        if role != RUNTIME_ROLE_REJECTOR:
+            raise ValueError(
+                "an accepted-known classifier bundle cannot attach a local "
+                "rejector; rejection belongs to the distinct rejector role"
+            )
         attached = _write_rejector(
             output,
             load_rejector_policy(
@@ -1012,6 +1073,7 @@ def export_bundle(
         "schema": SCHEMA_ID,
         "schema_version": SCHEMA_VERSION,
         "kind": "v3-time-domain-centered-invariant-fusion",
+        "runtime_role": role,
         "status": "development_bundle_not_release",
         "development_only": True,
         "release_evidence": False,
@@ -1110,6 +1172,9 @@ def export_bundle(
             (
                 "the separately exported staged open-set policy must be a "
                 "passing validate-role artifact bound to this exact fusion"
+                if role == RUNTIME_ROLE_REJECTOR
+                else "the dual binding must pair this accepted-known classifier "
+                "with a distinct passing role-bound rejector"
             ),
             (
                 "release promotion requires the current candidate preflight, "
@@ -1193,6 +1258,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="empty or absent directory to receive the runtime bundle",
     )
     parser.add_argument(
+        "--runtime-role",
+        choices=sorted(RUNTIME_ROLES),
+        default=RUNTIME_ROLE_REJECTOR,
+        help=(
+            "explicit responsibility serialized into the bundle; use "
+            "known_unknown_rejector for the staged-policy fusion and "
+            "accepted_known_classifier for the post-acceptance label fusion"
+        ),
+    )
+    parser.add_argument(
         "--rejector-dir",
         default=None,
         help=(
@@ -1208,6 +1283,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest = export_bundle(
         Path(args.source_dir),
         Path(args.output_dir),
+        runtime_role=args.runtime_role,
         rejector_dir=None if args.rejector_dir is None else Path(args.rejector_dir),
     )
     print(

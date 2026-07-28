@@ -8,8 +8,27 @@ import unittest
 import export_v3_browser_weights as subject
 
 
-def valid_manifest() -> dict:
+def valid_manifest(
+    role: str = subject.RUNTIME_ROLE_REJECTOR,
+) -> dict:
+    if role == subject.RUNTIME_ROLE_REJECTOR:
+        role_contract = {
+            "this_bundle_supplies_known_unknown_decision": True,
+            "this_bundle_supplies_public_known_label": False,
+            "must_be_fit_against": "the embeddings of this exact fusion assembly",
+        }
+    else:
+        role_contract = {
+            "this_bundle_supplies_known_unknown_decision": False,
+            "this_bundle_supplies_public_known_label": True,
+            "classifier_runs_only_after_rejector_acceptance": True,
+            "must_not_be_fit_against_this_classifier": True,
+            "must_be_fit_against": (
+                "the distinct role-bound known_unknown_rejector bundle"
+            ),
+        }
     return {
+        "runtime_role": role,
         "rejection": {
             "state": "unset",
             "external_staged_policy_required_for_abstention": True,
@@ -17,7 +36,8 @@ def valid_manifest() -> dict:
                 "scope": (
                     "stage two on stage-one survivors only; staged policy "
                     "assets are separate"
-                )
+                ),
+                **role_contract,
             },
         },
         "release_blockers": [
@@ -30,7 +50,24 @@ def valid_manifest() -> dict:
 
 class ExternalStagedContractTests(unittest.TestCase):
     def test_current_external_contract_is_accepted(self) -> None:
-        subject.validate_external_staged_rejection(valid_manifest())
+        self.assertEqual(
+            subject.validate_external_staged_rejection(valid_manifest()),
+            subject.RUNTIME_ROLE_REJECTOR,
+        )
+
+    def test_accepted_known_classifier_contract_is_accepted(self) -> None:
+        self.assertEqual(
+            subject.validate_external_staged_rejection(
+                valid_manifest(subject.RUNTIME_ROLE_CLASSIFIER)
+            ),
+            subject.RUNTIME_ROLE_CLASSIFIER,
+        )
+
+    def test_anonymous_runtime_role_is_refused(self) -> None:
+        manifest = valid_manifest()
+        del manifest["runtime_role"]
+        with self.assertRaisesRegex(ValueError, "runtime bundle role"):
+            subject.validate_external_staged_rejection(manifest)
 
     def test_fitted_legacy_slot_is_refused(self) -> None:
         manifest = valid_manifest()

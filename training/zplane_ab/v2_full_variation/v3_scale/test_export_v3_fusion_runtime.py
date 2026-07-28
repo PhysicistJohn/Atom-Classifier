@@ -551,6 +551,9 @@ class BundleContentTests(_Fixture):
 class RejectionSlotTests(_Fixture):
     def test_slot_exists_and_is_explicitly_unset(self) -> None:
         manifest = _export(self.source, self.output)
+        self.assertEqual(
+            manifest["runtime_role"], subject.RUNTIME_ROLE_REJECTOR
+        )
         rejection = manifest["rejection"]
         self.assertIn("rejection", manifest)
         self.assertEqual(rejection["state"], "unset")
@@ -576,6 +579,58 @@ class RejectionSlotTests(_Fixture):
             contract["rank_and_threshold_population"], "enrollment only"
         )
         self.assertIn("stage-one survivors", contract["scope"])
+        self.assertIs(
+            contract["this_bundle_supplies_known_unknown_decision"], True
+        )
+        self.assertIs(
+            contract["this_bundle_supplies_public_known_label"], False
+        )
+
+    def test_classifier_role_delegates_rejection_and_owns_only_known_label(
+        self,
+    ) -> None:
+        manifest = _export(
+            self.source,
+            self.output,
+            runtime_role=subject.RUNTIME_ROLE_CLASSIFIER,
+        )
+        self.assertEqual(
+            manifest["runtime_role"], subject.RUNTIME_ROLE_CLASSIFIER
+        )
+        contract = manifest["rejection"]["required_contract"]
+        self.assertIs(
+            contract["this_bundle_supplies_known_unknown_decision"], False
+        )
+        self.assertIs(
+            contract["this_bundle_supplies_public_known_label"], True
+        )
+        self.assertIs(
+            contract["classifier_runs_only_after_rejector_acceptance"], True
+        )
+        self.assertIs(
+            contract["must_not_be_fit_against_this_classifier"], True
+        )
+        self.assertIn(
+            "known_unknown_rejector", contract["must_be_fit_against"]
+        )
+        self.assertIn(
+            "distinct passing role-bound rejector",
+            " ".join(manifest["release_blockers"]),
+        )
+
+    def test_classifier_role_refuses_a_local_rejector(self) -> None:
+        policy_dir = self.root / "rejector"
+        self._write_policy(
+            policy_dir,
+            _sha256_bytes((self.source / "dev_metrics.json").read_bytes()),
+        )
+        with self.assertRaisesRegex(ValueError, "cannot attach"):
+            _export(
+                self.source,
+                self.output,
+                runtime_role=subject.RUNTIME_ROLE_CLASSIFIER,
+                rejector_dir=policy_dir,
+            )
 
     def test_release_blockers_are_current_requirements(self) -> None:
         manifest = _export(self.source, self.output)
