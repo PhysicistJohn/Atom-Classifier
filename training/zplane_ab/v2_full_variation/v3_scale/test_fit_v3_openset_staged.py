@@ -381,6 +381,7 @@ class SeedLedgerTests(unittest.TestCase):
                 20260950,
                 20260951,
                 20260952,
+                20260955,
             ],
         )
         self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260953)
@@ -394,7 +395,19 @@ class SeedLedgerTests(unittest.TestCase):
             "38/1908 = 0.019916142557651992",
             subject.SPENT_NOVELTY_SEEDS[20260952],
         )
-        self.assertNotIn(20260955, subject.SPENT_NOVELTY_SEEDS)
+        self.assertIn(20260955, subject.SPENT_NOVELTY_SEEDS)
+        self.assertIn(
+            "80/1908 = 0.041928721174004195",
+            subject.SPENT_NOVELTY_SEEDS[20260955],
+        )
+        self.assertIn(
+            "57/300 = 0.19",
+            subject.SPENT_NOVELTY_SEEDS[20260955],
+        )
+        self.assertIn(
+            "bb749aadd5395a3fc21ff9453621ad8fa7a7512f9b3c21c29cee933b09adfb0f",
+            subject.SPENT_NOVELTY_SEEDS[20260955],
+        )
         self.assertEqual(
             subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, (20260953, 20260954)
         )
@@ -509,8 +522,8 @@ class SeedLedgerTests(unittest.TestCase):
 
     def test_a_clean_seed_is_accepted(self) -> None:
         self.assertEqual(
-            subject.validate_novelty_seeds([20260953, 20260954, 20260955]),
-            (20260953, 20260954, 20260955),
+            subject.validate_novelty_seeds([20260953, 20260954, 20260956]),
+            (20260953, 20260954, 20260956),
         )
 
     def test_novelty_seed_validation_is_typed_and_respects_clean_boundary(
@@ -530,10 +543,13 @@ class SeedLedgerTests(unittest.TestCase):
             subject.validate_novelty_seeds([])
 
     def test_validation_is_refused_before_the_design_ledger_transition(self) -> None:
-        with self.assertRaisesRegex(ValueError, "not yet frozen"):
-            subject.validate_seed_plan(
-                "validate", DESIGN_SEED, subject.DEFAULT_VALIDATION_NOVELTY_SEEDS
-            )
+        with _temporarily_unspent_design_seed():
+            with self.assertRaisesRegex(ValueError, "not yet frozen"):
+                subject.validate_seed_plan(
+                    "validate",
+                    DESIGN_SEED,
+                    subject.DEFAULT_VALIDATION_NOVELTY_SEEDS,
+                )
 
     def test_a_default_validation_seed_may_not_be_the_design_seed(self) -> None:
         with self.assertRaisesRegex(ValueError, "design seed is reserved"):
@@ -593,7 +609,8 @@ class SeedLedgerTests(unittest.TestCase):
     def test_the_ledger_note_names_every_spent_seed(self) -> None:
         for seed in subject.SPENT_NOVELTY_SEEDS:
             self.assertIn(str(seed), subject.SEED_LEDGER_NOTE)
-        self.assertIn("intentionally not in SPENT", subject.SEED_LEDGER_NOTE)
+        self.assertIn("passed all six", subject.SEED_LEDGER_NOTE)
+        self.assertIn("remain untouched", subject.SEED_LEDGER_NOTE)
         self.assertIn("evidence rule 4", subject.SEED_LEDGER_NOTE)
 
     def test_future_design_and_validation_commands_are_explicit(self) -> None:

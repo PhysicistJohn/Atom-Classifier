@@ -314,6 +314,15 @@ SPENT_NOVELTY_SEEDS: dict[int, str] = {
         "was 38/1908 = 0.019916142557651992. The seed is consumed and may not "
         "be redrawn"
     ),
+    20260955: (
+        "designed the frozen policy-v4/q97 v3.4 candidate: "
+        "design_selection_pass; all six unchanged design gates passed. Known "
+        "false-unknown was 80/1908 = 0.041928721174004195 and worst N4096 "
+        "chirp threshold recall was 57/300 = 0.19. Report sha256 "
+        "bb749aadd5395a3fc21ff9453621ad8fa7a7512f9b3c21c29cee933b09adfb0f. "
+        "This is development selection, not validation evidence; the seed is "
+        "consumed and may not be redrawn"
+    ),
 }
 
 # Consumed sealed release suites (evidence rule 2): never re-run, never fit,
@@ -341,10 +350,9 @@ CONSUMED_SEALED_RELEASE_SEEDS: dict[int, str] = {
 }
 RELEASE_SEED_NEVER_SPENT_HERE = 20260736
 
-# Seeds through 20260952 are consumed.  The policy-v3/q99 design failure is
-# frozen and may not be redrawn.  Seeds 20260953/20260954 remain untouched and
-# reserved for validation; policy-v4/q97 uses the next unreserved clean seed,
-# 20260955, for its one design draw.
+# Seeds through 20260952 and design seed 20260955 are consumed.  Both design
+# outcomes are frozen and may not be redrawn.  Seeds 20260953/20260954 remain
+# untouched and reserved for the one policy-v4/q97 validation draw.
 FIRST_CLEAN_NOVELTY_SEED = 20260953
 PROPOSED_DESIGN_NOVELTY_SEED = 20260955
 DEFAULT_VALIDATION_NOVELTY_SEEDS = (20260953, 20260954)
@@ -360,12 +368,12 @@ SEED_LEDGER_NOTE = (
     f"none of them is a development novelty seed. {FIRST_CLEAN_NOVELTY_SEED} "
     "onward are clean except for the explicit reservations below. The frozen "
     "policy-v3/q99 design consumed seed 20260952 and failed only N4096 chirp "
-    "threshold recall. The predeclared policy-v4/q97 candidate reserves clean "
-    f"design seed {PROPOSED_DESIGN_NOVELTY_SEED} and validation seeds "
-    f"{list(DEFAULT_VALIDATION_NOVELTY_SEEDS)}. The design seed is intentionally "
-    "not in SPENT_NOVELTY_SEEDS yet. Validation is refused until a ledger-only "
-    "transition marks that design seed spent, and drawing either validation "
-    "seed during design would violate evidence rule 4."
+    "threshold recall. The policy-v4/q97 design consumed seed "
+    f"{PROPOSED_DESIGN_NOVELTY_SEED} and passed all six unchanged design "
+    "gates; that result is selection, not validation evidence. Validation "
+    f"seeds {list(DEFAULT_VALIDATION_NOVELTY_SEEDS)} remain untouched and "
+    "reserved for their one exact ordered validation draw. Drawing either "
+    "outside that validation would violate evidence rule 4."
 )
 
 
