@@ -1509,3 +1509,62 @@ streams). 535 v3_scale tests green.
    the atomizer Cloudflare worker (atomizer.radio-lab.app / signal.radio-lab.app) bundles the
    classifier assets AND runtime at build time; shipping means rebuilding Atomizer with the
    v3 TS runtime + assets and `wrangler deploy`.
+
+## 25. SEALED RUN, SEED 20260731: 22/23 GATES PASS. FAILURE FROZEN.
+
+`training/artifacts/releases/invariant_fusion_v3_sealed_seed20260731/RELEASE_EVALUATION.json`
+is the immutable evidence. `all_release_gates_pass: false`. Per rules 2-4 this suite is now
+CONSUMED: never re-run, never tuned against, never weakened.
+
+### Every gate that killed v2 passed on sealed
+
+| gate | v2 sealed | v3 sealed | bound |
+|---|---:|---:|---:|
+| physical-scale balanced | 0.6741 FAIL | **0.8400** | 0.75 |
+| physical-scale paired cosine | 0.7804 FAIL | **0.9408** | 0.80 |
+| physical-scale paired agreement | 0.6581 FAIL | **0.8460** | 0.75 |
+| chirp AUROC | 0.7235 FAIL | **0.9387** | 0.80 |
+| chirp threshold recall | 0.0 FAIL | **0.9900** | 0.10 |
+| noise AUROC | 0.7962 FAIL | **0.8693** | 0.80 |
+| noise threshold recall | - | **0.7200** | 0.10 |
+| five-shot worst balanced | 0.8495 FAIL | **0.8503** | 0.85 |
+| closed clean worst length | 0.8464 FAIL | **0.8960** | 0.85 |
+| closed balanced worst length | 0.8587 | 0.8518 | - |
+
+The causal-prefix rule earned its keep: noise recall at the worst length is 0.7200 where the
+pre-fix prediction was 0.000. Five-shot passed by 0.0008 -- razor thin, but predeclared and
+untouched.
+
+### The one failure, diagnosed from the frozen artifact
+
+`open_known_false_unknown_worst_length = 0.10237` vs ceiling 0.10, at N32768.
+
+Per-stage, per-length (1309 known rows/length):
+
+| N | total FUR | stage-1 gate rate | stage-2 among survivors |
+|---|---:|---:|---:|
+| 4096 | 0.0794 | 0.0504 | 0.0306 |
+| 8192 | 0.0924 | 0.0542 | 0.0404 |
+| 16384 | 0.0802 | 0.0474 | 0.0345 |
+| 32768 | **0.1024** | 0.0474 | **0.0577** |
+
+Two population shifts, additive:
+1. Stage-1's enrollment-fitted 0.02 false-positive budget realised as ~0.05 on the sealed
+   population (sealed draws are harder than dev enrollment).
+2. Stage-2 LOF rejects 5.8% of survivors at N32768 against 3.0-4.0% elsewhere -- the LOF
+   references were built from N16384-native dev rows, and 32768-length embeddings sit
+   slightly further from that manifold.
+
+### The sanctioned path forward (rule 2.4: new candidate on dev data, new untouched seed)
+
+Minimal candidate change, chosen from the frozen negative evidence and fitted only on dev:
+tighten the stage-1 budget 0.02 -> 0.01 (threshold refit on ENROLLMENT only; same features,
+same coefficients, same policy). Dev arithmetic: sealed stage-1 realised ~2.4x the dev
+budget, so 0.01 projects to ~0.024 sealed; worst-length total projects to ~0.082 against the
+0.10 ceiling. Noise recall has enormous headroom (0.72 sealed vs 0.10 floor) to pay for it.
+Stage-2 and its frozen q95 stay untouched.
+
+Then: re-validate staged on FRESH clean seeds (20260944/20260945 -- 942/943 validated the
+current policy and must not validate the modified one), preflight, and a new release seed.
+NOTE the namespace hazard: 20260732 is already a dev MODEL seed; use 20260733 for the next
+release to avoid the collision the handoff already warns about.
