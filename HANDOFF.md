@@ -1187,3 +1187,76 @@ through this policy. The next step is a policy REDESIGN, not another weight:
 
 Do not tune the existing weights, the LOF shape, or q95 to close this. The structure is the
 problem and tuning it would only hide that.
+
+## 20. Staged noise prefilter: ALL OPEN-SET GATES PASS, both fusion seeds
+
+User's proposal: a simple model that decides noise/not-noise and gates further calculation,
+so noise never reaches the downstream classifier. It works, and it closes both noise gates.
+
+### 20.1 What was built
+
+`v3_scale/noise_prefilter.py` (83 tests) -- ridge logistic regression, **7 coefficients plus
+an intercept and a threshold**, over pose-degeneracy features. One model per capture length,
+because the features are length-dependent (noise relative-lag magnitude decays as 1/sqrt(N)).
+Runtime cost is a dot product and a logistic, so the TypeScript port is trivial.
+
+`v3_scale/fit_v3_openset_staged.py` (111 tests) -- stage 1 runs the prefilter and short-
+circuits; stage 2 runs the existing v3 path unchanged for whatever survives.
+
+Seed hygiene is enforced in code: the fitting seed must come from a disjoint band
+(20261000-20261999, used 20261001) and the module refuses the entire 20260900-20260999
+novelty namespace, so fitting cannot consume validation evidence.
+
+### 20.2 Validation on CLEAN seeds 20260942 / 20260943, both fusion seeds
+
+| gate | fusion s0730 | fusion s0732 | bound | |
+|---|---:|---:|---:|---|
+| noise AUROC | 0.8559 | 0.8404 | >= 0.80 | pass |
+| noise threshold recall | 0.6200 | 0.6133 | >= 0.10 | pass |
+| chirp AUROC | 0.9668 | 0.9498 | >= 0.80 | pass |
+| chirp threshold recall | 0.9967 | 0.7167 | >= 0.10 | pass |
+| overall AUROC | 0.9154 | 0.8995 | >= 0.72 | pass |
+| known false-unknown rate | 0.0681 | 0.0629 | <= 0.10 | pass |
+
+`status: development_openset_pass` on both. `sealed_release_data_used: 0`,
+`consumed_test_rows_used: 0`. Rebuild bit-identical to both fusion artifacts.
+
+Noise moved from **0.6038 AUROC / 0.0000 recall** (section 17) to **0.84-0.86 / 0.61-0.62**.
+
+### 20.3 Why it worked, stated precisely
+
+Section 19 established the separability already existed (single features at 0.86-0.92 noise
+AUROC) but the frozen rank blend could not place a threshold: q95 was fit on a fused
+distribution dominated by the branch-LOF term, which on v3 ranks noise as KNOWN. The failure
+was the operating point, not the ranking.
+
+A dedicated detector sets its own threshold against its own scores, so that constraint
+disappears. The recall gate is only >= 0.10 and the realised recall is 0.61, six times the
+bar, because the separation was never the problem.
+
+Staging also behaves as designed: 61-75% of noise is gated at stage 1 and never reaches the
+encoder, fusion, prototype distance or branch LOF, while only 0-5% of chirp is gated, so
+chirp still flows to the stage-2 path that already solved it.
+
+### 20.4 The architecture contract has changed, and this must appear in any release claim
+
+Previously the rejector was strictly additive and never altered the closed label. The
+prefilter GATES: it can abstain before classification runs. That is deliberate, it is
+recorded machine-readably (`additive_only: false`, `changes_closed_label: true`,
+`gates_before_classification: true`), and it must be stated rather than glossed. The
+compute saving is a genuine benefit for browser deployment, but it is a behavioural change.
+
+### 20.5 Remaining
+
+One gate still fails: **worst five-shot balanced 0.7564/0.7552 vs 0.85** (section 18). It is
+a closed-set few-shot problem, independent of rejection, and no prefilter can help it. The
+standing hypothesis is that multilength training widens within-class embedding variance,
+which a 5-example support set is directly sensitive to; testable against a fusion built from
+the non-multilength baseline branches, which exist and are budget-matched.
+
+Scorecard: **seven of v2's eight failed gates now pass, plus the noise threshold recall gate
+that v2 passed and v3 had broken.** Five-shot is the sole remaining failure.
+
+Release seed 20260731 still unspent. Also still required before any release: the v3 runtime
+bundle export, and the TypeScript encoder/fusion/prototype/rejection port with fresh parity
+fixtures.
