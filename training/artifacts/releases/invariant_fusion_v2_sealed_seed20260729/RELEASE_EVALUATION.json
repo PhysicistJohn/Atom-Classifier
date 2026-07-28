@@ -1,0 +1,3481 @@
+{
+  "all_release_gates_pass": false,
+  "candidate": {
+    "classes": [
+      "am",
+      "bluetooth",
+      "cw",
+      "dsss",
+      "fm",
+      "gsm",
+      "ofdm"
+    ],
+    "frozen_assets_used": [
+      "branch weights",
+      "fusion centers/weights",
+      "feature mean/std",
+      "fused prototypes",
+      "weighted LOF references/ranks/weights/threshold"
+    ],
+    "path": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/invariant_fusion_runtime_bundle_v2_seed20260727/runtime_bundle.pt",
+    "runtime_kind": "invariant_centered_fusion_classifier",
+    "runtime_schema": 2,
+    "sha256": "b94ac51b15c1813ca0f94bf3cc3b28ee5f903206b2885ec14dbaa8fddca031e3"
+  },
+  "clean_subset_per_length": {
+    "16384": {
+      "accuracy": 0.9623824451410659,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.959172360740305,
+      "class_counts": {
+        "am": 51,
+        "bluetooth": 41,
+        "cw": 49,
+        "dsss": 43,
+        "fm": 49,
+        "gsm": 42,
+        "ofdm": 44
+      },
+      "n": 319,
+      "per_class_recall": {
+        "am": 1.0,
+        "bluetooth": 0.9512195121951219,
+        "cw": 1.0,
+        "dsss": 1.0,
+        "fm": 1.0,
+        "gsm": 0.7857142857142857,
+        "ofdm": 0.9772727272727273
+      }
+    },
+    "32768": {
+      "accuracy": 0.9811912225705329,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9797464440321584,
+      "class_counts": {
+        "am": 51,
+        "bluetooth": 41,
+        "cw": 49,
+        "dsss": 43,
+        "fm": 49,
+        "gsm": 42,
+        "ofdm": 44
+      },
+      "n": 319,
+      "per_class_recall": {
+        "am": 1.0,
+        "bluetooth": 1.0,
+        "cw": 1.0,
+        "dsss": 1.0,
+        "fm": 1.0,
+        "gsm": 0.8809523809523809,
+        "ofdm": 0.9772727272727273
+      }
+    },
+    "4096": {
+      "accuracy": 0.8463949843260188,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.83824579031987,
+      "class_counts": {
+        "am": 51,
+        "bluetooth": 41,
+        "cw": 49,
+        "dsss": 43,
+        "fm": 49,
+        "gsm": 42,
+        "ofdm": 44
+      },
+      "n": 319,
+      "per_class_recall": {
+        "am": 0.9803921568627451,
+        "bluetooth": 0.6341463414634146,
+        "cw": 1.0,
+        "dsss": 0.9767441860465116,
+        "fm": 0.7959183673469388,
+        "gsm": 0.5714285714285714,
+        "ofdm": 0.9090909090909091
+      }
+    },
+    "8192": {
+      "accuracy": 0.9341692789968652,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9283790244814474,
+      "class_counts": {
+        "am": 51,
+        "bluetooth": 41,
+        "cw": 49,
+        "dsss": 43,
+        "fm": 49,
+        "gsm": 42,
+        "ofdm": 44
+      },
+      "n": 319,
+      "per_class_recall": {
+        "am": 1.0,
+        "bluetooth": 0.8292682926829268,
+        "cw": 1.0,
+        "dsss": 0.9767441860465116,
+        "fm": 1.0,
+        "gsm": 0.7380952380952381,
+        "ofdm": 0.9545454545454546
+      }
+    }
+  },
+  "closed_per_length": {
+    "16384": {
+      "accuracy": 0.9243697478991597,
+      "balanced_accuracy": 0.9243697478991597,
+      "clean_accuracy": 0.9623824451410659,
+      "clean_subset": {
+        "accuracy": 0.9623824451410659,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.959172360740305,
+        "class_counts": {
+          "am": 51,
+          "bluetooth": 41,
+          "cw": 49,
+          "dsss": 43,
+          "fm": 49,
+          "gsm": 42,
+          "ofdm": 44
+        },
+        "n": 319,
+        "per_class_recall": {
+          "am": 1.0,
+          "bluetooth": 0.9512195121951219,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.7857142857142857,
+          "ofdm": 0.9772727272727273
+        }
+      },
+      "confusion": [
+        [
+          181,
+          0,
+          3,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          1,
+          169,
+          2,
+          13,
+          0,
+          2,
+          0
+        ],
+        [
+          3,
+          0,
+          179,
+          1,
+          2,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          185,
+          0,
+          0,
+          2
+        ],
+        [
+          2,
+          0,
+          3,
+          0,
+          180,
+          2,
+          0
+        ],
+        [
+          5,
+          12,
+          4,
+          1,
+          5,
+          144,
+          16
+        ],
+        [
+          1,
+          0,
+          0,
+          5,
+          2,
+          7,
+          172
+        ]
+      ],
+      "family": {
+        "accuracy": 0.9243697478991597,
+        "balanced_accuracy": 0.9243697478991597,
+        "mapping": {
+          "am": "am",
+          "bluetooth": "bluetooth",
+          "cw": "cw",
+          "dsss": "dsss",
+          "fm": "fm",
+          "gsm": "gsm",
+          "ofdm": "ofdm"
+        },
+        "reason": "sealed corpus labels are already broad RF families"
+      },
+      "high_snr": {
+        "accuracy": 0.9449035812672176,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.946407166533594,
+        "class_counts": {
+          "am": 105,
+          "bluetooth": 91,
+          "cw": 101,
+          "dsss": 108,
+          "fm": 107,
+          "gsm": 112,
+          "ofdm": 102
+        },
+        "definition": "manifest snrDb >= 18",
+        "n": 726,
+        "per_class_recall": {
+          "am": 0.9809523809523809,
+          "bluetooth": 0.945054945054945,
+          "cw": 0.9900990099009901,
+          "dsss": 0.9907407407407407,
+          "fm": 0.9813084112149533,
+          "gsm": 0.7857142857142857,
+          "ofdm": 0.9509803921568627
+        },
+        "threshold_db": 18.0
+      },
+      "impaired_accuracy": 0.9121212121212121,
+      "impaired_subset": {
+        "accuracy": 0.9121212121212121,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.913046273465671,
+        "class_counts": {
+          "am": 136,
+          "bluetooth": 146,
+          "cw": 138,
+          "dsss": 144,
+          "fm": 138,
+          "gsm": 145,
+          "ofdm": 143
+        },
+        "n": 990,
+        "per_class_recall": {
+          "am": 0.9558823529411765,
+          "bluetooth": 0.8904109589041096,
+          "cw": 0.9420289855072463,
+          "dsss": 0.9861111111111112,
+          "fm": 0.9492753623188406,
+          "gsm": 0.7655172413793103,
+          "ofdm": 0.9020979020979021
+        }
+      },
+      "low_snr": {
+        "accuracy": 0.8987993138936535,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8983241252408973,
+        "class_counts": {
+          "am": 82,
+          "bluetooth": 96,
+          "cw": 86,
+          "dsss": 79,
+          "fm": 80,
+          "gsm": 75,
+          "ofdm": 85
+        },
+        "definition": "manifest snrDb < 18",
+        "n": 583,
+        "per_class_recall": {
+          "am": 0.9512195121951219,
+          "bluetooth": 0.8645833333333334,
+          "cw": 0.9186046511627907,
+          "dsss": 0.9873417721518988,
+          "fm": 0.9375,
+          "gsm": 0.7466666666666667,
+          "ofdm": 0.8823529411764706
+        },
+        "threshold_db": 18.0
+      },
+      "mean_pairwise_cosine": 0.39694723448474484,
+      "n": 1309,
+      "nearest_distance_median": 0.08274188744958,
+      "per_class_recall": {
+        "am": 0.9679144385026738,
+        "bluetooth": 0.9037433155080213,
+        "cw": 0.9572192513368984,
+        "dsss": 0.9893048128342246,
+        "fm": 0.9625668449197861,
+        "gsm": 0.7700534759358288,
+        "ofdm": 0.9197860962566845
+      }
+    },
+    "32768": {
+      "accuracy": 0.9312452253628725,
+      "balanced_accuracy": 0.9312452253628724,
+      "clean_accuracy": 0.9811912225705329,
+      "clean_subset": {
+        "accuracy": 0.9811912225705329,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9797464440321584,
+        "class_counts": {
+          "am": 51,
+          "bluetooth": 41,
+          "cw": 49,
+          "dsss": 43,
+          "fm": 49,
+          "gsm": 42,
+          "ofdm": 44
+        },
+        "n": 319,
+        "per_class_recall": {
+          "am": 1.0,
+          "bluetooth": 1.0,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.8809523809523809,
+          "ofdm": 0.9772727272727273
+        }
+      },
+      "confusion": [
+        [
+          175,
+          2,
+          3,
+          1,
+          6,
+          0,
+          0
+        ],
+        [
+          1,
+          170,
+          3,
+          11,
+          0,
+          2,
+          0
+        ],
+        [
+          5,
+          5,
+          175,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          187,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          6,
+          1,
+          177,
+          2,
+          0
+        ],
+        [
+          2,
+          10,
+          2,
+          7,
+          4,
+          159,
+          3
+        ],
+        [
+          1,
+          0,
+          0,
+          6,
+          1,
+          3,
+          176
+        ]
+      ],
+      "family": {
+        "accuracy": 0.9312452253628725,
+        "balanced_accuracy": 0.9312452253628724,
+        "mapping": {
+          "am": "am",
+          "bluetooth": "bluetooth",
+          "cw": "cw",
+          "dsss": "dsss",
+          "fm": "fm",
+          "gsm": "gsm",
+          "ofdm": "ofdm"
+        },
+        "reason": "sealed corpus labels are already broad RF families"
+      },
+      "high_snr": {
+        "accuracy": 0.9586776859504132,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9581294318127277,
+        "class_counts": {
+          "am": 105,
+          "bluetooth": 91,
+          "cw": 101,
+          "dsss": 108,
+          "fm": 107,
+          "gsm": 112,
+          "ofdm": 102
+        },
+        "definition": "manifest snrDb >= 18",
+        "n": 726,
+        "per_class_recall": {
+          "am": 0.9809523809523809,
+          "bluetooth": 0.9010989010989011,
+          "cw": 0.9702970297029703,
+          "dsss": 1.0,
+          "fm": 0.9813084112149533,
+          "gsm": 0.8928571428571429,
+          "ofdm": 0.9803921568627451
+        },
+        "threshold_db": 18.0
+      },
+      "impaired_accuracy": 0.9151515151515152,
+      "impaired_subset": {
+        "accuracy": 0.9151515151515152,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9153364714682365,
+        "class_counts": {
+          "am": 136,
+          "bluetooth": 146,
+          "cw": 138,
+          "dsss": 144,
+          "fm": 138,
+          "gsm": 145,
+          "ofdm": 143
+        },
+        "n": 990,
+        "per_class_recall": {
+          "am": 0.9117647058823529,
+          "bluetooth": 0.8835616438356164,
+          "cw": 0.9130434782608695,
+          "dsss": 1.0,
+          "fm": 0.927536231884058,
+          "gsm": 0.8413793103448276,
+          "ofdm": 0.9300699300699301
+        }
+      },
+      "low_snr": {
+        "accuracy": 0.8970840480274442,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8958355140127521,
+        "class_counts": {
+          "am": 82,
+          "bluetooth": 96,
+          "cw": 86,
+          "dsss": 79,
+          "fm": 80,
+          "gsm": 75,
+          "ofdm": 85
+        },
+        "definition": "manifest snrDb < 18",
+        "n": 583,
+        "per_class_recall": {
+          "am": 0.8780487804878049,
+          "bluetooth": 0.9166666666666666,
+          "cw": 0.8953488372093024,
+          "dsss": 1.0,
+          "fm": 0.9,
+          "gsm": 0.7866666666666666,
+          "ofdm": 0.8941176470588236
+        },
+        "threshold_db": 18.0
+      },
+      "mean_pairwise_cosine": 0.4053491489893751,
+      "n": 1309,
+      "nearest_distance_median": 0.08543997718383434,
+      "per_class_recall": {
+        "am": 0.9358288770053476,
+        "bluetooth": 0.9090909090909091,
+        "cw": 0.9358288770053476,
+        "dsss": 1.0,
+        "fm": 0.946524064171123,
+        "gsm": 0.8502673796791443,
+        "ofdm": 0.9411764705882353
+      }
+    },
+    "4096": {
+      "accuracy": 0.8586707410236822,
+      "balanced_accuracy": 0.8586707410236822,
+      "clean_accuracy": 0.8463949843260188,
+      "clean_subset": {
+        "accuracy": 0.8463949843260188,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.83824579031987,
+        "class_counts": {
+          "am": 51,
+          "bluetooth": 41,
+          "cw": 49,
+          "dsss": 43,
+          "fm": 49,
+          "gsm": 42,
+          "ofdm": 44
+        },
+        "n": 319,
+        "per_class_recall": {
+          "am": 0.9803921568627451,
+          "bluetooth": 0.6341463414634146,
+          "cw": 1.0,
+          "dsss": 0.9767441860465116,
+          "fm": 0.7959183673469388,
+          "gsm": 0.5714285714285714,
+          "ofdm": 0.9090909090909091
+        }
+      },
+      "confusion": [
+        [
+          165,
+          0,
+          21,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          144,
+          7,
+          7,
+          1,
+          25,
+          3
+        ],
+        [
+          4,
+          0,
+          179,
+          0,
+          0,
+          2,
+          2
+        ],
+        [
+          0,
+          0,
+          1,
+          183,
+          0,
+          1,
+          2
+        ],
+        [
+          2,
+          0,
+          17,
+          0,
+          165,
+          1,
+          2
+        ],
+        [
+          21,
+          4,
+          15,
+          1,
+          10,
+          117,
+          19
+        ],
+        [
+          12,
+          0,
+          0,
+          2,
+          1,
+          1,
+          171
+        ]
+      ],
+      "family": {
+        "accuracy": 0.8586707410236822,
+        "balanced_accuracy": 0.8586707410236822,
+        "mapping": {
+          "am": "am",
+          "bluetooth": "bluetooth",
+          "cw": "cw",
+          "dsss": "dsss",
+          "fm": "fm",
+          "gsm": "gsm",
+          "ofdm": "ofdm"
+        },
+        "reason": "sealed corpus labels are already broad RF families"
+      },
+      "high_snr": {
+        "accuracy": 0.8842975206611571,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8856700671013561,
+        "class_counts": {
+          "am": 105,
+          "bluetooth": 91,
+          "cw": 101,
+          "dsss": 108,
+          "fm": 107,
+          "gsm": 112,
+          "ofdm": 102
+        },
+        "definition": "manifest snrDb >= 18",
+        "n": 726,
+        "per_class_recall": {
+          "am": 0.9047619047619048,
+          "bluetooth": 0.8351648351648352,
+          "cw": 0.9801980198019802,
+          "dsss": 0.9907407407407407,
+          "fm": 0.9065420560747663,
+          "gsm": 0.6607142857142857,
+          "ofdm": 0.9215686274509803
+        },
+        "threshold_db": 18.0
+      },
+      "impaired_accuracy": 0.8626262626262626,
+      "impaired_subset": {
+        "accuracy": 0.8626262626262626,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8636442528914051,
+        "class_counts": {
+          "am": 136,
+          "bluetooth": 146,
+          "cw": 138,
+          "dsss": 144,
+          "fm": 138,
+          "gsm": 145,
+          "ofdm": 143
+        },
+        "n": 990,
+        "per_class_recall": {
+          "am": 0.8455882352941176,
+          "bluetooth": 0.8082191780821918,
+          "cw": 0.9420289855072463,
+          "dsss": 0.9791666666666666,
+          "fm": 0.9130434782608695,
+          "gsm": 0.6413793103448275,
+          "ofdm": 0.916083916083916
+        }
+      },
+      "low_snr": {
+        "accuracy": 0.8267581475128645,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8262093472554914,
+        "class_counts": {
+          "am": 82,
+          "bluetooth": 96,
+          "cw": 86,
+          "dsss": 79,
+          "fm": 80,
+          "gsm": 75,
+          "ofdm": 85
+        },
+        "definition": "manifest snrDb < 18",
+        "n": 583,
+        "per_class_recall": {
+          "am": 0.8536585365853658,
+          "bluetooth": 0.7083333333333334,
+          "cw": 0.9302325581395349,
+          "dsss": 0.9620253164556962,
+          "fm": 0.85,
+          "gsm": 0.5733333333333334,
+          "ofdm": 0.9058823529411765
+        },
+        "threshold_db": 18.0
+      },
+      "mean_pairwise_cosine": 0.3982304188179524,
+      "n": 1309,
+      "nearest_distance_median": 0.09161881818793338,
+      "per_class_recall": {
+        "am": 0.8823529411764706,
+        "bluetooth": 0.7700534759358288,
+        "cw": 0.9572192513368984,
+        "dsss": 0.9786096256684492,
+        "fm": 0.8823529411764706,
+        "gsm": 0.6256684491978609,
+        "ofdm": 0.9144385026737968
+      }
+    },
+    "8192": {
+      "accuracy": 0.917494270435447,
+      "balanced_accuracy": 0.9174942704354468,
+      "clean_accuracy": 0.9341692789968652,
+      "clean_subset": {
+        "accuracy": 0.9341692789968652,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9283790244814474,
+        "class_counts": {
+          "am": 51,
+          "bluetooth": 41,
+          "cw": 49,
+          "dsss": 43,
+          "fm": 49,
+          "gsm": 42,
+          "ofdm": 44
+        },
+        "n": 319,
+        "per_class_recall": {
+          "am": 1.0,
+          "bluetooth": 0.8292682926829268,
+          "cw": 1.0,
+          "dsss": 0.9767441860465116,
+          "fm": 1.0,
+          "gsm": 0.7380952380952381,
+          "ofdm": 0.9545454545454546
+        }
+      },
+      "confusion": [
+        [
+          179,
+          0,
+          5,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          163,
+          4,
+          7,
+          1,
+          9,
+          1
+        ],
+        [
+          8,
+          0,
+          177,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          184,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          5,
+          0,
+          180,
+          0,
+          2
+        ],
+        [
+          10,
+          3,
+          4,
+          5,
+          5,
+          141,
+          19
+        ],
+        [
+          5,
+          0,
+          0,
+          3,
+          1,
+          1,
+          177
+        ]
+      ],
+      "family": {
+        "accuracy": 0.917494270435447,
+        "balanced_accuracy": 0.9174942704354468,
+        "mapping": {
+          "am": "am",
+          "bluetooth": "bluetooth",
+          "cw": "cw",
+          "dsss": "dsss",
+          "fm": "fm",
+          "gsm": "gsm",
+          "ofdm": "ofdm"
+        },
+        "reason": "sealed corpus labels are already broad RF families"
+      },
+      "high_snr": {
+        "accuracy": 0.9380165289256198,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9400696315195886,
+        "class_counts": {
+          "am": 105,
+          "bluetooth": 91,
+          "cw": 101,
+          "dsss": 108,
+          "fm": 107,
+          "gsm": 112,
+          "ofdm": 102
+        },
+        "definition": "manifest snrDb >= 18",
+        "n": 726,
+        "per_class_recall": {
+          "am": 0.9714285714285714,
+          "bluetooth": 0.945054945054945,
+          "cw": 0.9900990099009901,
+          "dsss": 0.9907407407407407,
+          "fm": 0.9813084112149533,
+          "gsm": 0.7410714285714286,
+          "ofdm": 0.9607843137254902
+        },
+        "threshold_db": 18.0
+      },
+      "impaired_accuracy": 0.9121212121212121,
+      "impaired_subset": {
+        "accuracy": 0.9121212121212121,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9129053504927113,
+        "class_counts": {
+          "am": 136,
+          "bluetooth": 146,
+          "cw": 138,
+          "dsss": 144,
+          "fm": 138,
+          "gsm": 145,
+          "ofdm": 143
+        },
+        "n": 990,
+        "per_class_recall": {
+          "am": 0.9411764705882353,
+          "bluetooth": 0.8835616438356164,
+          "cw": 0.927536231884058,
+          "dsss": 0.9861111111111112,
+          "fm": 0.9492753623188406,
+          "gsm": 0.7586206896551724,
+          "ofdm": 0.9440559440559441
+        }
+      },
+      "low_snr": {
+        "accuracy": 0.8919382504288165,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8930550290185073,
+        "class_counts": {
+          "am": 82,
+          "bluetooth": 96,
+          "cw": 86,
+          "dsss": 79,
+          "fm": 80,
+          "gsm": 75,
+          "ofdm": 85
+        },
+        "definition": "manifest snrDb < 18",
+        "n": 583,
+        "per_class_recall": {
+          "am": 0.9390243902439024,
+          "bluetooth": 0.8020833333333334,
+          "cw": 0.8953488372093024,
+          "dsss": 0.9746835443037974,
+          "fm": 0.9375,
+          "gsm": 0.7733333333333333,
+          "ofdm": 0.9294117647058824
+        },
+        "threshold_db": 18.0
+      },
+      "mean_pairwise_cosine": 0.39438727119654843,
+      "n": 1309,
+      "nearest_distance_median": 0.08701178738535553,
+      "per_class_recall": {
+        "am": 0.9572192513368984,
+        "bluetooth": 0.8716577540106952,
+        "cw": 0.946524064171123,
+        "dsss": 0.983957219251337,
+        "fm": 0.9625668449197861,
+        "gsm": 0.7540106951871658,
+        "ofdm": 0.946524064171123
+      }
+    }
+  },
+  "development_data_loaded": false,
+  "family_per_length": {
+    "16384": {
+      "accuracy": 0.9243697478991597,
+      "balanced_accuracy": 0.9243697478991597,
+      "mapping": {
+        "am": "am",
+        "bluetooth": "bluetooth",
+        "cw": "cw",
+        "dsss": "dsss",
+        "fm": "fm",
+        "gsm": "gsm",
+        "ofdm": "ofdm"
+      },
+      "reason": "sealed corpus labels are already broad RF families"
+    },
+    "32768": {
+      "accuracy": 0.9312452253628725,
+      "balanced_accuracy": 0.9312452253628724,
+      "mapping": {
+        "am": "am",
+        "bluetooth": "bluetooth",
+        "cw": "cw",
+        "dsss": "dsss",
+        "fm": "fm",
+        "gsm": "gsm",
+        "ofdm": "ofdm"
+      },
+      "reason": "sealed corpus labels are already broad RF families"
+    },
+    "4096": {
+      "accuracy": 0.8586707410236822,
+      "balanced_accuracy": 0.8586707410236822,
+      "mapping": {
+        "am": "am",
+        "bluetooth": "bluetooth",
+        "cw": "cw",
+        "dsss": "dsss",
+        "fm": "fm",
+        "gsm": "gsm",
+        "ofdm": "ofdm"
+      },
+      "reason": "sealed corpus labels are already broad RF families"
+    },
+    "8192": {
+      "accuracy": 0.917494270435447,
+      "balanced_accuracy": 0.9174942704354468,
+      "mapping": {
+        "am": "am",
+        "bluetooth": "bluetooth",
+        "cw": "cw",
+        "dsss": "dsss",
+        "fm": "fm",
+        "gsm": "gsm",
+        "ofdm": "ofdm"
+      },
+      "reason": "sealed corpus labels are already broad RF families"
+    }
+  },
+  "five_shot_predeclared_per_length": {
+    "16384": {
+      "accuracy": 0.9152024446142093,
+      "balanced_accuracy": 0.9152024446142092,
+      "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+      "k": 5,
+      "per_class_recall": {
+        "am": 0.983957219251337,
+        "bluetooth": 0.8877005347593583,
+        "cw": 0.8770053475935828,
+        "dsss": 0.9732620320855615,
+        "fm": 0.946524064171123,
+        "gsm": 0.8235294117647058,
+        "ofdm": 0.9144385026737968
+      },
+      "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+      "query_rows": 1309,
+      "support_rows": 35
+    },
+    "32768": {
+      "accuracy": 0.9281894576012223,
+      "balanced_accuracy": 0.9281894576012223,
+      "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+      "k": 5,
+      "per_class_recall": {
+        "am": 0.9572192513368984,
+        "bluetooth": 0.8983957219251337,
+        "cw": 0.8716577540106952,
+        "dsss": 1.0,
+        "fm": 0.946524064171123,
+        "gsm": 0.8877005347593583,
+        "ofdm": 0.9358288770053476
+      },
+      "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+      "query_rows": 1309,
+      "support_rows": 35
+    },
+    "4096": {
+      "accuracy": 0.8495034377387318,
+      "balanced_accuracy": 0.8495034377387319,
+      "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+      "k": 5,
+      "per_class_recall": {
+        "am": 0.93048128342246,
+        "bluetooth": 0.7486631016042781,
+        "cw": 0.9144385026737968,
+        "dsss": 0.9518716577540107,
+        "fm": 0.8609625668449198,
+        "gsm": 0.6256684491978609,
+        "ofdm": 0.9144385026737968
+      },
+      "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+      "query_rows": 1309,
+      "support_rows": 35
+    },
+    "8192": {
+      "accuracy": 0.9144385026737968,
+      "balanced_accuracy": 0.9144385026737967,
+      "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+      "k": 5,
+      "per_class_recall": {
+        "am": 0.9625668449197861,
+        "bluetooth": 0.8609625668449198,
+        "cw": 0.93048128342246,
+        "dsss": 0.9732620320855615,
+        "fm": 0.9625668449197861,
+        "gsm": 0.7700534759358288,
+        "ofdm": 0.9411764705882353
+      },
+      "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+      "query_rows": 1309,
+      "support_rows": 35
+    }
+  },
+  "gates": {
+    "candidate_sha_bound": {
+      "expected": "b94ac51b15c1813ca0f94bf3cc3b28ee5f903206b2885ec14dbaa8fddca031e3",
+      "passes": true,
+      "value": "b94ac51b15c1813ca0f94bf3cc3b28ee5f903206b2885ec14dbaa8fddca031e3"
+    },
+    "closed_clean_worst_length": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.85,
+      "value": 0.8463949843260188
+    },
+    "closed_family_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.82,
+      "value": 0.8586707410236822
+    },
+    "closed_fine_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.72,
+      "value": 0.8586707410236822
+    },
+    "closed_high_snr_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.78,
+      "value": 0.8842975206611571
+    },
+    "dependency_provenance": {
+      "expected": true,
+      "passes": true,
+      "value": true
+    },
+    "five_shot_worst_length_balanced": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.85,
+      "value": 0.8495034377387319
+    },
+    "length_max_mean_pairwise_cosine": {
+      "comparison": "max",
+      "passes": true,
+      "threshold": 0.78,
+      "value": 0.4053491489893751
+    },
+    "length_worst_balanced_accuracy": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.75,
+      "value": 0.8586707410236822
+    },
+    "length_worst_embedding_cosine_to_matched": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.85,
+      "value": 0.9083450101824699
+    },
+    "length_worst_prediction_agreement_to_matched": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.8,
+      "value": 0.8548510313216195
+    },
+    "open_auroc_chirp_worst_length": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.8,
+      "value": 0.7235103132161955
+    },
+    "open_auroc_noise_worst_length": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.8,
+      "value": 0.7962197606315253
+    },
+    "open_auroc_overall_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.72,
+      "value": 0.7768360071301248
+    },
+    "open_known_false_unknown_worst_length": {
+      "comparison": "max",
+      "passes": true,
+      "threshold": 0.1,
+      "value": 0.08632543926661573
+    },
+    "open_unknown_recall_chirp_worst_length": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.1,
+      "value": 0.0
+    },
+    "open_unknown_recall_noise_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.1,
+      "value": 0.2633333333333333
+    },
+    "physical_scale_max_mean_pairwise_cosine": {
+      "comparison": "max",
+      "passes": true,
+      "threshold": 0.78,
+      "value": 0.457536904000599
+    },
+    "physical_scale_worst_balanced_accuracy": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.75,
+      "value": 0.6740978682468045
+    },
+    "physical_scale_worst_embedding_cosine_to_factor1": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.8,
+      "value": 0.7804392750554556
+    },
+    "physical_scale_worst_prediction_agreement_to_factor1": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.75,
+      "value": 0.6580937972768532
+    },
+    "prefix_nesting": {
+      "expected": true,
+      "passes": true,
+      "value": true
+    },
+    "start_probe_excluded": {
+      "expected": true,
+      "passes": true,
+      "value": true
+    }
+  },
+  "high_snr_per_length": {
+    "16384": {
+      "accuracy": 0.9449035812672176,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.946407166533594,
+      "class_counts": {
+        "am": 105,
+        "bluetooth": 91,
+        "cw": 101,
+        "dsss": 108,
+        "fm": 107,
+        "gsm": 112,
+        "ofdm": 102
+      },
+      "definition": "manifest snrDb >= 18",
+      "n": 726,
+      "per_class_recall": {
+        "am": 0.9809523809523809,
+        "bluetooth": 0.945054945054945,
+        "cw": 0.9900990099009901,
+        "dsss": 0.9907407407407407,
+        "fm": 0.9813084112149533,
+        "gsm": 0.7857142857142857,
+        "ofdm": 0.9509803921568627
+      },
+      "threshold_db": 18.0
+    },
+    "32768": {
+      "accuracy": 0.9586776859504132,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9581294318127277,
+      "class_counts": {
+        "am": 105,
+        "bluetooth": 91,
+        "cw": 101,
+        "dsss": 108,
+        "fm": 107,
+        "gsm": 112,
+        "ofdm": 102
+      },
+      "definition": "manifest snrDb >= 18",
+      "n": 726,
+      "per_class_recall": {
+        "am": 0.9809523809523809,
+        "bluetooth": 0.9010989010989011,
+        "cw": 0.9702970297029703,
+        "dsss": 1.0,
+        "fm": 0.9813084112149533,
+        "gsm": 0.8928571428571429,
+        "ofdm": 0.9803921568627451
+      },
+      "threshold_db": 18.0
+    },
+    "4096": {
+      "accuracy": 0.8842975206611571,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8856700671013561,
+      "class_counts": {
+        "am": 105,
+        "bluetooth": 91,
+        "cw": 101,
+        "dsss": 108,
+        "fm": 107,
+        "gsm": 112,
+        "ofdm": 102
+      },
+      "definition": "manifest snrDb >= 18",
+      "n": 726,
+      "per_class_recall": {
+        "am": 0.9047619047619048,
+        "bluetooth": 0.8351648351648352,
+        "cw": 0.9801980198019802,
+        "dsss": 0.9907407407407407,
+        "fm": 0.9065420560747663,
+        "gsm": 0.6607142857142857,
+        "ofdm": 0.9215686274509803
+      },
+      "threshold_db": 18.0
+    },
+    "8192": {
+      "accuracy": 0.9380165289256198,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9400696315195886,
+      "class_counts": {
+        "am": 105,
+        "bluetooth": 91,
+        "cw": 101,
+        "dsss": 108,
+        "fm": 107,
+        "gsm": 112,
+        "ofdm": 102
+      },
+      "definition": "manifest snrDb >= 18",
+      "n": 726,
+      "per_class_recall": {
+        "am": 0.9714285714285714,
+        "bluetooth": 0.945054945054945,
+        "cw": 0.9900990099009901,
+        "dsss": 0.9907407407407407,
+        "fm": 0.9813084112149533,
+        "gsm": 0.7410714285714286,
+        "ofdm": 0.9607843137254902
+      },
+      "threshold_db": 18.0
+    }
+  },
+  "impaired_subset_per_length": {
+    "16384": {
+      "accuracy": 0.9121212121212121,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.913046273465671,
+      "class_counts": {
+        "am": 136,
+        "bluetooth": 146,
+        "cw": 138,
+        "dsss": 144,
+        "fm": 138,
+        "gsm": 145,
+        "ofdm": 143
+      },
+      "n": 990,
+      "per_class_recall": {
+        "am": 0.9558823529411765,
+        "bluetooth": 0.8904109589041096,
+        "cw": 0.9420289855072463,
+        "dsss": 0.9861111111111112,
+        "fm": 0.9492753623188406,
+        "gsm": 0.7655172413793103,
+        "ofdm": 0.9020979020979021
+      }
+    },
+    "32768": {
+      "accuracy": 0.9151515151515152,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9153364714682365,
+      "class_counts": {
+        "am": 136,
+        "bluetooth": 146,
+        "cw": 138,
+        "dsss": 144,
+        "fm": 138,
+        "gsm": 145,
+        "ofdm": 143
+      },
+      "n": 990,
+      "per_class_recall": {
+        "am": 0.9117647058823529,
+        "bluetooth": 0.8835616438356164,
+        "cw": 0.9130434782608695,
+        "dsss": 1.0,
+        "fm": 0.927536231884058,
+        "gsm": 0.8413793103448276,
+        "ofdm": 0.9300699300699301
+      }
+    },
+    "4096": {
+      "accuracy": 0.8626262626262626,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8636442528914051,
+      "class_counts": {
+        "am": 136,
+        "bluetooth": 146,
+        "cw": 138,
+        "dsss": 144,
+        "fm": 138,
+        "gsm": 145,
+        "ofdm": 143
+      },
+      "n": 990,
+      "per_class_recall": {
+        "am": 0.8455882352941176,
+        "bluetooth": 0.8082191780821918,
+        "cw": 0.9420289855072463,
+        "dsss": 0.9791666666666666,
+        "fm": 0.9130434782608695,
+        "gsm": 0.6413793103448275,
+        "ofdm": 0.916083916083916
+      }
+    },
+    "8192": {
+      "accuracy": 0.9121212121212121,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9129053504927113,
+      "class_counts": {
+        "am": 136,
+        "bluetooth": 146,
+        "cw": 138,
+        "dsss": 144,
+        "fm": 138,
+        "gsm": 145,
+        "ofdm": 143
+      },
+      "n": 990,
+      "per_class_recall": {
+        "am": 0.9411764705882353,
+        "bluetooth": 0.8835616438356164,
+        "cw": 0.927536231884058,
+        "dsss": 0.9861111111111112,
+        "fm": 0.9492753623188406,
+        "gsm": 0.7586206896551724,
+        "ofdm": 0.9440559440559441
+      }
+    }
+  },
+  "low_snr_per_length": {
+    "16384": {
+      "accuracy": 0.8987993138936535,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8983241252408973,
+      "class_counts": {
+        "am": 82,
+        "bluetooth": 96,
+        "cw": 86,
+        "dsss": 79,
+        "fm": 80,
+        "gsm": 75,
+        "ofdm": 85
+      },
+      "definition": "manifest snrDb < 18",
+      "n": 583,
+      "per_class_recall": {
+        "am": 0.9512195121951219,
+        "bluetooth": 0.8645833333333334,
+        "cw": 0.9186046511627907,
+        "dsss": 0.9873417721518988,
+        "fm": 0.9375,
+        "gsm": 0.7466666666666667,
+        "ofdm": 0.8823529411764706
+      },
+      "threshold_db": 18.0
+    },
+    "32768": {
+      "accuracy": 0.8970840480274442,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8958355140127521,
+      "class_counts": {
+        "am": 82,
+        "bluetooth": 96,
+        "cw": 86,
+        "dsss": 79,
+        "fm": 80,
+        "gsm": 75,
+        "ofdm": 85
+      },
+      "definition": "manifest snrDb < 18",
+      "n": 583,
+      "per_class_recall": {
+        "am": 0.8780487804878049,
+        "bluetooth": 0.9166666666666666,
+        "cw": 0.8953488372093024,
+        "dsss": 1.0,
+        "fm": 0.9,
+        "gsm": 0.7866666666666666,
+        "ofdm": 0.8941176470588236
+      },
+      "threshold_db": 18.0
+    },
+    "4096": {
+      "accuracy": 0.8267581475128645,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8262093472554914,
+      "class_counts": {
+        "am": 82,
+        "bluetooth": 96,
+        "cw": 86,
+        "dsss": 79,
+        "fm": 80,
+        "gsm": 75,
+        "ofdm": 85
+      },
+      "definition": "manifest snrDb < 18",
+      "n": 583,
+      "per_class_recall": {
+        "am": 0.8536585365853658,
+        "bluetooth": 0.7083333333333334,
+        "cw": 0.9302325581395349,
+        "dsss": 0.9620253164556962,
+        "fm": 0.85,
+        "gsm": 0.5733333333333334,
+        "ofdm": 0.9058823529411765
+      },
+      "threshold_db": 18.0
+    },
+    "8192": {
+      "accuracy": 0.8919382504288165,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8930550290185073,
+      "class_counts": {
+        "am": 82,
+        "bluetooth": 96,
+        "cw": 86,
+        "dsss": 79,
+        "fm": 80,
+        "gsm": 75,
+        "ofdm": 85
+      },
+      "definition": "manifest snrDb < 18",
+      "n": 583,
+      "per_class_recall": {
+        "am": 0.9390243902439024,
+        "bluetooth": 0.8020833333333334,
+        "cw": 0.8953488372093024,
+        "dsss": 0.9746835443037974,
+        "fm": 0.9375,
+        "gsm": 0.7733333333333333,
+        "ofdm": 0.9294117647058824
+      },
+      "threshold_db": 18.0
+    }
+  },
+  "matched_length_sweep": {
+    "all_classes_required": [
+      "am",
+      "bluetooth",
+      "cw",
+      "dsss",
+      "fm",
+      "gsm",
+      "ofdm"
+    ],
+    "matched_capture_length": 16384,
+    "matched_rows": 1309,
+    "rows": [
+      {
+        "accuracy": 0.8586707410236822,
+        "balanced_accuracy": 0.8586707410236822,
+        "capture_length": 4096,
+        "mean_pairwise_cosine": 0.3982304188179524,
+        "paired_to_matched": {
+          "embedding_cosine_mean": 0.9083450101824699,
+          "embedding_cosine_p05": 0.5787307387149465,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.9185503967133476,
+            "embedding_cosine_p05": 0.6049548353323579,
+            "n": 726,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9423107130310414,
+                "n": 105,
+                "prediction_agreement": 0.8952380952380953
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.8815283330775336,
+                "n": 91,
+                "prediction_agreement": 0.8021978021978022
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9618518305922126,
+                "n": 101,
+                "prediction_agreement": 0.9900990099009901
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9370336367674755,
+                "n": 108,
+                "prediction_agreement": 0.9814814814814815
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9477021140918009,
+                "n": 107,
+                "prediction_agreement": 0.9065420560747663
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.8189945460466517,
+                "n": 112,
+                "prediction_agreement": 0.6875
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9434088412728135,
+                "n": 102,
+                "prediction_agreement": 0.9215686274509803
+              }
+            },
+            "prediction_agreement": 0.8829201101928374
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.8956364156345843,
+            "embedding_cosine_p05": 0.5507660532179528,
+            "n": 583,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9073689424534062,
+                "n": 82,
+                "prediction_agreement": 0.8292682926829268
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.8759569942197535,
+                "n": 96,
+                "prediction_agreement": 0.71875
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9266138651605207,
+                "n": 86,
+                "prediction_agreement": 0.8953488372093024
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.92874878238269,
+                "n": 79,
+                "prediction_agreement": 0.9493670886075949
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9077947273409881,
+                "n": 80,
+                "prediction_agreement": 0.8375
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.8002853653364134,
+                "n": 75,
+                "prediction_agreement": 0.6133333333333333
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9171173975192914,
+                "n": 85,
+                "prediction_agreement": 0.8941176470588236
+              }
+            },
+            "prediction_agreement": 0.8198970840480274
+          },
+          "n": 1309,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.9269886532055541,
+              "n": 187,
+              "prediction_agreement": 0.8663101604278075
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.8786681805088338,
+              "n": 187,
+              "prediction_agreement": 0.7593582887700535
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.9456461352599906,
+              "n": 187,
+              "prediction_agreement": 0.946524064171123
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.9335336180701596,
+              "n": 187,
+              "prediction_agreement": 0.9679144385026738
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.9306294352679237,
+              "n": 187,
+              "prediction_agreement": 0.8770053475935828
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.8114908639436147,
+              "n": 187,
+              "prediction_agreement": 0.6577540106951871
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.9314581850212125,
+              "n": 187,
+              "prediction_agreement": 0.9090909090909091
+            }
+          },
+          "prediction_agreement": 0.8548510313216195
+        },
+        "per_class_recall": {
+          "am": 0.8823529411764706,
+          "bluetooth": 0.7700534759358288,
+          "cw": 0.9572192513368984,
+          "dsss": 0.9786096256684492,
+          "fm": 0.8823529411764706,
+          "gsm": 0.6256684491978609,
+          "ofdm": 0.9144385026737968
+        }
+      },
+      {
+        "accuracy": 0.917494270435447,
+        "balanced_accuracy": 0.9174942704354468,
+        "capture_length": 8192,
+        "mean_pairwise_cosine": 0.39438727119654843,
+        "paired_to_matched": {
+          "embedding_cosine_mean": 0.9546949354273856,
+          "embedding_cosine_p05": 0.8070937564563435,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.965876155652239,
+            "embedding_cosine_p05": 0.8705209022843567,
+            "n": 726,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9750515686183485,
+                "n": 105,
+                "prediction_agreement": 0.9714285714285714
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9431036823538967,
+                "n": 91,
+                "prediction_agreement": 0.8901098901098901
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9849182995452394,
+                "n": 101,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9667286859977398,
+                "n": 108,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9930108415410998,
+                "n": 107,
+                "prediction_agreement": 0.9906542056074766
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.92174749296018,
+                "n": 112,
+                "prediction_agreement": 0.7857142857142857
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9769795451581519,
+                "n": 102,
+                "prediction_agreement": 0.9509803921568627
+              }
+            },
+            "prediction_agreement": 0.940771349862259
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.9407711517511528,
+            "embedding_cosine_p05": 0.7381915670362877,
+            "n": 583,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9484864089095569,
+                "n": 82,
+                "prediction_agreement": 0.9390243902439024
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9262845498571878,
+                "n": 96,
+                "prediction_agreement": 0.8854166666666666
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.953389062246008,
+                "n": 86,
+                "prediction_agreement": 0.9069767441860465
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9541854785311051,
+                "n": 79,
+                "prediction_agreement": 0.9620253164556962
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9672400800215234,
+                "n": 80,
+                "prediction_agreement": 0.9375
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.8919297751414774,
+                "n": 75,
+                "prediction_agreement": 0.7733333333333333
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.942639146583549,
+                "n": 85,
+                "prediction_agreement": 0.8941176470588236
+              }
+            },
+            "prediction_agreement": 0.9005145797598628
+          },
+          "n": 1309,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.9634026750562046,
+              "n": 187,
+              "prediction_agreement": 0.9572192513368984
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9344692613930196,
+              "n": 187,
+              "prediction_agreement": 0.8877005347593583
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.9704182224985339,
+              "n": 187,
+              "prediction_agreement": 0.9572192513368984
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.961429683912905,
+              "n": 187,
+              "prediction_agreement": 0.983957219251337
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.9819859168268426,
+              "n": 187,
+              "prediction_agreement": 0.9679144385026738
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.909788515225406,
+              "n": 187,
+              "prediction_agreement": 0.7807486631016043
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.9613702730787868,
+              "n": 187,
+              "prediction_agreement": 0.9251336898395722
+            }
+          },
+          "prediction_agreement": 0.9228418640183346
+        },
+        "per_class_recall": {
+          "am": 0.9572192513368984,
+          "bluetooth": 0.8716577540106952,
+          "cw": 0.946524064171123,
+          "dsss": 0.983957219251337,
+          "fm": 0.9625668449197861,
+          "gsm": 0.7540106951871658,
+          "ofdm": 0.946524064171123
+        }
+      },
+      {
+        "accuracy": 0.9243697478991597,
+        "balanced_accuracy": 0.9243697478991597,
+        "capture_length": 16384,
+        "mean_pairwise_cosine": 0.39694723448474484,
+        "paired_to_matched": {
+          "embedding_cosine_mean": 1.0,
+          "embedding_cosine_p05": 0.9999999999999998,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 1.0,
+            "embedding_cosine_p05": 0.9999999999999998,
+            "n": 726,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 1.0,
+                "n": 105,
+                "prediction_agreement": 1.0
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 1.0,
+                "n": 91,
+                "prediction_agreement": 1.0
+              },
+              "cw": {
+                "embedding_cosine_mean": 1.0,
+                "n": 101,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 1.0,
+                "n": 108,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 107,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 112,
+                "prediction_agreement": 1.0
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 102,
+                "prediction_agreement": 1.0
+              }
+            },
+            "prediction_agreement": 1.0
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 1.0,
+            "embedding_cosine_p05": 0.9999999999999998,
+            "n": 583,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 1.0,
+                "n": 82,
+                "prediction_agreement": 1.0
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 1.0,
+                "n": 96,
+                "prediction_agreement": 1.0
+              },
+              "cw": {
+                "embedding_cosine_mean": 1.0,
+                "n": 86,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 1.0,
+                "n": 79,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 80,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 75,
+                "prediction_agreement": 1.0
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 85,
+                "prediction_agreement": 1.0
+              }
+            },
+            "prediction_agreement": 1.0
+          },
+          "n": 1309,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "cw": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "dsss": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "fm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "gsm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            }
+          },
+          "prediction_agreement": 1.0
+        },
+        "per_class_recall": {
+          "am": 0.9679144385026738,
+          "bluetooth": 0.9037433155080213,
+          "cw": 0.9572192513368984,
+          "dsss": 0.9893048128342246,
+          "fm": 0.9625668449197861,
+          "gsm": 0.7700534759358288,
+          "ofdm": 0.9197860962566845
+        }
+      },
+      {
+        "accuracy": 0.9312452253628725,
+        "balanced_accuracy": 0.9312452253628724,
+        "capture_length": 32768,
+        "mean_pairwise_cosine": 0.4053491489893751,
+        "paired_to_matched": {
+          "embedding_cosine_mean": 0.9529557696113937,
+          "embedding_cosine_p05": 0.7792576069894476,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.9687702260990432,
+            "embedding_cosine_p05": 0.8677546875620744,
+            "n": 726,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9873207265322066,
+                "n": 105,
+                "prediction_agreement": 0.9809523809523809
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9458789949571796,
+                "n": 91,
+                "prediction_agreement": 0.9230769230769231
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9832900704680252,
+                "n": 101,
+                "prediction_agreement": 0.9801980198019802
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9689603152893574,
+                "n": 108,
+                "prediction_agreement": 0.9907407407407407
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9939443859707954,
+                "n": 107,
+                "prediction_agreement": 0.9906542056074766
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9228173410236236,
+                "n": 112,
+                "prediction_agreement": 0.7946428571428571
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.979567810381159,
+                "n": 102,
+                "prediction_agreement": 0.9509803921568627
+              }
+            },
+            "prediction_agreement": 0.9435261707988981
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.9332622954946983,
+            "embedding_cosine_p05": 0.7012059062237022,
+            "n": 583,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.94698684197345,
+                "n": 82,
+                "prediction_agreement": 0.9024390243902439
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9234908012978814,
+                "n": 96,
+                "prediction_agreement": 0.8645833333333334
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9268688452795224,
+                "n": 86,
+                "prediction_agreement": 0.872093023255814
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9639639130885426,
+                "n": 79,
+                "prediction_agreement": 0.9873417721518988
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9604138554331142,
+                "n": 80,
+                "prediction_agreement": 0.9125
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.8732286193767385,
+                "n": 75,
+                "prediction_agreement": 0.7466666666666667
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9364088893064851,
+                "n": 85,
+                "prediction_agreement": 0.9058823529411765
+              }
+            },
+            "prediction_agreement": 0.8850771869639794
+          },
+          "n": 1309,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.9696342103085807,
+              "n": 187,
+              "prediction_agreement": 0.946524064171123
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9343855907256682,
+              "n": 187,
+              "prediction_agreement": 0.893048128342246
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.9573423412369491,
+              "n": 187,
+              "prediction_agreement": 0.93048128342246
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.9668495357499757,
+              "n": 187,
+              "prediction_agreement": 0.9893048128342246
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.9795997739760653,
+              "n": 187,
+              "prediction_agreement": 0.9572192513368984
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.9029288162989371,
+              "n": 187,
+              "prediction_agreement": 0.7754010695187166
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.95995011898358,
+              "n": 187,
+              "prediction_agreement": 0.93048128342246
+            }
+          },
+          "prediction_agreement": 0.917494270435447
+        },
+        "per_class_recall": {
+          "am": 0.9358288770053476,
+          "bluetooth": 0.9090909090909091,
+          "cw": 0.9358288770053476,
+          "dsss": 1.0,
+          "fm": 0.946524064171123,
+          "gsm": 0.8502673796791443,
+          "ofdm": 0.9411764705882353
+        }
+      }
+    ],
+    "worst_balanced_accuracy": 0.8586707410236822,
+    "worst_embedding_cosine_to_matched": 0.9083450101824699,
+    "worst_mean_pairwise_cosine": 0.4053491489893751,
+    "worst_prediction_agreement_to_matched": 0.8548510313216195
+  },
+  "open_weighted_lof_per_length": {
+    "16384": {
+      "auroc_chirp": 0.7702470078940667,
+      "auroc_noise": 0.8556137000254648,
+      "auroc_overall": 0.8129303539597658,
+      "base_seed": 20260729,
+      "derived_seed_by_family": {
+        "chirp": 11038137212554224879,
+        "noise": 2341752317056872047
+      },
+      "flagged_unknown_chirp": 0.0,
+      "flagged_unknown_noise": 0.36333333333333334,
+      "known_false_unknown_rate": 0.04889228418640183,
+      "known_rows": 1309,
+      "known_score_quantiles": {
+        "p50": 0.4963913392141139,
+        "p95": 0.87242983159583
+      },
+      "maximum_length_realization_sha256": {
+        "chirp": "7332388635c89e1db1f4229bcaf0574970412ade0a0ecab4e64fdd6c0839ed47",
+        "noise": "898fedecacc6ceb931e885878479acd286ddd627f47f306ca63a4f490153c537"
+      },
+      "novelty_rows_per_family": 300,
+      "recalibration_performed": false,
+      "score": "frozen positive weighted sum of enrollment-ranked branch LOF",
+      "shorter_observation_rule": "each shorter novelty observation is the exact leading slice of the same in-memory maximum-length realization",
+      "threshold": 0.8751937984496123
+    },
+    "32768": {
+      "auroc_chirp": 0.8304354469060351,
+      "auroc_noise": 0.8467570664629488,
+      "auroc_overall": 0.838596256684492,
+      "base_seed": 20260729,
+      "derived_seed_by_family": {
+        "chirp": 11038137212554224879,
+        "noise": 2341752317056872047
+      },
+      "flagged_unknown_chirp": 0.15,
+      "flagged_unknown_noise": 0.29333333333333333,
+      "known_false_unknown_rate": 0.05118411000763942,
+      "known_rows": 1309,
+      "known_score_quantiles": {
+        "p50": 0.5102379043036621,
+        "p95": 0.876150761828388
+      },
+      "maximum_length_realization_sha256": {
+        "chirp": "7332388635c89e1db1f4229bcaf0574970412ade0a0ecab4e64fdd6c0839ed47",
+        "noise": "898fedecacc6ceb931e885878479acd286ddd627f47f306ca63a4f490153c537"
+      },
+      "novelty_rows_per_family": 300,
+      "recalibration_performed": false,
+      "score": "frozen positive weighted sum of enrollment-ranked branch LOF",
+      "shorter_observation_rule": "each shorter novelty observation is the exact leading slice of the same in-memory maximum-length realization",
+      "threshold": 0.8751937984496123
+    },
+    "4096": {
+      "auroc_chirp": 0.7663318054494526,
+      "auroc_noise": 0.7962197606315253,
+      "auroc_overall": 0.781275783040489,
+      "base_seed": 20260729,
+      "derived_seed_by_family": {
+        "chirp": 11038137212554224879,
+        "noise": 2341752317056872047
+      },
+      "flagged_unknown_chirp": 0.16666666666666666,
+      "flagged_unknown_noise": 0.31,
+      "known_false_unknown_rate": 0.08632543926661573,
+      "known_rows": 1309,
+      "known_score_quantiles": {
+        "p50": 0.5717722534081797,
+        "p95": 0.9158299919807539
+      },
+      "maximum_length_realization_sha256": {
+        "chirp": "7332388635c89e1db1f4229bcaf0574970412ade0a0ecab4e64fdd6c0839ed47",
+        "noise": "898fedecacc6ceb931e885878479acd286ddd627f47f306ca63a4f490153c537"
+      },
+      "novelty_rows_per_family": 300,
+      "recalibration_performed": false,
+      "score": "frozen positive weighted sum of enrollment-ranked branch LOF",
+      "shorter_observation_rule": "each shorter novelty observation is the exact leading slice of the same in-memory maximum-length realization",
+      "threshold": 0.8751937984496123
+    },
+    "8192": {
+      "auroc_chirp": 0.7235103132161955,
+      "auroc_noise": 0.830161701044054,
+      "auroc_overall": 0.7768360071301248,
+      "base_seed": 20260729,
+      "derived_seed_by_family": {
+        "chirp": 11038137212554224879,
+        "noise": 2341752317056872047
+      },
+      "flagged_unknown_chirp": 0.01,
+      "flagged_unknown_noise": 0.2633333333333333,
+      "known_false_unknown_rate": 0.054239877769289534,
+      "known_rows": 1309,
+      "known_score_quantiles": {
+        "p50": 0.5241913926757551,
+        "p95": 0.8800962309542902
+      },
+      "maximum_length_realization_sha256": {
+        "chirp": "7332388635c89e1db1f4229bcaf0574970412ade0a0ecab4e64fdd6c0839ed47",
+        "noise": "898fedecacc6ceb931e885878479acd286ddd627f47f306ca63a4f490153c537"
+      },
+      "novelty_rows_per_family": 300,
+      "recalibration_performed": false,
+      "score": "frozen positive weighted sum of enrollment-ranked branch LOF",
+      "shorter_observation_rule": "each shorter novelty observation is the exact leading slice of the same in-memory maximum-length realization",
+      "threshold": 0.8751937984496123
+    }
+  },
+  "physical_scale_sweep": {
+    "definition": "normalized frequencies multiplied by s through deterministic linear resampling to N/s; common predeclared no-alias subset",
+    "effective_scale_by_requested_factor": {
+      "0.5": 0.499984740745262,
+      "0.75": 0.75,
+      "1.0": 1.0,
+      "1.5": 1.5,
+      "2.0": 2.0001220852154806
+    },
+    "eligible_by_class": {
+      "am": 141,
+      "bluetooth": 88,
+      "cw": 125,
+      "dsss": 42,
+      "fm": 108,
+      "gsm": 110,
+      "ofdm": 47
+    },
+    "eligible_indices_sha256": "ef8fc94fa7c614ef79d73d7a757e575aca62253cead29977cc9aed086c33f8a4",
+    "eligible_rows": 661,
+    "excluded_by_class": {
+      "am": 46,
+      "bluetooth": 99,
+      "cw": 62,
+      "dsss": 145,
+      "fm": 79,
+      "gsm": 77,
+      "ofdm": 140
+    },
+    "excluded_total": 648,
+    "exclusion_reason": "transformed occupied support would meet/cross the predeclared Nyquist guard for at least one factor",
+    "factors": [
+      0.5,
+      0.75,
+      1.0,
+      1.5,
+      2.0
+    ],
+    "maximum_effective_scale": 2.0001220852154806,
+    "rows": [
+      {
+        "accuracy": 0.6459909228441755,
+        "balanced_accuracy": 0.6740978682468045,
+        "effective_factor": 0.499984740745262,
+        "factor": 0.5,
+        "mean_pairwise_cosine": 0.4545269996963849,
+        "paired_to_factor1": {
+          "embedding_cosine_mean": 0.7804392750554556,
+          "embedding_cosine_p05": 0.2689986531142739,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.8685929508847823,
+            "embedding_cosine_p05": 0.30836105984326756,
+            "n": 367,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.8415940534983527,
+                "n": 80,
+                "prediction_agreement": 0.7875
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9544399921930907,
+                "n": 37,
+                "prediction_agreement": 1.0
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.8694504284980435,
+                "n": 64,
+                "prediction_agreement": 0.78125
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9823491388035415,
+                "n": 25,
+                "prediction_agreement": 0.92
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.801104064947304,
+                "n": 63,
+                "prediction_agreement": 0.7619047619047619
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.8505327900954656,
+                "n": 70,
+                "prediction_agreement": 0.7714285714285715
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9257643461205872,
+                "n": 28,
+                "prediction_agreement": 0.8571428571428571
+              }
+            },
+            "prediction_agreement": 0.8147138964577657
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.6703971014861942,
+            "embedding_cosine_p05": 0.25218981646433475,
+            "n": 294,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.609196311161931,
+                "n": 61,
+                "prediction_agreement": 0.39344262295081966
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.8139910576210958,
+                "n": 51,
+                "prediction_agreement": 0.8235294117647058
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.7035819618294981,
+                "n": 61,
+                "prediction_agreement": 0.4426229508196721
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.7367167037606154,
+                "n": 17,
+                "prediction_agreement": 0.6470588235294118
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.5986929533028654,
+                "n": 45,
+                "prediction_agreement": 0.3111111111111111
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.6163413663095171,
+                "n": 40,
+                "prediction_agreement": 0.275
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.5991951437288426,
+                "n": 19,
+                "prediction_agreement": 0.3684210526315789
+              }
+            },
+            "prediction_agreement": 0.46258503401360546
+          },
+          "n": 661,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.7410531862464254,
+              "n": 141,
+              "prediction_agreement": 0.6170212765957447
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.8730434505661393,
+              "n": 88,
+              "prediction_agreement": 0.8977272727272727
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.7885066167637933,
+              "n": 125,
+              "prediction_agreement": 0.616
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.8829264865242619,
+              "n": 42,
+              "prediction_agreement": 0.8095238095238095
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.7167661017621213,
+              "n": 108,
+              "prediction_agreement": 0.5740740740740741
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.7653722723551207,
+              "n": 110,
+              "prediction_agreement": 0.5909090909090909
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.7937470089834987,
+              "n": 47,
+              "prediction_agreement": 0.6595744680851063
+            }
+          },
+          "prediction_agreement": 0.6580937972768532
+        },
+        "per_class_recall": {
+          "am": 0.624113475177305,
+          "bluetooth": 0.8977272727272727,
+          "cw": 0.6,
+          "dsss": 0.8333333333333334,
+          "fm": 0.5462962962962963,
+          "gsm": 0.5363636363636364,
+          "ofdm": 0.6808510638297872
+        },
+        "raw_length": 32768,
+        "transformed_metadata": {
+          "bandwidth_hz_rule": "unchanged",
+          "centre_offset_fraction_rule": "original centreOffsetFrac * effective_factor",
+          "sample_rate_hz_max": 400012207.77635354,
+          "sample_rate_hz_min": 2000061.0388817678,
+          "sample_rate_hz_rule": "original sampleRateHz / effective_factor"
+        }
+      },
+      {
+        "accuracy": 0.697428139183056,
+        "balanced_accuracy": 0.7196236353987114,
+        "effective_factor": 0.75,
+        "factor": 0.75,
+        "mean_pairwise_cosine": 0.457536904000599,
+        "paired_to_factor1": {
+          "embedding_cosine_mean": 0.8281016495184802,
+          "embedding_cosine_p05": 0.3680131350150976,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.8926223674540493,
+            "embedding_cosine_p05": 0.38250049358395577,
+            "n": 367,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.8877769045245859,
+                "n": 80,
+                "prediction_agreement": 0.85
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9446313919687557,
+                "n": 37,
+                "prediction_agreement": 0.9459459459459459
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.8930115383718313,
+                "n": 64,
+                "prediction_agreement": 0.828125
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9805963743224817,
+                "n": 25,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.8531788757052596,
+                "n": 63,
+                "prediction_agreement": 0.8571428571428571
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.8488065931484917,
+                "n": 70,
+                "prediction_agreement": 0.7571428571428571
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9565898745407254,
+                "n": 28,
+                "prediction_agreement": 0.8571428571428571
+              }
+            },
+            "prediction_agreement": 0.8501362397820164
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.7475604812111539,
+            "embedding_cosine_p05": 0.36764226634823244,
+            "n": 294,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.6945638717478084,
+                "n": 61,
+                "prediction_agreement": 0.45901639344262296
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.8473765240014149,
+                "n": 51,
+                "prediction_agreement": 0.803921568627451
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.7796451007313303,
+                "n": 61,
+                "prediction_agreement": 0.5573770491803278
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.8841494175210551,
+                "n": 17,
+                "prediction_agreement": 0.7647058823529411
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.6521377325626376,
+                "n": 45,
+                "prediction_agreement": 0.4222222222222222
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.736832188298725,
+                "n": 40,
+                "prediction_agreement": 0.5
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.6731476755607373,
+                "n": 19,
+                "prediction_agreement": 0.3684210526315789
+              }
+            },
+            "prediction_agreement": 0.5510204081632653
+          },
+          "n": 661,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.8041882875076821,
+              "n": 141,
+              "prediction_agreement": 0.6808510638297872
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.8882677753058649,
+              "n": 88,
+              "prediction_agreement": 0.8636363636363636
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.837688716803267,
+              "n": 125,
+              "prediction_agreement": 0.696
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.941558320379047,
+              "n": 42,
+              "prediction_agreement": 0.9047619047619048
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.769411732729167,
+              "n": 108,
+              "prediction_agreement": 0.6759259259259259
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.8080886277485764,
+              "n": 110,
+              "prediction_agreement": 0.6636363636363637
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.8420068579317943,
+              "n": 47,
+              "prediction_agreement": 0.6595744680851063
+            }
+          },
+          "prediction_agreement": 0.7170953101361573
+        },
+        "per_class_recall": {
+          "am": 0.6808510638297872,
+          "bluetooth": 0.8636363636363636,
+          "cw": 0.68,
+          "dsss": 0.8809523809523809,
+          "fm": 0.6388888888888888,
+          "gsm": 0.5909090909090909,
+          "ofdm": 0.7021276595744681
+        },
+        "raw_length": 21845,
+        "transformed_metadata": {
+          "bandwidth_hz_rule": "unchanged",
+          "centre_offset_fraction_rule": "original centreOffsetFrac * effective_factor",
+          "sample_rate_hz_max": 266666666.66666666,
+          "sample_rate_hz_min": 1333333.3333333333,
+          "sample_rate_hz_rule": "original sampleRateHz / effective_factor"
+        }
+      },
+      {
+        "accuracy": 0.9122541603630863,
+        "balanced_accuracy": 0.9076300784659448,
+        "effective_factor": 1.0,
+        "factor": 1.0,
+        "mean_pairwise_cosine": 0.42285882841861816,
+        "paired_to_factor1": {
+          "embedding_cosine_mean": 1.0,
+          "embedding_cosine_p05": 0.9999999999999998,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 1.0,
+            "embedding_cosine_p05": 0.9999999999999998,
+            "n": 367,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 1.0,
+                "n": 80,
+                "prediction_agreement": 1.0
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 1.0,
+                "n": 37,
+                "prediction_agreement": 1.0
+              },
+              "cw": {
+                "embedding_cosine_mean": 1.0,
+                "n": 64,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 1.0,
+                "n": 25,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 63,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 70,
+                "prediction_agreement": 1.0
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 28,
+                "prediction_agreement": 1.0
+              }
+            },
+            "prediction_agreement": 1.0
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 1.0,
+            "embedding_cosine_p05": 0.9999999999999998,
+            "n": 294,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 1.0,
+                "n": 61,
+                "prediction_agreement": 1.0
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 1.0,
+                "n": 51,
+                "prediction_agreement": 1.0
+              },
+              "cw": {
+                "embedding_cosine_mean": 1.0,
+                "n": 61,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 1.0,
+                "n": 17,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 45,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 40,
+                "prediction_agreement": 1.0
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 19,
+                "prediction_agreement": 1.0
+              }
+            },
+            "prediction_agreement": 1.0
+          },
+          "n": 661,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 1.0,
+              "n": 141,
+              "prediction_agreement": 1.0
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 1.0,
+              "n": 88,
+              "prediction_agreement": 1.0
+            },
+            "cw": {
+              "embedding_cosine_mean": 1.0,
+              "n": 125,
+              "prediction_agreement": 1.0
+            },
+            "dsss": {
+              "embedding_cosine_mean": 1.0,
+              "n": 42,
+              "prediction_agreement": 1.0
+            },
+            "fm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 108,
+              "prediction_agreement": 1.0
+            },
+            "gsm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 110,
+              "prediction_agreement": 1.0
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 47,
+              "prediction_agreement": 1.0
+            }
+          },
+          "prediction_agreement": 1.0
+        },
+        "per_class_recall": {
+          "am": 0.9574468085106383,
+          "bluetooth": 0.9431818181818182,
+          "cw": 0.96,
+          "dsss": 0.9761904761904762,
+          "fm": 0.9444444444444444,
+          "gsm": 0.7636363636363637,
+          "ofdm": 0.8085106382978723
+        },
+        "raw_length": 16384,
+        "transformed_metadata": {
+          "bandwidth_hz_rule": "unchanged",
+          "centre_offset_fraction_rule": "original centreOffsetFrac * effective_factor",
+          "sample_rate_hz_max": 200000000.0,
+          "sample_rate_hz_min": 1000000.0,
+          "sample_rate_hz_rule": "original sampleRateHz / effective_factor"
+        }
+      },
+      {
+        "accuracy": 0.7231467473524962,
+        "balanced_accuracy": 0.7625741288993568,
+        "effective_factor": 1.5,
+        "factor": 1.5,
+        "mean_pairwise_cosine": 0.43908717296964217,
+        "paired_to_factor1": {
+          "embedding_cosine_mean": 0.8183065981651437,
+          "embedding_cosine_p05": 0.23913306037507526,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.7940893629514669,
+            "embedding_cosine_p05": 0.16375283218288214,
+            "n": 367,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.7299090402645054,
+                "n": 80,
+                "prediction_agreement": 0.625
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9628895873310094,
+                "n": 37,
+                "prediction_agreement": 0.972972972972973
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.7878812746790922,
+                "n": 64,
+                "prediction_agreement": 0.59375
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9739332970293789,
+                "n": 25,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.7117352854280173,
+                "n": 63,
+                "prediction_agreement": 0.6666666666666666
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.7758775774183299,
+                "n": 70,
+                "prediction_agreement": 0.6
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.8388453872977133,
+                "n": 28,
+                "prediction_agreement": 0.75
+              }
+            },
+            "prediction_agreement": 0.6920980926430518
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.8485369564080669,
+            "embedding_cosine_p05": 0.3522080485426276,
+            "n": 294,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.8103530394141726,
+                "n": 61,
+                "prediction_agreement": 0.6885245901639344
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9294483157928811,
+                "n": 51,
+                "prediction_agreement": 0.8627450980392157
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.8263453966271981,
+                "n": 61,
+                "prediction_agreement": 0.6721311475409836
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9582463440663657,
+                "n": 17,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.829496130583388,
+                "n": 45,
+                "prediction_agreement": 0.7555555555555555
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.820302698332755,
+                "n": 40,
+                "prediction_agreement": 0.625
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.8315670958589612,
+                "n": 19,
+                "prediction_agreement": 0.6842105263157895
+              }
+            },
+            "prediction_agreement": 0.7346938775510204
+          },
+          "n": 661,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.7647110540810282,
+              "n": 141,
+              "prediction_agreement": 0.6524822695035462
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9435088504168668,
+              "n": 88,
+              "prediction_agreement": 0.9090909090909091
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.8066517661897677,
+              "n": 125,
+              "prediction_agreement": 0.632
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.9675838160681591,
+              "n": 42,
+              "prediction_agreement": 1.0
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.7608023042427552,
+              "n": 108,
+              "prediction_agreement": 0.7037037037037037
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.7920321668417573,
+              "n": 110,
+              "prediction_agreement": 0.6090909090909091
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.8359030992692816,
+              "n": 47,
+              "prediction_agreement": 0.723404255319149
+            }
+          },
+          "prediction_agreement": 0.7110438729198184
+        },
+        "per_class_recall": {
+          "am": 0.6737588652482269,
+          "bluetooth": 0.9431818181818182,
+          "cw": 0.632,
+          "dsss": 0.9761904761904762,
+          "fm": 0.7407407407407407,
+          "gsm": 0.5636363636363636,
+          "ofdm": 0.8085106382978723
+        },
+        "raw_length": 10923,
+        "transformed_metadata": {
+          "bandwidth_hz_rule": "unchanged",
+          "centre_offset_fraction_rule": "original centreOffsetFrac * effective_factor",
+          "sample_rate_hz_max": 133333333.33333333,
+          "sample_rate_hz_min": 666666.6666666666,
+          "sample_rate_hz_rule": "original sampleRateHz / effective_factor"
+        }
+      },
+      {
+        "accuracy": 0.9228441754916793,
+        "balanced_accuracy": 0.9306360770828855,
+        "effective_factor": 2.0001220852154806,
+        "factor": 2.0,
+        "mean_pairwise_cosine": 0.4218001156274849,
+        "paired_to_factor1": {
+          "embedding_cosine_mean": 0.938515099928753,
+          "embedding_cosine_p05": 0.7747323628941887,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.9577702394153558,
+            "embedding_cosine_p05": 0.8564720125915471,
+            "n": 367,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9481119364687423,
+                "n": 80,
+                "prediction_agreement": 0.95
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.974146114823556,
+                "n": 37,
+                "prediction_agreement": 1.0
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9546298799067638,
+                "n": 64,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9620930869928805,
+                "n": 25,
+                "prediction_agreement": 0.96
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.97591794523172,
+                "n": 63,
+                "prediction_agreement": 0.9841269841269841
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9412146338554188,
+                "n": 70,
+                "prediction_agreement": 0.7857142857142857
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9676007961118586,
+                "n": 28,
+                "prediction_agreement": 0.8928571428571429
+              }
+            },
+            "prediction_agreement": 0.9346049046321526
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.9144789224063608,
+            "embedding_cosine_p05": 0.6852288270316949,
+            "n": 294,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.903798018741883,
+                "n": 61,
+                "prediction_agreement": 0.8852459016393442
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9230918312939909,
+                "n": 51,
+                "prediction_agreement": 0.9019607843137255
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9162931599553924,
+                "n": 61,
+                "prediction_agreement": 0.9344262295081968
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9465920063137119,
+                "n": 17,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9271005431145535,
+                "n": 45,
+                "prediction_agreement": 0.8888888888888888
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.8999122415757348,
+                "n": 40,
+                "prediction_agreement": 0.75
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.8918673516013348,
+                "n": 19,
+                "prediction_agreement": 0.7368421052631579
+              }
+            },
+            "prediction_agreement": 0.8775510204081632
+          },
+          "n": 661,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.9289406670975479,
+              "n": 141,
+              "prediction_agreement": 0.9219858156028369
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9445578368689216,
+              "n": 88,
+              "prediction_agreement": 0.9431818181818182
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.9359215605704944,
+              "n": 125,
+              "prediction_agreement": 0.968
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.9558188400513126,
+              "n": 42,
+              "prediction_agreement": 0.9761904761904762
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.955577361016234,
+              "n": 108,
+              "prediction_agreement": 0.9444444444444444
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.9261955821173519,
+              "n": 110,
+              "prediction_agreement": 0.7727272727272727
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.9369851483310084,
+              "n": 47,
+              "prediction_agreement": 0.8297872340425532
+            }
+          },
+          "prediction_agreement": 0.9092284417549168
+        },
+        "per_class_recall": {
+          "am": 0.9574468085106383,
+          "bluetooth": 0.9204545454545454,
+          "cw": 0.952,
+          "dsss": 1.0,
+          "fm": 0.9907407407407407,
+          "gsm": 0.7363636363636363,
+          "ofdm": 0.9574468085106383
+        },
+        "raw_length": 8192,
+        "transformed_metadata": {
+          "bandwidth_hz_rule": "unchanged",
+          "centre_offset_fraction_rule": "original centreOffsetFrac * effective_factor",
+          "sample_rate_hz_max": 99993896.11182322,
+          "sample_rate_hz_min": 499969.4805591161,
+          "sample_rate_hz_rule": "original sampleRateHz / effective_factor"
+        }
+      }
+    ],
+    "worst_balanced_accuracy": 0.6740978682468045,
+    "worst_embedding_cosine_to_factor1": 0.7804392750554556,
+    "worst_mean_pairwise_cosine": 0.457536904000599,
+    "worst_prediction_agreement_to_factor1": 0.6580937972768532
+  },
+  "provenance": {
+    "candidate_sha256": "b94ac51b15c1813ca0f94bf3cc3b28ee5f903206b2885ec14dbaa8fddca031e3",
+    "corpus_assets": [
+      {
+        "capture_length": 4096,
+        "derivation": "bit_exact_row_prefix_of_longest",
+        "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v2_sealed_seed20260729/n4096",
+        "files": {
+          "corpus.f32": {
+            "bytes": 44040192,
+            "sha256": "61165724ec4feb23054b21d3d48e2c613252b5ad5b6b4d2cd5e140c05eb1c7dd"
+          },
+          "corpus.json": {
+            "bytes": 642430,
+            "sha256": "2313dc236807fb9b2ce2d5ca038bba369e6e1e4d830390e91f47f10a365b4ad2"
+          },
+          "corpus_clean.f32": {
+            "bytes": 44040192,
+            "sha256": "03404380156b411b7750e60636d6949669255ea00fecc3a15b57f905237f437e"
+          }
+        }
+      },
+      {
+        "capture_length": 8192,
+        "derivation": "bit_exact_row_prefix_of_longest",
+        "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v2_sealed_seed20260729/n8192",
+        "files": {
+          "corpus.f32": {
+            "bytes": 88080384,
+            "sha256": "66ebd8d8ed5a6598e66f45254cdc8ee6e97d6c8446a5c3b99fd5b88c0ffc461f"
+          },
+          "corpus.json": {
+            "bytes": 642430,
+            "sha256": "8560f3f1d9947c2da9064ae7bdbf148cb9097f903e51efa03d571c27a71a9670"
+          },
+          "corpus_clean.f32": {
+            "bytes": 88080384,
+            "sha256": "e8d7cbb2e40377bc6c6e827c3167044f404ffbf1da28be257f08f955bb5a9829"
+          }
+        }
+      },
+      {
+        "capture_length": 16384,
+        "derivation": "bit_exact_row_prefix_of_longest",
+        "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v2_sealed_seed20260729/n16384",
+        "files": {
+          "corpus.f32": {
+            "bytes": 176160768,
+            "sha256": "b0ea95906ba9db76e380895bd00d3376ba2cf98536cd850dc473ec2d80000468"
+          },
+          "corpus.json": {
+            "bytes": 642435,
+            "sha256": "60ecdc55a6bc1af99329181a967aaec1253d0a2b8378a57c99bcb917205cc82a"
+          },
+          "corpus_clean.f32": {
+            "bytes": 176160768,
+            "sha256": "92a15731438cdb0a0529479f5a268fc890a1970bd25c27a72740f2ac1746c24c"
+          }
+        }
+      },
+      {
+        "capture_length": 32768,
+        "derivation": "generated_once_at_longest_length",
+        "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v2_sealed_seed20260729/n32768",
+        "files": {
+          "corpus.f32": {
+            "bytes": 352321536,
+            "sha256": "d42ed55f16747c603b46fc4d748e076388361ac9663a49076c22fccd3f5099d2"
+          },
+          "corpus.json": {
+            "bytes": 455341,
+            "sha256": "bc475c2a99f158cf2b5e3b7e0a181019231f19ff6e10665f2686fad4dd3b0f67"
+          },
+          "corpus_clean.f32": {
+            "bytes": 352321536,
+            "sha256": "2f5919d0d1a87f129b66ec72d39796c32dcab5dc70e4225e331f664d331fd7ef"
+          }
+        }
+      }
+    ],
+    "dependency_provenance": {
+      "atom_dsp": {
+        "dist_index_dts": {
+          "bytes": 3442,
+          "path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP/dist/index.d.ts",
+          "sha256": "fc6933a4c7e7d9aeaa2ca22043f6e22b2333671c08b81b1cd35b29a7de08c980"
+        },
+        "dist_index_dts_sha256": "fc6933a4c7e7d9aeaa2ca22043f6e22b2333671c08b81b1cd35b29a7de08c980",
+        "dist_index_js": {
+          "bytes": 13616,
+          "path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP/dist/index.js",
+          "sha256": "caef3a8b3cbf4c300f8ceab5619a1db6b4fcebb942d428577f50790a1fb360e7"
+        },
+        "dist_index_js_sha256": "caef3a8b3cbf4c300f8ceab5619a1db6b4fcebb942d428577f50790a1fb360e7",
+        "git_commit": "4bb4d7075ba0e30512480ffbf0cb6e5757ffa218",
+        "git_tree": "3d1a8b7a97658a98b8ef36adc7f74f97cf16e9d2",
+        "observed_source_tree": {
+          "file_count": 20,
+          "sha256": "80a8363407acfa60ea366a1b6f83401a07797ef7c9776579bc949eab16e04588"
+        },
+        "package_lock_path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP/package-lock.json",
+        "package_lock_sha256": "b1c8198c18a4b25ed605db0781ae57b6050e0123ab0696ca2bdcba112696c0ca",
+        "package_resolution": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab/node_modules/@atomos/dsp",
+        "root": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP",
+        "source_file_count": 20,
+        "source_tree_sha256": "80a8363407acfa60ea366a1b6f83401a07797ef7c9776579bc949eab16e04588"
+      },
+      "passes": true,
+      "runtime": {
+        "node": "v22.23.1",
+        "npm": "10.9.8",
+        "npx": "10.9.8"
+      },
+      "signallab": {
+        "git_commit": "7c8303a0338b0f7c088737f8df2d935fd04bb033",
+        "git_tree": "f0fade7d2dfd8f6ebd1e62caeae7d44d916d6796",
+        "observed_source_tree": {
+          "file_count": 81,
+          "sha256": "93bec60b8da571bd0cf4a51630bd2b053d95eaf1bf2da503251775545fb873c0"
+        },
+        "package_lock_path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab/package-lock.json",
+        "package_lock_sha256": "5dd71450021febce4acbb9a835a3cadea659e5b4ee088217b9b697bf3f0a5fa6",
+        "root": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab",
+        "source_file_count": 81,
+        "source_tree_sha256": "93bec60b8da571bd0cf4a51630bd2b053d95eaf1bf2da503251775545fb873c0"
+      },
+      "source_tree_digest_algorithm": "sha256(concat(sorted_posix_relative_path_utf8 + NUL + file_bytes)); exclude path components node_modules/dist and basename RELEASE_SOURCE_PROVENANCE.json; reject other non-regular entries"
+    },
+    "device": "mps",
+    "evaluation_protocol": {
+      "five_shot": {
+        "hash_payload": "utf8(split_salt + NUL + release_seed_decimal + NUL + canonical_row_identity_json)",
+        "k": 5,
+        "prototype_source": "support rows embedded at matched_capture_length; one fixed five-shot prototype set reused at every capture length",
+        "query_rule": "all remaining rows; identical row indices at every matched capture length",
+        "split_salt": "atomos-invariant-release-five-shot-v1",
+        "split_version": "sha256-lowest-per-class-v1",
+        "support_rule": "lowest five lowercase SHA-256 digests per class; ties by corpus row index"
+      },
+      "gates": {
+        "closed_clean": 0.85,
+        "closed_family": 0.82,
+        "closed_fine": 0.72,
+        "closed_high_snr": 0.78,
+        "five_shot": 0.85,
+        "invariant_max_mean_pairwise_cosine": 0.78,
+        "invariant_worst_balanced_accuracy": 0.75,
+        "length_pair_embedding_cosine": 0.85,
+        "length_pair_prediction_agreement": 0.8,
+        "open_auroc_chirp": 0.8,
+        "open_auroc_noise": 0.8,
+        "open_auroc_overall": 0.72,
+        "open_known_false_unknown_max": 0.1,
+        "open_unknown_recall_chirp": 0.1,
+        "open_unknown_recall_noise": 0.1,
+        "scale_pair_embedding_cosine": 0.8,
+        "scale_pair_prediction_agreement": 0.75
+      },
+      "high_snr_db": 18,
+      "length_observation_rule": "generate maximum capture length once; every shorter observed and clean row is a bit-exact cf32le prefix of the corresponding maximum-length row",
+      "matched_capture_length": 16384,
+      "minimum_target_per_class": 80,
+      "novelty": {
+        "calibration": "none; frozen weighted-LOF references, enrollment ranks, weights, and threshold only",
+        "families": [
+          "noise",
+          "chirp"
+        ],
+        "generation": "generate each fresh openset_eval.NOVELTY realization once at maximum capture length; shorter observations are exact prefixes; one family seed derived by SHA-256 from base seed and family",
+        "n_each_per_length": 300,
+        "seed": 20260729,
+        "seed_derivation": "uint64 little-endian first 8 bytes of SHA-256(utf8(base seed decimal + NUL + family))"
+      },
+      "physical_scale_factors": [
+        0.5,
+        0.75,
+        1.0,
+        1.5,
+        2.0
+      ],
+      "physical_scale_support": {
+        "edge_guard_fraction": 0.001953125,
+        "minimum_rows_per_class": 20,
+        "rule": "for every requested factor, effective resampling scale times (abs(centreOffsetFrac) + bandwidthHz/(2*sampleRateHz)) must be strictly below 0.5 - edge_guard_fraction",
+        "selection_timing": "metadata-only common subset fixed before preprocessing or inference"
+      },
+      "required_capture_lengths": [
+        4096,
+        8192,
+        16384,
+        32768
+      ],
+      "version": "invariant-release-evaluation-v1"
+    },
+    "evaluator_path": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/evaluate_invariant_release_suite.py",
+    "evaluator_sha256": "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541",
+    "novelty_prefix_generation": {
+      "base_seed": 20260729,
+      "derived_seed_by_family": {
+        "chirp": 11038137212554224879,
+        "noise": 2341752317056872047
+      },
+      "families": [
+        "noise",
+        "chirp"
+      ],
+      "longest_capture_length": 32768,
+      "longest_complex128_bytes_sha256": {
+        "chirp": "7332388635c89e1db1f4229bcaf0574970412ade0a0ecab4e64fdd6c0839ed47",
+        "noise": "898fedecacc6ceb931e885878479acd286ddd627f47f306ca63a4f490153c537"
+      },
+      "prefix_rule": "each shorter novelty observation is the exact leading slice of the same in-memory maximum-length realization",
+      "recalibration_performed": false,
+      "rows_per_family": 300
+    },
+    "numpy": "2.0.2",
+    "predeclared_split": {
+      "k_per_class": 5,
+      "query_indices_sha256": "4fa4f80b4db1720e6121a197fbf8e370fca2a89c7d04716767d99f3c236757d8",
+      "release_seed": 20260729,
+      "row_identity_sequence_sha256": "5bc4197ff1ddc7d4fb8f1b1fdfa1d5fba2a034168a8ef607f36bc4803dbd4bac",
+      "salt": "atomos-invariant-release-five-shot-v1",
+      "support_by_class": {
+        "am": [
+          253,
+          329,
+          200,
+          277,
+          363
+        ],
+        "bluetooth": [
+          1266,
+          1331,
+          1163,
+          1205,
+          1317
+        ],
+        "cw": [
+          125,
+          67,
+          161,
+          140,
+          64
+        ],
+        "dsss": [
+          1098,
+          993,
+          1111,
+          1032,
+          983
+        ],
+        "fm": [
+          386,
+          571,
+          498,
+          455,
+          482
+        ],
+        "gsm": [
+          734,
+          754,
+          603,
+          646,
+          684
+        ],
+        "ofdm": [
+          933,
+          802,
+          840,
+          891,
+          871
+        ]
+      },
+      "support_digest_by_class": {
+        "am": [
+          "00f54e8354e22fe17069402b85fe2b8992d41b2e2b8c5e20947e3df90b20daaf",
+          "028fe65b1fa09770c90ce0ef3042a71e6637a1d2a49bc12bced8ea9280992f6f",
+          "03e792980dfe8056edb96efb3572c42a73289d5f86d514b93d4a4b572fdb141a",
+          "04194713a5acbfefbe6c39b905a73abf1c632529c59351ce1d14a49606dab7fa",
+          "051ff17b3c02d0d6a1566d8233200b0bcfd5755b7d5d86fcf63b9b602cc3133c"
+        ],
+        "bluetooth": [
+          "00e8a50260368f1e6da89ae3736638600fe96e4538cdf2df5cc6ff875270d786",
+          "01c188644885276e258b161c844b05bd87f4e94b87bbe349dc4ca5b5983271d8",
+          "0249f06698f4c0f4d990fd2890354250e7405d882e922d695d998e29b94847cd",
+          "0369505b945f240e4343987999b49d4fcfed82196fe7834ea813723b471ccd02",
+          "06313215fef157fcadbf46fb0b126c1a072ff266775a2fb710a14511f3f30021"
+        ],
+        "cw": [
+          "01b0b963390bcec74dd9f9f786d45a28336793b2b0700db7c7554520dfc6a041",
+          "0438a051e202deaa460b0d56bbe80293141397508c99fa7eef6cc2117cf8d896",
+          "0613dbbfa5ccca7d76254a2bb5caf577151e3920b963f115562d014ba86e4013",
+          "08147f9d45a65d78ec26d9074fd79fda2b8d1c01ca322944b742ef84fb1dabb6",
+          "0b6f9f166e9e2b87d1b7c45b8bb5b9a607699ceeed84cd3b0262b776d30e5d07"
+        ],
+        "dsss": [
+          "001a2e20f710cfa5b970782f655fe821110c0f89401d369025375ca9b2c969ac",
+          "00b36a5981b649269e8c5ef7ca49bbdba9060f21d2a2a45815e2e98796758b48",
+          "02ad8c12d6791da9953e6ad5692529b0101f0a40934a21ad0f1584c9c778f3b0",
+          "0381f49cfc40c2b60f752a2c232e4282a79e6b8c72f7f6604a09cf2627283e70",
+          "03c944240cf8b6bf9231659f641616518a65c66f7b4c74ccc4dab1617349fd02"
+        ],
+        "fm": [
+          "0054e198d156d5b38c3b01691b1a786b7517a81a5fd10b5010f4764eab47a108",
+          "00ec21f0cf4ca5e09119f46580c6be8328a5ca94323168095b08f6e77171cf85",
+          "018c58a331fc6a42a37486f5df7355cfeca910f4f997c5b3665867cdafc250c1",
+          "0467ce7f29764edddbb0559999626def04402db6dc7affddec4107f0d1024a10",
+          "04f5859383ae5dafa9b407807972ba0203568c95f14ef3df81b24ea4dfaffaa2"
+        ],
+        "gsm": [
+          "00437c40a9dd883349a3549f6566c66b4493d182aede71a213f0da382b95cdde",
+          "026f9648d2fe6ab416d566d3b44443ef0dc39e91fa53da4bb5a84a262a211beb",
+          "0783e74eabc76e7f1ea7446ad4f0f1ad753e33ba475d9f66cc494880754eef04",
+          "07c977f3f6d4e484ff6d02ade3cb3397078f36d2fa14d78f1a9e80aab581489f",
+          "08eb174ba7db8358b4b9839b480f85fc797217b131aeebacdbd921f8e7f25198"
+        ],
+        "ofdm": [
+          "00c8d40bf5e0cf12f530ff67ecbc30090855776144128fe1dd83c5f956f6cd01",
+          "02d568417dceea3fb4619e31558017afd2a0bfd61b43b0121b71fa60bef86a07",
+          "033c09b430c9f7884968416b715e0d1cab992278097dedfa92bdbe3500279b98",
+          "040bdb8aa6920710737f75c67afa848aa4fb0d4301e20c75601e8792870a4dd8",
+          "05260fccc1053bfcefa5e47eee111a7339cc061a9c231ced66bb4d022f1da1fd"
+        ]
+      },
+      "support_indices_sha256": "1fc87a91b56eaa91d5898113244f26cde0b1d2044da83ecdef0ca934d828841b",
+      "version": "sha256-lowest-per-class-v1"
+    },
+    "prefix_nesting": {
+      "comparisons": [
+        {
+          "bit_exact": true,
+          "capture_length": 4096,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "observed",
+          "words_compared": 11010048
+        },
+        {
+          "bit_exact": true,
+          "capture_length": 4096,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "clean",
+          "words_compared": 11010048
+        },
+        {
+          "bit_exact": true,
+          "capture_length": 8192,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "observed",
+          "words_compared": 22020096
+        },
+        {
+          "bit_exact": true,
+          "capture_length": 8192,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "clean",
+          "words_compared": 22020096
+        },
+        {
+          "bit_exact": true,
+          "capture_length": 16384,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "observed",
+          "words_compared": 44040192
+        },
+        {
+          "bit_exact": true,
+          "capture_length": 16384,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "clean",
+          "words_compared": 44040192
+        }
+      ],
+      "definition": "every shorter observed and clean cf32 row must be a bit-exact prefix of the corresponding longest stored row",
+      "derivation_records": {
+        "derived": [
+          {
+            "capture_length": 4096,
+            "protocol": "signallab-row-prefix-v1",
+            "record_valid": true,
+            "source_capture_length": 32768
+          },
+          {
+            "capture_length": 8192,
+            "protocol": "signallab-row-prefix-v1",
+            "record_valid": true,
+            "source_capture_length": 32768
+          },
+          {
+            "capture_length": 16384,
+            "protocol": "signallab-row-prefix-v1",
+            "record_valid": true,
+            "source_capture_length": 32768
+          }
+        ],
+        "passes": true,
+        "source_capture_length": 32768
+      },
+      "longest_capture_length": 32768,
+      "passes": true,
+      "row_count": 1344,
+      "streams": [
+        "observed",
+        "clean"
+      ]
+    },
+    "python": "3.9.6",
+    "release_intent_sha256": "62040f8edd81bdda0cd99eb6f1b89af41c7c28d33c62ed2a58d977f591b49d9c",
+    "release_manifest_sha256": "a710f2139aab7c52399936be2bb45ba009ff90e73cdbab36848e4391267694d3",
+    "release_root": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v2_sealed_seed20260729",
+    "release_seed": 20260729,
+    "torch": "2.8.0",
+    "unscored_start_probe": {
+      "all_probe_rows_occupied": true,
+      "capture_length": 4096,
+      "class_counts": {
+        "am": 192,
+        "bluetooth": 192,
+        "cw": 192,
+        "dsss": 192,
+        "fm": 192,
+        "gsm": 192,
+        "ofdm": 192
+      },
+      "files": {
+        "corpus.f32": {
+          "bytes": 44040192,
+          "sha256": "b92b15eeb0fa0e4ef317e8507baed84170610c7a5c5515373f7b3ad400f71d0b"
+        },
+        "corpus.json": {
+          "bytes": 455194,
+          "sha256": "a4308672654f5a8d949288edf5e23ecffbbb1212996651224c1d8048f723f221"
+        },
+        "corpus_clean.f32": {
+          "bytes": 44040192,
+          "sha256": "24f272a35140cbbea5e333683f61a3d58355a652a5add99a2ed3433c87b1c06f"
+        }
+      },
+      "matched_longest_rows": true,
+      "passes": true,
+      "purpose": "select one occupied start per row before longest-only nuisance realization",
+      "row_count": 1344,
+      "scored": false
+    }
+  },
+  "recalibration_performed": false,
+  "release_evidence": true,
+  "retraining_performed": false,
+  "schema": 1,
+  "status": "complete"
+}

@@ -1,0 +1,3917 @@
+{
+  "all_release_gates_pass": false,
+  "architecture_contract": {
+    "additive_only": false,
+    "architecture_contract_change": "The v3 open-set rejector is strictly additive and never alters the closed label. This noise prefilter is a GATE: when it fires, classification does not run and the row has no closed label at all. That is a deliberate change to the architecture contract, not an oversight, and it must be stated in the emitted JSON and in any release claim. It also means a gated row skips the encoder, the fusion, the prototype distance and the branch LOF; that saving is measured by compute_saving() and is never asserted.",
+    "changes_closed_label": true,
+    "gates_before_classification": true,
+    "known_false_unknown_accounting": "counts both stages: a known row gated by the stage-1 noise prefilter and a known survivor whose COMPOSITE score exceeds the frozen staged threshold (q95 of the composite over enrollment survivors) are both false-unknown, and every per-length open report attributes each rejected known row to the stage that rejected it. The additive control arm uses the stage-2 policy's own untouched threshold",
+    "stage_one_capture_lengths": [
+      4096,
+      8192,
+      16384
+    ],
+    "stage_one_coverage_by_length": {
+      "16384": "fitted",
+      "32768": "causal_prefix",
+      "4096": "fitted",
+      "8192": "fitted"
+    },
+    "stage_one_feature_length_by_length": {
+      "16384": 16384,
+      "32768": 16384,
+      "4096": 4096,
+      "8192": 8192
+    },
+    "stage_one_prefix_rule": {
+      "max_fitted_length": 16384,
+      "rule": "at a capture length ABOVE the longest fitted prefilter length, the stage-1 pose-degeneracy features are computed on the capture's FIRST max-fitted-length samples and gated with that length's bundle.  The first N samples of a longer capture are exactly an N-sample capture of the same emission, so this is the same causal-prefix rule the release protocol's length suite is built on, not an approximation.  Lengths BELOW the smallest fitted length keep the existing refusal semantics: no fitted length is a causal prefix of such a capture, so no bundle may be substituted"
+    },
+    "stage_one_uncovered_rule": "at a capture length ABOVE the longest fitted stage-1 length the gate applies through the causal-prefix rule (stage_one_prefix_rule): features are computed on the capture's first max-fitted-length samples and gated with that length's bundle, recorded as stage_one_active: true with the effective stage_one_feature_length; at a capture length BELOW the smallest fitted length the gate cannot fire and every row flows to the unchanged additive stage-2 path, recorded as stage_one_active: false",
+    "staged_policy_kind": "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry",
+    "staged_policy_schema": 2,
+    "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+    "staged_score_note": "Stage-2 scores are enrollment empirical ranks in [0, 1).  A stage-1 survivor's staged score is the COMPOSITE max(stage2_enrollment_rank, stage1_score_enrollment_rank), also in [0, 1), where the stage-1 rank is the empirical enrollment rank of the stage-1 log-odds fit on ENROLLMENT stage-1 survivors only (searchsorted-left, the stage-2 convention).  A row gated at stage 1 has no stage-2 score at all -- that is the short circuit -- and is placed at 1.0 + a bounded monotone map (softsign) of its stage-1 log-odds, i.e. in (1, 2), above every survivor.  The staged unknown threshold is the frozen q95 of the composite over enrollment survivors, so the staged score is a single axis on which 'score > staged threshold' is exactly the staged decision 'gated at stage 1, or composite-rejected at stage 2', which is asserted row by row.  AUROC and threshold recall computed from it are properties of the staged system, not of either stage read in isolation.",
+    "survivor_score": "max(stage2_enrollment_rank, stage1_score_enrollment_rank)",
+    "sweep_rejector_rule": "the causal-length and physical-scale sweeps measure the closed-set representation exactly as the v2 evaluator defined them; no stage gates their rows (rejection never participates in the closed and invariance gates, and the stage-1 causal-prefix rule does not change that)",
+    "typescript_runtime_note": "the deployed TypeScript staged runtime must apply this same causal-prefix rule at capture lengths above the longest fitted stage-1 length; a runtime that refuses such lengths does not match the sealed claim and must be reconciled before any ship"
+  },
+  "candidate": {
+    "classes": [
+      "am",
+      "bluetooth",
+      "cw",
+      "dsss",
+      "fm",
+      "gsm",
+      "ofdm"
+    ],
+    "components": {
+      "bundle_assets": {
+        "complex_center.npy": {
+          "bytes": 256,
+          "sha256": "dd281fe23c628bb454c175eb594e0f3fa87a4b033c61cae364ee99e618b95d84"
+        },
+        "feature_mean.npy": {
+          "bytes": 176,
+          "sha256": "29883542bd57f812b74050d2814497ec169cac240ed1fd6d136d7887fdbf8b64"
+        },
+        "feature_std.npy": {
+          "bytes": 176,
+          "sha256": "28f9f430d40603fab7ba3f6f49951a2b18033b91425363ae36e679850d1635fe"
+        },
+        "fusion_prototypes.npy": {
+          "bytes": 1920,
+          "sha256": "aa4fe2a4e0f9999f541d90ffbf99084c7cb670bcd8072422b5d62e11e100dee4"
+        },
+        "fusion_state_dict.pt": {
+          "bytes": 454020,
+          "sha256": "b8da74d10d684fcd1c231a226cef520db31a55c6d54d4c1b607641799f95f894"
+        },
+        "probe_fixture.json": {
+          "bytes": 1165350,
+          "sha256": "8398a604b2ce92ae58347fa387bf50e91f27e49e2d6e223e9725580100d69691"
+        },
+        "real_center.npy": {
+          "bytes": 256,
+          "sha256": "a347253f4f3e13938a72ea8bf4309995575d57ee5b679b589bc24d94dd9bca9c"
+        }
+      },
+      "bundle_dir": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_runtime_bundle_seed20260730",
+      "bundle_manifest_sha256": "bfd972bf5e6e075d886bdcf930e7bb30a4694fde1d593a54bb3d62694d3b9e74",
+      "composite": {
+        "enrollment_capture_length": 16384,
+        "enrollment_gated_rows": 37,
+        "enrollment_rows": 3740,
+        "enrollment_stage_one_gate_rate": 0.009893048128342246,
+        "enrollment_survivor_rows": 3703,
+        "kind": "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry",
+        "policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+        "rationale": "stage-1's continuous log-odds separates noise from known captures at 0.978 AUROC in-sample but was discarded below the gate; the composite uses that score without moving the gate. The frozen v3.1 evidence (seeds 20260944/20260945) showed that tightening the gate alone pushes noise into stage 2, whose own noise axis is weak (~0.60 AUROC standalone), costing the noise AUROC floor (worst cell 0.7957 vs 0.80)",
+        "schema": 2,
+        "stage_one_rank_convention": "empirical enrollment rank: searchsorted-left over the sorted enrollment-SURVIVOR stage-1 log-odds, divided by (survivors + 1); identical to the stage-2 v3_time_domain_openset.empirical_rank convention",
+        "stage_two_threshold_unchanged": 0.9494921144079123,
+        "survivor_score": "max(stage2_enrollment_rank, stage1_score_enrollment_rank)",
+        "threshold": 0.9740452030878427,
+        "threshold_population": "enrollment stage-1 survivors only (enrollment only, as every rank and threshold in this chain)",
+        "threshold_quantile": 0.95
+      },
+      "fusion_dir": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_multilength_seed20260730",
+      "fusion_directory_sha256": "0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5",
+      "fusion_file_sha256": {
+        "complex_center.npy": "dd281fe23c628bb454c175eb594e0f3fa87a4b033c61cae364ee99e618b95d84",
+        "dev_metrics.json": "ddf0768bec34dead441a3c5dc26c6627cfa4830c395b5b1521d6337af634e3a2",
+        "feature_mean.npy": "29883542bd57f812b74050d2814497ec169cac240ed1fd6d136d7887fdbf8b64",
+        "feature_std.npy": "28f9f430d40603fab7ba3f6f49951a2b18033b91425363ae36e679850d1635fe",
+        "fusion_prototypes.npy": "aa4fe2a4e0f9999f541d90ffbf99084c7cb670bcd8072422b5d62e11e100dee4",
+        "fusion_state_dict.pt": "b8da74d10d684fcd1c231a226cef520db31a55c6d54d4c1b607641799f95f894",
+        "real_center.npy": "a347253f4f3e13938a72ea8bf4309995575d57ee5b679b589bc24d94dd9bca9c"
+      },
+      "fusion_seed": 20260730,
+      "prefilter_dir": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/noise_prefilter_fit20261001_budget001/bundles",
+      "prefilter_set_sha256": "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2",
+      "source_sha256": {
+        "enforced": {
+          "assemble_v3_fusion.py": "961e493697d1d941395dafe32570262dc09996b53fed9b2a0e82525e43560daa",
+          "fit_v3_openset.py": "970e536087c0c4660424628a69e8bb08955885b337fd6ac560edf4bfaec1fba9",
+          "fit_v3_openset_staged.py": "9c785f8a01fe4e10b7ceaa0f2468c1dc4f42eda095510e9b0498609556a181f6",
+          "invariant_fusion.py": "22a46a75c95cb4aa452bc44228b156b57474b981da20cf7095fff8a129f1c281",
+          "invariant_patch_cnn.py": "b402e8bb75a5809f4a57e8de231268e9ad18afc26b2cfcbf57d2f0b43804ede4",
+          "invariant_patch_data.py": "63e6134bddb927149a54c73fb011c580d1423b8b9977bab0e0b88655c3d0a798",
+          "invariant_patch_preprocess.py": "04c66362e6978bc1827791653963d0921bcdde51f93b9dd74e6eb9b4e8217420",
+          "known_only_patch_openset.py": "4764a9997331bb657787dcff211ab8d7098f98536208c1c0432af8f373763785",
+          "noise_prefilter.py": "435495e5b0d11558a2e0edfd7d6e6112e7cebf716460d3d81ae741d97deaa7b4",
+          "openset_eval.py": "1675b9ce60139e58b0d12dd287552b22d8bc47cfcb264a0ec347def251ed3354",
+          "pose_degeneracy.py": "431499124cd8470276a22356622b54f9c60c63c15e3770f49944bc626091aaf1",
+          "time_domain_geometry.py": "a9735473f44105d20cffb9d4888ff8cf8e02503746f70b50e6d5d3737138da33",
+          "time_domain_invariant_patch_preprocess.py": "5cd1787aed0e5fd95adc2e4de56db460d753d0557350aa8f3aff0e393c0bb10a",
+          "train.py": "0669704ff4933b2ab7f8e35b0b6fb58553a06a8d75c93f54ee928ad33e2e257c",
+          "v3_time_domain_openset.py": "1bf16837ac76a525d5f28e3357d9afa147cf2a618aa202e98ce30ddb0b96bd58"
+        },
+        "evaluator_chain": {
+          "evaluate_invariant_release_suite.py": "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541",
+          "export_v3_openset_browser_assets.py": "1ece1784c9939ba844b40427b63a6645f7a5eae1103a9f3e708519e98fbc0f21",
+          "invariant_patch_preprocess.py": "04c66362e6978bc1827791653963d0921bcdde51f93b9dd74e6eb9b4e8217420",
+          "measure_v3_remaining_gates.py": "fd8765614b9cadbbf852845ef11e26e861ab77d510d2a91c87513eea4e6cb405",
+          "preprocess.py": "5369ea8277f64fcd6367a8a363bf7a5a28298663c39315126160ded5bcc0091d",
+          "run_invariant_cnn_dev.py": "22036917af78e48e00dcfe0922c464d0cab352750c00fcb45d6aece1f4fd9cfb"
+        },
+        "recorded_only": {
+          "run_time_domain_dev.py": {
+            "current": "d63b5c1cc4b0cb4dcec6c770d8ca1fc95515b4a0e00075cadca4845b729f25f7",
+            "enforced": false,
+            "reason": "training-loop source; imported but never executed for data by this evaluator, and legitimately changed after the candidate was frozen (HANDOFF 24.1)",
+            "recorded_by_staged_artifact": "d63b5c1cc4b0cb4dcec6c770d8ca1fc95515b4a0e00075cadca4845b729f25f7"
+          }
+        }
+      },
+      "stage_one_capture_lengths": [
+        4096,
+        8192,
+        16384
+      ],
+      "stage_two_threshold": 0.9494921144079123,
+      "staged_artifact_sha256": {
+        "v3_branch_lof_components.npz": "f3484e3533fc90586654fe7c7bc25dc61dd7a94ddf26eea2a5de78d1b783ecea",
+        "v3_open_policy_stage_two.npz": "c42b9687c5bd5ad5816d6f7939118df3ec24efd9383279af2c21ba459e28a9cc",
+        "v3_staged_composite_policy.npz": "00f3c4d9409babc205f534310cc2f1c7d4920dbaabc7378a64d5f0d4572c6e54"
+      },
+      "staged_dir": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_validate_composite_budget001_seed20260730",
+      "staged_novelty_seeds": [
+        20260947,
+        20260948
+      ],
+      "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+      "staged_status": "development_openset_pass",
+      "staged_threshold": 0.9740452030878427
+    },
+    "frozen_assets_used": [
+      "fusion state dict (both branches, centers, alphas, weight, eps)",
+      "training-only branch centers",
+      "training-only feature mean/std",
+      "enrollment-only fused prototypes",
+      "frozen stage-1 per-length noise-prefilter bundles",
+      "frozen stage-2 branch-LOF ensemble (training reference, enrollment ranks)",
+      "frozen stage-2 policy (geometry blend, enrollment q95 threshold)",
+      "frozen composite survivor policy (enrollment-survivor stage-1 rank calibration, q95 composite threshold)"
+    ],
+    "path": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_runtime_bundle_seed20260730/bundle_manifest.json",
+    "runtime_kind": "v3-time-domain-centered-invariant-fusion",
+    "runtime_schema": "atomos.v3.time-domain-invariant-fusion.runtime-bundle",
+    "runtime_schema_version": 1,
+    "sha256": "bfd972bf5e6e075d886bdcf930e7bb30a4694fde1d593a54bb3d62694d3b9e74"
+  },
+  "clean_subset_per_length": {
+    "16384": {
+      "accuracy": 0.9513677811550152,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9504827878702198,
+      "class_counts": {
+        "am": 51,
+        "bluetooth": 50,
+        "cw": 47,
+        "dsss": 48,
+        "fm": 47,
+        "gsm": 43,
+        "ofdm": 43
+      },
+      "n": 329,
+      "per_class_recall": {
+        "am": 1.0,
+        "bluetooth": 0.88,
+        "cw": 0.9361702127659575,
+        "dsss": 1.0,
+        "fm": 1.0,
+        "gsm": 0.8604651162790697,
+        "ofdm": 0.9767441860465116
+      }
+    },
+    "32768": {
+      "accuracy": 0.9544072948328267,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9532135823156576,
+      "class_counts": {
+        "am": 51,
+        "bluetooth": 50,
+        "cw": 47,
+        "dsss": 48,
+        "fm": 47,
+        "gsm": 43,
+        "ofdm": 43
+      },
+      "n": 329,
+      "per_class_recall": {
+        "am": 0.9803921568627451,
+        "bluetooth": 0.94,
+        "cw": 0.9148936170212766,
+        "dsss": 1.0,
+        "fm": 1.0,
+        "gsm": 0.8372093023255814,
+        "ofdm": 1.0
+      }
+    },
+    "4096": {
+      "accuracy": 0.9057750759878419,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9063869912141006,
+      "class_counts": {
+        "am": 51,
+        "bluetooth": 50,
+        "cw": 47,
+        "dsss": 48,
+        "fm": 47,
+        "gsm": 43,
+        "ofdm": 43
+      },
+      "n": 329,
+      "per_class_recall": {
+        "am": 0.9607843137254902,
+        "bluetooth": 0.72,
+        "cw": 0.9361702127659575,
+        "dsss": 0.9583333333333334,
+        "fm": 0.9787234042553191,
+        "gsm": 0.8604651162790697,
+        "ofdm": 0.9302325581395349
+      }
+    },
+    "8192": {
+      "accuracy": 0.9483282674772037,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9480907612921466,
+      "class_counts": {
+        "am": 51,
+        "bluetooth": 50,
+        "cw": 47,
+        "dsss": 48,
+        "fm": 47,
+        "gsm": 43,
+        "ofdm": 43
+      },
+      "n": 329,
+      "per_class_recall": {
+        "am": 1.0,
+        "bluetooth": 0.84,
+        "cw": 0.9361702127659575,
+        "dsss": 1.0,
+        "fm": 1.0,
+        "gsm": 0.9302325581395349,
+        "ofdm": 0.9302325581395349
+      }
+    }
+  },
+  "closed_per_length": {
+    "16384": {
+      "accuracy": 0.8724216959511077,
+      "balanced_accuracy": 0.8724216959511076,
+      "clean_accuracy": 0.9513677811550152,
+      "clean_subset": {
+        "accuracy": 0.9513677811550152,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9504827878702198,
+        "class_counts": {
+          "am": 51,
+          "bluetooth": 50,
+          "cw": 47,
+          "dsss": 48,
+          "fm": 47,
+          "gsm": 43,
+          "ofdm": 43
+        },
+        "n": 329,
+        "per_class_recall": {
+          "am": 1.0,
+          "bluetooth": 0.88,
+          "cw": 0.9361702127659575,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.8604651162790697,
+          "ofdm": 0.9767441860465116
+        }
+      },
+      "confusion": [
+        [
+          157,
+          9,
+          15,
+          1,
+          0,
+          1,
+          4
+        ],
+        [
+          1,
+          163,
+          0,
+          7,
+          1,
+          14,
+          1
+        ],
+        [
+          26,
+          6,
+          147,
+          0,
+          1,
+          1,
+          6
+        ],
+        [
+          0,
+          1,
+          0,
+          183,
+          0,
+          0,
+          3
+        ],
+        [
+          3,
+          1,
+          0,
+          1,
+          174,
+          5,
+          3
+        ],
+        [
+          3,
+          5,
+          1,
+          9,
+          2,
+          147,
+          20
+        ],
+        [
+          1,
+          2,
+          1,
+          5,
+          2,
+          5,
+          171
+        ]
+      ],
+      "family": {
+        "accuracy": 0.8724216959511077,
+        "balanced_accuracy": 0.8724216959511076,
+        "mapping": {
+          "am": "am",
+          "bluetooth": "bluetooth",
+          "cw": "cw",
+          "dsss": "dsss",
+          "fm": "fm",
+          "gsm": "gsm",
+          "ofdm": "ofdm"
+        },
+        "reason": "sealed corpus labels are already broad RF families"
+      },
+      "high_snr": {
+        "accuracy": 0.9387464387464387,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9390403769259246,
+        "class_counts": {
+          "am": 102,
+          "bluetooth": 94,
+          "cw": 88,
+          "dsss": 97,
+          "fm": 110,
+          "gsm": 106,
+          "ofdm": 105
+        },
+        "definition": "manifest snrDb >= 18",
+        "n": 702,
+        "per_class_recall": {
+          "am": 0.8921568627450981,
+          "bluetooth": 0.9042553191489362,
+          "cw": 0.9659090909090909,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.8490566037735849,
+          "ofdm": 0.9619047619047619
+        },
+        "threshold_db": 18.0
+      },
+      "impaired_accuracy": 0.8459183673469388,
+      "impaired_subset": {
+        "accuracy": 0.8459183673469388,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8459753271505877,
+        "class_counts": {
+          "am": 136,
+          "bluetooth": 137,
+          "cw": 140,
+          "dsss": 139,
+          "fm": 140,
+          "gsm": 144,
+          "ofdm": 144
+        },
+        "n": 980,
+        "per_class_recall": {
+          "am": 0.7794117647058824,
+          "bluetooth": 0.8686131386861314,
+          "cw": 0.7357142857142858,
+          "dsss": 0.9712230215827338,
+          "fm": 0.9071428571428571,
+          "gsm": 0.7638888888888888,
+          "ofdm": 0.8958333333333334
+        }
+      },
+      "low_snr": {
+        "accuracy": 0.7957166392092258,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.7979327884186761,
+        "class_counts": {
+          "am": 85,
+          "bluetooth": 93,
+          "cw": 99,
+          "dsss": 90,
+          "fm": 77,
+          "gsm": 81,
+          "ofdm": 82
+        },
+        "definition": "manifest snrDb < 18",
+        "n": 607,
+        "per_class_recall": {
+          "am": 0.7764705882352941,
+          "bluetooth": 0.8387096774193549,
+          "cw": 0.6262626262626263,
+          "dsss": 0.9555555555555556,
+          "fm": 0.8311688311688312,
+          "gsm": 0.7037037037037037,
+          "ofdm": 0.8536585365853658
+        },
+        "threshold_db": 18.0
+      },
+      "mean_pairwise_cosine": 0.5386135190476428,
+      "n": 1309,
+      "nearest_distance_median": 0.08814009227861064,
+      "per_class_recall": {
+        "am": 0.839572192513369,
+        "bluetooth": 0.8716577540106952,
+        "cw": 0.786096256684492,
+        "dsss": 0.9786096256684492,
+        "fm": 0.93048128342246,
+        "gsm": 0.786096256684492,
+        "ofdm": 0.9144385026737968
+      }
+    },
+    "32768": {
+      "accuracy": 0.8663101604278075,
+      "balanced_accuracy": 0.8663101604278075,
+      "clean_accuracy": 0.9544072948328267,
+      "clean_subset": {
+        "accuracy": 0.9544072948328267,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9532135823156576,
+        "class_counts": {
+          "am": 51,
+          "bluetooth": 50,
+          "cw": 47,
+          "dsss": 48,
+          "fm": 47,
+          "gsm": 43,
+          "ofdm": 43
+        },
+        "n": 329,
+        "per_class_recall": {
+          "am": 0.9803921568627451,
+          "bluetooth": 0.94,
+          "cw": 0.9148936170212766,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.8372093023255814,
+          "ofdm": 1.0
+        }
+      },
+      "confusion": [
+        [
+          162,
+          8,
+          9,
+          0,
+          2,
+          1,
+          5
+        ],
+        [
+          1,
+          170,
+          0,
+          5,
+          1,
+          8,
+          2
+        ],
+        [
+          33,
+          11,
+          135,
+          0,
+          3,
+          0,
+          5
+        ],
+        [
+          0,
+          1,
+          0,
+          180,
+          0,
+          2,
+          4
+        ],
+        [
+          6,
+          4,
+          0,
+          0,
+          173,
+          2,
+          2
+        ],
+        [
+          5,
+          13,
+          1,
+          9,
+          0,
+          147,
+          12
+        ],
+        [
+          4,
+          6,
+          0,
+          6,
+          2,
+          2,
+          167
+        ]
+      ],
+      "family": {
+        "accuracy": 0.8663101604278075,
+        "balanced_accuracy": 0.8663101604278075,
+        "mapping": {
+          "am": "am",
+          "bluetooth": "bluetooth",
+          "cw": "cw",
+          "dsss": "dsss",
+          "fm": "fm",
+          "gsm": "gsm",
+          "ofdm": "ofdm"
+        },
+        "reason": "sealed corpus labels are already broad RF families"
+      },
+      "high_snr": {
+        "accuracy": 0.9330484330484331,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9324954793601264,
+        "class_counts": {
+          "am": 102,
+          "bluetooth": 94,
+          "cw": 88,
+          "dsss": 97,
+          "fm": 110,
+          "gsm": 106,
+          "ofdm": 105
+        },
+        "definition": "manifest snrDb >= 18",
+        "n": 702,
+        "per_class_recall": {
+          "am": 0.8921568627450981,
+          "bluetooth": 0.9468085106382979,
+          "cw": 0.8977272727272727,
+          "dsss": 0.979381443298969,
+          "fm": 0.990909090909091,
+          "gsm": 0.8490566037735849,
+          "ofdm": 0.9714285714285714
+        },
+        "threshold_db": 18.0
+      },
+      "impaired_accuracy": 0.8367346938775511,
+      "impaired_subset": {
+        "accuracy": 0.8367346938775511,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8371524600142705,
+        "class_counts": {
+          "am": 136,
+          "bluetooth": 137,
+          "cw": 140,
+          "dsss": 139,
+          "fm": 140,
+          "gsm": 144,
+          "ofdm": 144
+        },
+        "n": 980,
+        "per_class_recall": {
+          "am": 0.8235294117647058,
+          "bluetooth": 0.8978102189781022,
+          "cw": 0.6571428571428571,
+          "dsss": 0.9496402877697842,
+          "fm": 0.9,
+          "gsm": 0.7708333333333334,
+          "ofdm": 0.8611111111111112
+        }
+      },
+      "low_snr": {
+        "accuracy": 0.7891268533772653,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.7919883330550509,
+        "class_counts": {
+          "am": 85,
+          "bluetooth": 93,
+          "cw": 99,
+          "dsss": 90,
+          "fm": 77,
+          "gsm": 81,
+          "ofdm": 82
+        },
+        "definition": "manifest snrDb < 18",
+        "n": 607,
+        "per_class_recall": {
+          "am": 0.8352941176470589,
+          "bluetooth": 0.8709677419354839,
+          "cw": 0.5656565656565656,
+          "dsss": 0.9444444444444444,
+          "fm": 0.8311688311688312,
+          "gsm": 0.7037037037037037,
+          "ofdm": 0.7926829268292683
+        },
+        "threshold_db": 18.0
+      },
+      "mean_pairwise_cosine": 0.540869843131299,
+      "n": 1309,
+      "nearest_distance_median": 0.09147216698683058,
+      "per_class_recall": {
+        "am": 0.8663101604278075,
+        "bluetooth": 0.9090909090909091,
+        "cw": 0.7219251336898396,
+        "dsss": 0.9625668449197861,
+        "fm": 0.9251336898395722,
+        "gsm": 0.786096256684492,
+        "ofdm": 0.893048128342246
+      }
+    },
+    "4096": {
+      "accuracy": 0.8571428571428571,
+      "balanced_accuracy": 0.8571428571428571,
+      "clean_accuracy": 0.9057750759878419,
+      "clean_subset": {
+        "accuracy": 0.9057750759878419,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9063869912141006,
+        "class_counts": {
+          "am": 51,
+          "bluetooth": 50,
+          "cw": 47,
+          "dsss": 48,
+          "fm": 47,
+          "gsm": 43,
+          "ofdm": 43
+        },
+        "n": 329,
+        "per_class_recall": {
+          "am": 0.9607843137254902,
+          "bluetooth": 0.72,
+          "cw": 0.9361702127659575,
+          "dsss": 0.9583333333333334,
+          "fm": 0.9787234042553191,
+          "gsm": 0.8604651162790697,
+          "ofdm": 0.9302325581395349
+        }
+      },
+      "confusion": [
+        [
+          158,
+          0,
+          22,
+          0,
+          1,
+          5,
+          1
+        ],
+        [
+          3,
+          147,
+          0,
+          7,
+          0,
+          29,
+          1
+        ],
+        [
+          22,
+          3,
+          149,
+          0,
+          2,
+          10,
+          1
+        ],
+        [
+          0,
+          1,
+          0,
+          180,
+          0,
+          4,
+          2
+        ],
+        [
+          1,
+          0,
+          6,
+          1,
+          176,
+          3,
+          0
+        ],
+        [
+          8,
+          5,
+          8,
+          4,
+          5,
+          148,
+          9
+        ],
+        [
+          4,
+          0,
+          1,
+          5,
+          2,
+          11,
+          164
+        ]
+      ],
+      "family": {
+        "accuracy": 0.8571428571428571,
+        "balanced_accuracy": 0.8571428571428571,
+        "mapping": {
+          "am": "am",
+          "bluetooth": "bluetooth",
+          "cw": "cw",
+          "dsss": "dsss",
+          "fm": "fm",
+          "gsm": "gsm",
+          "ofdm": "ofdm"
+        },
+        "reason": "sealed corpus labels are already broad RF families"
+      },
+      "high_snr": {
+        "accuracy": 0.915954415954416,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9167656360285902,
+        "class_counts": {
+          "am": 102,
+          "bluetooth": 94,
+          "cw": 88,
+          "dsss": 97,
+          "fm": 110,
+          "gsm": 106,
+          "ofdm": 105
+        },
+        "definition": "manifest snrDb >= 18",
+        "n": 702,
+        "per_class_recall": {
+          "am": 0.8921568627450981,
+          "bluetooth": 0.8404255319148937,
+          "cw": 0.9886363636363636,
+          "dsss": 0.9690721649484536,
+          "fm": 0.9636363636363636,
+          "gsm": 0.839622641509434,
+          "ofdm": 0.9238095238095239
+        },
+        "threshold_db": 18.0
+      },
+      "impaired_accuracy": 0.8408163265306122,
+      "impaired_subset": {
+        "accuracy": 0.8408163265306122,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8408906023331105,
+        "class_counts": {
+          "am": 136,
+          "bluetooth": 137,
+          "cw": 140,
+          "dsss": 139,
+          "fm": 140,
+          "gsm": 144,
+          "ofdm": 144
+        },
+        "n": 980,
+        "per_class_recall": {
+          "am": 0.8014705882352942,
+          "bluetooth": 0.8102189781021898,
+          "cw": 0.75,
+          "dsss": 0.9640287769784173,
+          "fm": 0.9285714285714286,
+          "gsm": 0.7708333333333334,
+          "ofdm": 0.8611111111111112
+        }
+      },
+      "low_snr": {
+        "accuracy": 0.7891268533772653,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.793685059026538,
+        "class_counts": {
+          "am": 85,
+          "bluetooth": 93,
+          "cw": 99,
+          "dsss": 90,
+          "fm": 77,
+          "gsm": 81,
+          "ofdm": 82
+        },
+        "definition": "manifest snrDb < 18",
+        "n": 607,
+        "per_class_recall": {
+          "am": 0.788235294117647,
+          "bluetooth": 0.7311827956989247,
+          "cw": 0.6262626262626263,
+          "dsss": 0.9555555555555556,
+          "fm": 0.9090909090909091,
+          "gsm": 0.7283950617283951,
+          "ofdm": 0.8170731707317073
+        },
+        "threshold_db": 18.0
+      },
+      "mean_pairwise_cosine": 0.559113442507733,
+      "n": 1309,
+      "nearest_distance_median": 0.09752667036032259,
+      "per_class_recall": {
+        "am": 0.8449197860962567,
+        "bluetooth": 0.786096256684492,
+        "cw": 0.7967914438502673,
+        "dsss": 0.9625668449197861,
+        "fm": 0.9411764705882353,
+        "gsm": 0.7914438502673797,
+        "ofdm": 0.8770053475935828
+      }
+    },
+    "8192": {
+      "accuracy": 0.8762414056531703,
+      "balanced_accuracy": 0.8762414056531703,
+      "clean_accuracy": 0.9483282674772037,
+      "clean_subset": {
+        "accuracy": 0.9483282674772037,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9480907612921466,
+        "class_counts": {
+          "am": 51,
+          "bluetooth": 50,
+          "cw": 47,
+          "dsss": 48,
+          "fm": 47,
+          "gsm": 43,
+          "ofdm": 43
+        },
+        "n": 329,
+        "per_class_recall": {
+          "am": 1.0,
+          "bluetooth": 0.84,
+          "cw": 0.9361702127659575,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.9302325581395349,
+          "ofdm": 0.9302325581395349
+        }
+      },
+      "confusion": [
+        [
+          160,
+          2,
+          18,
+          0,
+          1,
+          6,
+          0
+        ],
+        [
+          1,
+          163,
+          0,
+          7,
+          2,
+          12,
+          2
+        ],
+        [
+          21,
+          5,
+          153,
+          0,
+          0,
+          4,
+          4
+        ],
+        [
+          0,
+          0,
+          0,
+          184,
+          0,
+          1,
+          2
+        ],
+        [
+          3,
+          0,
+          4,
+          0,
+          175,
+          4,
+          1
+        ],
+        [
+          5,
+          7,
+          1,
+          7,
+          8,
+          146,
+          13
+        ],
+        [
+          1,
+          3,
+          1,
+          7,
+          2,
+          7,
+          166
+        ]
+      ],
+      "family": {
+        "accuracy": 0.8762414056531703,
+        "balanced_accuracy": 0.8762414056531703,
+        "mapping": {
+          "am": "am",
+          "bluetooth": "bluetooth",
+          "cw": "cw",
+          "dsss": "dsss",
+          "fm": "fm",
+          "gsm": "gsm",
+          "ofdm": "ofdm"
+        },
+        "reason": "sealed corpus labels are already broad RF families"
+      },
+      "high_snr": {
+        "accuracy": 0.9259259259259259,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.9268921417147148,
+        "class_counts": {
+          "am": 102,
+          "bluetooth": 94,
+          "cw": 88,
+          "dsss": 97,
+          "fm": 110,
+          "gsm": 106,
+          "ofdm": 105
+        },
+        "definition": "manifest snrDb >= 18",
+        "n": 702,
+        "per_class_recall": {
+          "am": 0.8627450980392157,
+          "bluetooth": 0.8936170212765957,
+          "cw": 0.9886363636363636,
+          "dsss": 0.979381443298969,
+          "fm": 0.990909090909091,
+          "gsm": 0.839622641509434,
+          "ofdm": 0.9333333333333333
+        },
+        "threshold_db": 18.0
+      },
+      "impaired_accuracy": 0.8520408163265306,
+      "impaired_subset": {
+        "accuracy": 0.8520408163265306,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8524382553175308,
+        "class_counts": {
+          "am": 136,
+          "bluetooth": 137,
+          "cw": 140,
+          "dsss": 139,
+          "fm": 140,
+          "gsm": 144,
+          "ofdm": 144
+        },
+        "n": 980,
+        "per_class_recall": {
+          "am": 0.8014705882352942,
+          "bluetooth": 0.8832116788321168,
+          "cw": 0.7785714285714286,
+          "dsss": 0.9784172661870504,
+          "fm": 0.9142857142857143,
+          "gsm": 0.7361111111111112,
+          "ofdm": 0.875
+        }
+      },
+      "low_snr": {
+        "accuracy": 0.8187808896210873,
+        "all_classes_present": true,
+        "balanced_accuracy_present_classes": 0.8203130854579789,
+        "class_counts": {
+          "am": 85,
+          "bluetooth": 93,
+          "cw": 99,
+          "dsss": 90,
+          "fm": 77,
+          "gsm": 81,
+          "ofdm": 82
+        },
+        "definition": "manifest snrDb < 18",
+        "n": 607,
+        "per_class_recall": {
+          "am": 0.8470588235294118,
+          "bluetooth": 0.8494623655913979,
+          "cw": 0.6666666666666666,
+          "dsss": 0.9888888888888889,
+          "fm": 0.8571428571428571,
+          "gsm": 0.7037037037037037,
+          "ofdm": 0.8292682926829268
+        },
+        "threshold_db": 18.0
+      },
+      "mean_pairwise_cosine": 0.5396845918628603,
+      "n": 1309,
+      "nearest_distance_median": 0.09084253160951272,
+      "per_class_recall": {
+        "am": 0.8556149732620321,
+        "bluetooth": 0.8716577540106952,
+        "cw": 0.8181818181818182,
+        "dsss": 0.983957219251337,
+        "fm": 0.9358288770053476,
+        "gsm": 0.7807486631016043,
+        "ofdm": 0.8877005347593583
+      }
+    }
+  },
+  "development_data_loaded": false,
+  "evaluation_version": "time-domain-v3-release-evaluation-v1",
+  "family_per_length": {
+    "16384": {
+      "accuracy": 0.8724216959511077,
+      "balanced_accuracy": 0.8724216959511076,
+      "mapping": {
+        "am": "am",
+        "bluetooth": "bluetooth",
+        "cw": "cw",
+        "dsss": "dsss",
+        "fm": "fm",
+        "gsm": "gsm",
+        "ofdm": "ofdm"
+      },
+      "reason": "sealed corpus labels are already broad RF families"
+    },
+    "32768": {
+      "accuracy": 0.8663101604278075,
+      "balanced_accuracy": 0.8663101604278075,
+      "mapping": {
+        "am": "am",
+        "bluetooth": "bluetooth",
+        "cw": "cw",
+        "dsss": "dsss",
+        "fm": "fm",
+        "gsm": "gsm",
+        "ofdm": "ofdm"
+      },
+      "reason": "sealed corpus labels are already broad RF families"
+    },
+    "4096": {
+      "accuracy": 0.8571428571428571,
+      "balanced_accuracy": 0.8571428571428571,
+      "mapping": {
+        "am": "am",
+        "bluetooth": "bluetooth",
+        "cw": "cw",
+        "dsss": "dsss",
+        "fm": "fm",
+        "gsm": "gsm",
+        "ofdm": "ofdm"
+      },
+      "reason": "sealed corpus labels are already broad RF families"
+    },
+    "8192": {
+      "accuracy": 0.8762414056531703,
+      "balanced_accuracy": 0.8762414056531703,
+      "mapping": {
+        "am": "am",
+        "bluetooth": "bluetooth",
+        "cw": "cw",
+        "dsss": "dsss",
+        "fm": "fm",
+        "gsm": "gsm",
+        "ofdm": "ofdm"
+      },
+      "reason": "sealed corpus labels are already broad RF families"
+    }
+  },
+  "five_shot_predeclared_per_length": {
+    "16384": {
+      "accuracy": 0.8831168831168831,
+      "balanced_accuracy": 0.883116883116883,
+      "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+      "k": 5,
+      "per_class_recall": {
+        "am": 0.7967914438502673,
+        "bluetooth": 0.8983957219251337,
+        "cw": 0.8556149732620321,
+        "dsss": 0.9625668449197861,
+        "fm": 0.93048128342246,
+        "gsm": 0.8235294117647058,
+        "ofdm": 0.9144385026737968
+      },
+      "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+      "query_rows": 1309,
+      "support_rows": 35
+    },
+    "32768": {
+      "accuracy": 0.8724216959511077,
+      "balanced_accuracy": 0.8724216959511077,
+      "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+      "k": 5,
+      "per_class_recall": {
+        "am": 0.8288770053475936,
+        "bluetooth": 0.9090909090909091,
+        "cw": 0.7914438502673797,
+        "dsss": 0.93048128342246,
+        "fm": 0.9197860962566845,
+        "gsm": 0.8342245989304813,
+        "ofdm": 0.893048128342246
+      },
+      "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+      "query_rows": 1309,
+      "support_rows": 35
+    },
+    "4096": {
+      "accuracy": 0.8449197860962567,
+      "balanced_accuracy": 0.8449197860962566,
+      "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+      "k": 5,
+      "per_class_recall": {
+        "am": 0.7593582887700535,
+        "bluetooth": 0.8021390374331551,
+        "cw": 0.8449197860962567,
+        "dsss": 0.9090909090909091,
+        "fm": 0.9090909090909091,
+        "gsm": 0.8021390374331551,
+        "ofdm": 0.8877005347593583
+      },
+      "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+      "query_rows": 1309,
+      "support_rows": 35
+    },
+    "8192": {
+      "accuracy": 0.8777692895339955,
+      "balanced_accuracy": 0.8777692895339955,
+      "claim_scope": "prototype re-enrollment for encoder-known broad classes; no encoder or rejector parameter changes",
+      "k": 5,
+      "per_class_recall": {
+        "am": 0.8128342245989305,
+        "bluetooth": 0.8983957219251337,
+        "cw": 0.8556149732620321,
+        "dsss": 0.9679144385026738,
+        "fm": 0.9358288770053476,
+        "gsm": 0.7807486631016043,
+        "ofdm": 0.893048128342246
+      },
+      "prototype_source": "predeclared support rows embedded at n=16384; the same prototypes are reused unchanged at every query length",
+      "query_rows": 1309,
+      "support_rows": 35
+    }
+  },
+  "gates": {
+    "candidate_sha_bound": {
+      "expected": "bfd972bf5e6e075d886bdcf930e7bb30a4694fde1d593a54bb3d62694d3b9e74",
+      "passes": true,
+      "value": "bfd972bf5e6e075d886bdcf930e7bb30a4694fde1d593a54bb3d62694d3b9e74"
+    },
+    "closed_clean_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.85,
+      "value": 0.9057750759878419
+    },
+    "closed_family_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.82,
+      "value": 0.8571428571428571
+    },
+    "closed_fine_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.72,
+      "value": 0.8571428571428571
+    },
+    "closed_high_snr_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.78,
+      "value": 0.915954415954416
+    },
+    "dependency_provenance": {
+      "expected": true,
+      "passes": true,
+      "value": true
+    },
+    "five_shot_worst_length_balanced": {
+      "comparison": "min",
+      "passes": false,
+      "threshold": 0.85,
+      "value": 0.8449197860962566
+    },
+    "length_max_mean_pairwise_cosine": {
+      "comparison": "max",
+      "passes": true,
+      "threshold": 0.78,
+      "value": 0.559113442507733
+    },
+    "length_worst_balanced_accuracy": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.75,
+      "value": 0.8571428571428571
+    },
+    "length_worst_embedding_cosine_to_matched": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.85,
+      "value": 0.9287536714994165
+    },
+    "length_worst_prediction_agreement_to_matched": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.8,
+      "value": 0.8349885408708938
+    },
+    "open_auroc_chirp_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.8,
+      "value": 0.9157053730583142
+    },
+    "open_auroc_noise_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.8,
+      "value": 0.9398281130634072
+    },
+    "open_auroc_overall_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.72,
+      "value": 0.9376807995925643
+    },
+    "open_known_false_unknown_worst_length": {
+      "comparison": "max",
+      "passes": false,
+      "threshold": 0.1,
+      "value": 0.11077158135981666
+    },
+    "open_unknown_recall_chirp_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.1,
+      "value": 0.6
+    },
+    "open_unknown_recall_noise_worst_length": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.1,
+      "value": 0.7866666666666666
+    },
+    "physical_scale_max_mean_pairwise_cosine": {
+      "comparison": "max",
+      "passes": true,
+      "threshold": 0.78,
+      "value": 0.5758377782971509
+    },
+    "physical_scale_worst_balanced_accuracy": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.75,
+      "value": 0.7995535849253894
+    },
+    "physical_scale_worst_embedding_cosine_to_factor1": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.8,
+      "value": 0.937583111351048
+    },
+    "physical_scale_worst_prediction_agreement_to_factor1": {
+      "comparison": "min",
+      "passes": true,
+      "threshold": 0.75,
+      "value": 0.8438880706921944
+    },
+    "prefix_nesting": {
+      "expected": true,
+      "passes": true,
+      "value": true
+    },
+    "start_probe_excluded": {
+      "expected": true,
+      "passes": true,
+      "value": true
+    }
+  },
+  "high_snr_per_length": {
+    "16384": {
+      "accuracy": 0.9387464387464387,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9390403769259246,
+      "class_counts": {
+        "am": 102,
+        "bluetooth": 94,
+        "cw": 88,
+        "dsss": 97,
+        "fm": 110,
+        "gsm": 106,
+        "ofdm": 105
+      },
+      "definition": "manifest snrDb >= 18",
+      "n": 702,
+      "per_class_recall": {
+        "am": 0.8921568627450981,
+        "bluetooth": 0.9042553191489362,
+        "cw": 0.9659090909090909,
+        "dsss": 1.0,
+        "fm": 1.0,
+        "gsm": 0.8490566037735849,
+        "ofdm": 0.9619047619047619
+      },
+      "threshold_db": 18.0
+    },
+    "32768": {
+      "accuracy": 0.9330484330484331,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9324954793601264,
+      "class_counts": {
+        "am": 102,
+        "bluetooth": 94,
+        "cw": 88,
+        "dsss": 97,
+        "fm": 110,
+        "gsm": 106,
+        "ofdm": 105
+      },
+      "definition": "manifest snrDb >= 18",
+      "n": 702,
+      "per_class_recall": {
+        "am": 0.8921568627450981,
+        "bluetooth": 0.9468085106382979,
+        "cw": 0.8977272727272727,
+        "dsss": 0.979381443298969,
+        "fm": 0.990909090909091,
+        "gsm": 0.8490566037735849,
+        "ofdm": 0.9714285714285714
+      },
+      "threshold_db": 18.0
+    },
+    "4096": {
+      "accuracy": 0.915954415954416,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9167656360285902,
+      "class_counts": {
+        "am": 102,
+        "bluetooth": 94,
+        "cw": 88,
+        "dsss": 97,
+        "fm": 110,
+        "gsm": 106,
+        "ofdm": 105
+      },
+      "definition": "manifest snrDb >= 18",
+      "n": 702,
+      "per_class_recall": {
+        "am": 0.8921568627450981,
+        "bluetooth": 0.8404255319148937,
+        "cw": 0.9886363636363636,
+        "dsss": 0.9690721649484536,
+        "fm": 0.9636363636363636,
+        "gsm": 0.839622641509434,
+        "ofdm": 0.9238095238095239
+      },
+      "threshold_db": 18.0
+    },
+    "8192": {
+      "accuracy": 0.9259259259259259,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.9268921417147148,
+      "class_counts": {
+        "am": 102,
+        "bluetooth": 94,
+        "cw": 88,
+        "dsss": 97,
+        "fm": 110,
+        "gsm": 106,
+        "ofdm": 105
+      },
+      "definition": "manifest snrDb >= 18",
+      "n": 702,
+      "per_class_recall": {
+        "am": 0.8627450980392157,
+        "bluetooth": 0.8936170212765957,
+        "cw": 0.9886363636363636,
+        "dsss": 0.979381443298969,
+        "fm": 0.990909090909091,
+        "gsm": 0.839622641509434,
+        "ofdm": 0.9333333333333333
+      },
+      "threshold_db": 18.0
+    }
+  },
+  "impaired_subset_per_length": {
+    "16384": {
+      "accuracy": 0.8459183673469388,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8459753271505877,
+      "class_counts": {
+        "am": 136,
+        "bluetooth": 137,
+        "cw": 140,
+        "dsss": 139,
+        "fm": 140,
+        "gsm": 144,
+        "ofdm": 144
+      },
+      "n": 980,
+      "per_class_recall": {
+        "am": 0.7794117647058824,
+        "bluetooth": 0.8686131386861314,
+        "cw": 0.7357142857142858,
+        "dsss": 0.9712230215827338,
+        "fm": 0.9071428571428571,
+        "gsm": 0.7638888888888888,
+        "ofdm": 0.8958333333333334
+      }
+    },
+    "32768": {
+      "accuracy": 0.8367346938775511,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8371524600142705,
+      "class_counts": {
+        "am": 136,
+        "bluetooth": 137,
+        "cw": 140,
+        "dsss": 139,
+        "fm": 140,
+        "gsm": 144,
+        "ofdm": 144
+      },
+      "n": 980,
+      "per_class_recall": {
+        "am": 0.8235294117647058,
+        "bluetooth": 0.8978102189781022,
+        "cw": 0.6571428571428571,
+        "dsss": 0.9496402877697842,
+        "fm": 0.9,
+        "gsm": 0.7708333333333334,
+        "ofdm": 0.8611111111111112
+      }
+    },
+    "4096": {
+      "accuracy": 0.8408163265306122,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8408906023331105,
+      "class_counts": {
+        "am": 136,
+        "bluetooth": 137,
+        "cw": 140,
+        "dsss": 139,
+        "fm": 140,
+        "gsm": 144,
+        "ofdm": 144
+      },
+      "n": 980,
+      "per_class_recall": {
+        "am": 0.8014705882352942,
+        "bluetooth": 0.8102189781021898,
+        "cw": 0.75,
+        "dsss": 0.9640287769784173,
+        "fm": 0.9285714285714286,
+        "gsm": 0.7708333333333334,
+        "ofdm": 0.8611111111111112
+      }
+    },
+    "8192": {
+      "accuracy": 0.8520408163265306,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8524382553175308,
+      "class_counts": {
+        "am": 136,
+        "bluetooth": 137,
+        "cw": 140,
+        "dsss": 139,
+        "fm": 140,
+        "gsm": 144,
+        "ofdm": 144
+      },
+      "n": 980,
+      "per_class_recall": {
+        "am": 0.8014705882352942,
+        "bluetooth": 0.8832116788321168,
+        "cw": 0.7785714285714286,
+        "dsss": 0.9784172661870504,
+        "fm": 0.9142857142857143,
+        "gsm": 0.7361111111111112,
+        "ofdm": 0.875
+      }
+    }
+  },
+  "low_snr_per_length": {
+    "16384": {
+      "accuracy": 0.7957166392092258,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.7979327884186761,
+      "class_counts": {
+        "am": 85,
+        "bluetooth": 93,
+        "cw": 99,
+        "dsss": 90,
+        "fm": 77,
+        "gsm": 81,
+        "ofdm": 82
+      },
+      "definition": "manifest snrDb < 18",
+      "n": 607,
+      "per_class_recall": {
+        "am": 0.7764705882352941,
+        "bluetooth": 0.8387096774193549,
+        "cw": 0.6262626262626263,
+        "dsss": 0.9555555555555556,
+        "fm": 0.8311688311688312,
+        "gsm": 0.7037037037037037,
+        "ofdm": 0.8536585365853658
+      },
+      "threshold_db": 18.0
+    },
+    "32768": {
+      "accuracy": 0.7891268533772653,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.7919883330550509,
+      "class_counts": {
+        "am": 85,
+        "bluetooth": 93,
+        "cw": 99,
+        "dsss": 90,
+        "fm": 77,
+        "gsm": 81,
+        "ofdm": 82
+      },
+      "definition": "manifest snrDb < 18",
+      "n": 607,
+      "per_class_recall": {
+        "am": 0.8352941176470589,
+        "bluetooth": 0.8709677419354839,
+        "cw": 0.5656565656565656,
+        "dsss": 0.9444444444444444,
+        "fm": 0.8311688311688312,
+        "gsm": 0.7037037037037037,
+        "ofdm": 0.7926829268292683
+      },
+      "threshold_db": 18.0
+    },
+    "4096": {
+      "accuracy": 0.7891268533772653,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.793685059026538,
+      "class_counts": {
+        "am": 85,
+        "bluetooth": 93,
+        "cw": 99,
+        "dsss": 90,
+        "fm": 77,
+        "gsm": 81,
+        "ofdm": 82
+      },
+      "definition": "manifest snrDb < 18",
+      "n": 607,
+      "per_class_recall": {
+        "am": 0.788235294117647,
+        "bluetooth": 0.7311827956989247,
+        "cw": 0.6262626262626263,
+        "dsss": 0.9555555555555556,
+        "fm": 0.9090909090909091,
+        "gsm": 0.7283950617283951,
+        "ofdm": 0.8170731707317073
+      },
+      "threshold_db": 18.0
+    },
+    "8192": {
+      "accuracy": 0.8187808896210873,
+      "all_classes_present": true,
+      "balanced_accuracy_present_classes": 0.8203130854579789,
+      "class_counts": {
+        "am": 85,
+        "bluetooth": 93,
+        "cw": 99,
+        "dsss": 90,
+        "fm": 77,
+        "gsm": 81,
+        "ofdm": 82
+      },
+      "definition": "manifest snrDb < 18",
+      "n": 607,
+      "per_class_recall": {
+        "am": 0.8470588235294118,
+        "bluetooth": 0.8494623655913979,
+        "cw": 0.6666666666666666,
+        "dsss": 0.9888888888888889,
+        "fm": 0.8571428571428571,
+        "gsm": 0.7037037037037037,
+        "ofdm": 0.8292682926829268
+      },
+      "threshold_db": 18.0
+    }
+  },
+  "matched_length_sweep": {
+    "all_classes_required": [
+      "am",
+      "bluetooth",
+      "cw",
+      "dsss",
+      "fm",
+      "gsm",
+      "ofdm"
+    ],
+    "matched_capture_length": 16384,
+    "matched_rows": 1309,
+    "rejector_rule": "the causal-length and physical-scale sweeps measure the closed-set representation exactly as the v2 evaluator defined them; no stage gates their rows (rejection never participates in the closed and invariance gates, and the stage-1 causal-prefix rule does not change that)",
+    "rows": [
+      {
+        "accuracy": 0.8571428571428571,
+        "balanced_accuracy": 0.8571428571428571,
+        "capture_length": 4096,
+        "mean_pairwise_cosine": 0.559113442507733,
+        "paired_to_matched": {
+          "embedding_cosine_mean": 0.9287536714994165,
+          "embedding_cosine_p05": 0.7713357707365122,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.9371881926329921,
+            "embedding_cosine_p05": 0.7870934971093131,
+            "n": 702,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9110617661565515,
+                "n": 102,
+                "prediction_agreement": 0.8627450980392157
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9335561414947479,
+                "n": 94,
+                "prediction_agreement": 0.8617021276595744
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9371120462343057,
+                "n": 88,
+                "prediction_agreement": 0.9545454545454546
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9638590250082559,
+                "n": 97,
+                "prediction_agreement": 0.9690721649484536
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9573621951858814,
+                "n": 110,
+                "prediction_agreement": 0.9636363636363636
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.8972861202680713,
+                "n": 106,
+                "prediction_agreement": 0.7452830188679245
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9603921720628916,
+                "n": 105,
+                "prediction_agreement": 0.9238095238095239
+              }
+            },
+            "prediction_agreement": 0.896011396011396
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.9189990852790378,
+            "embedding_cosine_p05": 0.7465797906306345,
+            "n": 607,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9032882230061535,
+                "n": 85,
+                "prediction_agreement": 0.7647058823529411
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9221997615224642,
+                "n": 93,
+                "prediction_agreement": 0.8279569892473119
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9151349552903748,
+                "n": 99,
+                "prediction_agreement": 0.6060606060606061
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9470611878968345,
+                "n": 90,
+                "prediction_agreement": 0.9333333333333333
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9304881063566882,
+                "n": 77,
+                "prediction_agreement": 0.7922077922077922
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.8782917675202775,
+                "n": 81,
+                "prediction_agreement": 0.6049382716049383
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9349424773682198,
+                "n": 82,
+                "prediction_agreement": 0.8292682926829268
+              }
+            },
+            "prediction_agreement": 0.7644151565074135
+          },
+          "n": 1309,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.9075283374518252,
+              "n": 187,
+              "prediction_agreement": 0.8181818181818182
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9279083161609384,
+              "n": 187,
+              "prediction_agreement": 0.8449197860962567
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.9254771157345777,
+              "n": 187,
+              "prediction_agreement": 0.7700534759358288
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.9557745044733472,
+              "n": 187,
+              "prediction_agreement": 0.9518716577540107
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.9462963939032724,
+              "n": 187,
+              "prediction_agreement": 0.893048128342246
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.8890586198799896,
+              "n": 187,
+              "prediction_agreement": 0.6844919786096256
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.9492324128919659,
+              "n": 187,
+              "prediction_agreement": 0.8823529411764706
+            }
+          },
+          "prediction_agreement": 0.8349885408708938
+        },
+        "per_class_recall": {
+          "am": 0.8449197860962567,
+          "bluetooth": 0.786096256684492,
+          "cw": 0.7967914438502673,
+          "dsss": 0.9625668449197861,
+          "fm": 0.9411764705882353,
+          "gsm": 0.7914438502673797,
+          "ofdm": 0.8770053475935828
+        }
+      },
+      {
+        "accuracy": 0.8762414056531703,
+        "balanced_accuracy": 0.8762414056531703,
+        "capture_length": 8192,
+        "mean_pairwise_cosine": 0.5396845918628603,
+        "paired_to_matched": {
+          "embedding_cosine_mean": 0.9549746079931741,
+          "embedding_cosine_p05": 0.8293106292770169,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.9636224259302603,
+            "embedding_cosine_p05": 0.8514597937881786,
+            "n": 702,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9565560795425074,
+                "n": 102,
+                "prediction_agreement": 0.9019607843137255
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9528742550559571,
+                "n": 94,
+                "prediction_agreement": 0.8936170212765957
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9574282374455138,
+                "n": 88,
+                "prediction_agreement": 0.9545454545454546
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9795441908915539,
+                "n": 97,
+                "prediction_agreement": 0.979381443298969
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9875674502054889,
+                "n": 110,
+                "prediction_agreement": 0.990909090909091
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9353813984237614,
+                "n": 106,
+                "prediction_agreement": 0.8490566037735849
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9740164166403665,
+                "n": 105,
+                "prediction_agreement": 0.9333333333333333
+              }
+            },
+            "prediction_agreement": 0.9287749287749287
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.9449733424382577,
+            "embedding_cosine_p05": 0.80149329073276,
+            "n": 607,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9297656510215645,
+                "n": 85,
+                "prediction_agreement": 0.7294117647058823
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9408951343427779,
+                "n": 93,
+                "prediction_agreement": 0.8172043010752689
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9404462360024445,
+                "n": 99,
+                "prediction_agreement": 0.696969696969697
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.969037537604992,
+                "n": 90,
+                "prediction_agreement": 0.9444444444444444
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9627945120705069,
+                "n": 77,
+                "prediction_agreement": 0.8441558441558441
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9187553626770829,
+                "n": 81,
+                "prediction_agreement": 0.7283950617283951
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9535801643213058,
+                "n": 82,
+                "prediction_agreement": 0.8902439024390244
+              }
+            },
+            "prediction_agreement": 0.8056013179571664
+          },
+          "n": 1309,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.944378612032988,
+              "n": 187,
+              "prediction_agreement": 0.8235294117647058
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9469167244338947,
+              "n": 187,
+              "prediction_agreement": 0.8556149732620321
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.9484377660933004,
+              "n": 187,
+              "prediction_agreement": 0.8181818181818182
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.9744875128391978,
+              "n": 187,
+              "prediction_agreement": 0.9625668449197861
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.9773668286204964,
+              "n": 187,
+              "prediction_agreement": 0.93048128342246
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.9281797465762697,
+              "n": 187,
+              "prediction_agreement": 0.7967914438502673
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.9650550653560726,
+              "n": 187,
+              "prediction_agreement": 0.9144385026737968
+            }
+          },
+          "prediction_agreement": 0.8716577540106952
+        },
+        "per_class_recall": {
+          "am": 0.8556149732620321,
+          "bluetooth": 0.8716577540106952,
+          "cw": 0.8181818181818182,
+          "dsss": 0.983957219251337,
+          "fm": 0.9358288770053476,
+          "gsm": 0.7807486631016043,
+          "ofdm": 0.8877005347593583
+        }
+      },
+      {
+        "accuracy": 0.8724216959511077,
+        "balanced_accuracy": 0.8724216959511076,
+        "capture_length": 16384,
+        "mean_pairwise_cosine": 0.5386135190476428,
+        "paired_to_matched": {
+          "embedding_cosine_mean": 1.0,
+          "embedding_cosine_p05": 0.9999999999999998,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 1.0,
+            "embedding_cosine_p05": 0.9999999999999998,
+            "n": 702,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 1.0,
+                "n": 102,
+                "prediction_agreement": 1.0
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 1.0,
+                "n": 94,
+                "prediction_agreement": 1.0
+              },
+              "cw": {
+                "embedding_cosine_mean": 1.0,
+                "n": 88,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 1.0,
+                "n": 97,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 110,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 106,
+                "prediction_agreement": 1.0
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 105,
+                "prediction_agreement": 1.0
+              }
+            },
+            "prediction_agreement": 1.0
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 1.0,
+            "embedding_cosine_p05": 0.9999999999999998,
+            "n": 607,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 1.0,
+                "n": 85,
+                "prediction_agreement": 1.0
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 1.0,
+                "n": 93,
+                "prediction_agreement": 1.0
+              },
+              "cw": {
+                "embedding_cosine_mean": 1.0,
+                "n": 99,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 1.0,
+                "n": 90,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 77,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 81,
+                "prediction_agreement": 1.0
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 82,
+                "prediction_agreement": 1.0
+              }
+            },
+            "prediction_agreement": 1.0
+          },
+          "n": 1309,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "cw": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "dsss": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "fm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "gsm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 187,
+              "prediction_agreement": 1.0
+            }
+          },
+          "prediction_agreement": 1.0
+        },
+        "per_class_recall": {
+          "am": 0.839572192513369,
+          "bluetooth": 0.8716577540106952,
+          "cw": 0.786096256684492,
+          "dsss": 0.9786096256684492,
+          "fm": 0.93048128342246,
+          "gsm": 0.786096256684492,
+          "ofdm": 0.9144385026737968
+        }
+      },
+      {
+        "accuracy": 0.8663101604278075,
+        "balanced_accuracy": 0.8663101604278075,
+        "capture_length": 32768,
+        "mean_pairwise_cosine": 0.540869843131299,
+        "paired_to_matched": {
+          "embedding_cosine_mean": 0.9506371489623648,
+          "embedding_cosine_p05": 0.8010020528705788,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.9591610733623716,
+            "embedding_cosine_p05": 0.8459021326083281,
+            "n": 702,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9557931642225824,
+                "n": 102,
+                "prediction_agreement": 0.9313725490196079
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9473999306436788,
+                "n": 94,
+                "prediction_agreement": 0.925531914893617
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.95314856963258,
+                "n": 88,
+                "prediction_agreement": 0.9090909090909091
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9789618765481678,
+                "n": 97,
+                "prediction_agreement": 0.979381443298969
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9892993515280384,
+                "n": 110,
+                "prediction_agreement": 0.990909090909091
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9166872842481759,
+                "n": 106,
+                "prediction_agreement": 0.8113207547169812
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9710135268375752,
+                "n": 105,
+                "prediction_agreement": 0.9809523809523809
+              }
+            },
+            "prediction_agreement": 0.9330484330484331
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.9407791672015665,
+            "embedding_cosine_p05": 0.783016267620623,
+            "n": 607,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9457916918261434,
+                "n": 85,
+                "prediction_agreement": 0.8470588235294118
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9470871044068319,
+                "n": 93,
+                "prediction_agreement": 0.8602150537634409
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9106156913816913,
+                "n": 99,
+                "prediction_agreement": 0.6767676767676768
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9637565563666597,
+                "n": 90,
+                "prediction_agreement": 0.9555555555555556
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9549482788477814,
+                "n": 77,
+                "prediction_agreement": 0.8441558441558441
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.90959396697379,
+                "n": 81,
+                "prediction_agreement": 0.7407407407407407
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9571266787847599,
+                "n": 82,
+                "prediction_agreement": 0.8292682926829268
+              }
+            },
+            "prediction_agreement": 0.8204283360790774
+          },
+          "n": 1309,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.9512470404060194,
+              "n": 187,
+              "prediction_agreement": 0.893048128342246
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9472443539590437,
+              "n": 187,
+              "prediction_agreement": 0.893048128342246
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.9306311634997566,
+              "n": 187,
+              "prediction_agreement": 0.786096256684492
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.971643808011613,
+              "n": 187,
+              "prediction_agreement": 0.9679144385026738
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.975154792189109,
+              "n": 187,
+              "prediction_agreement": 0.93048128342246
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.9136147778352065,
+              "n": 187,
+              "prediction_agreement": 0.7807486631016043
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.964924106835806,
+              "n": 187,
+              "prediction_agreement": 0.9144385026737968
+            }
+          },
+          "prediction_agreement": 0.8808250572956455
+        },
+        "per_class_recall": {
+          "am": 0.8663101604278075,
+          "bluetooth": 0.9090909090909091,
+          "cw": 0.7219251336898396,
+          "dsss": 0.9625668449197861,
+          "fm": 0.9251336898395722,
+          "gsm": 0.786096256684492,
+          "ofdm": 0.893048128342246
+        }
+      }
+    ],
+    "worst_balanced_accuracy": 0.8571428571428571,
+    "worst_embedding_cosine_to_matched": 0.9287536714994165,
+    "worst_mean_pairwise_cosine": 0.559113442507733,
+    "worst_prediction_agreement_to_matched": 0.8349885408708938
+  },
+  "open_staged_per_length": {
+    "16384": {
+      "auroc_chirp": 0.9745008912655971,
+      "auroc_noise": 0.9467303284950344,
+      "auroc_overall": 0.9606156098803158,
+      "base_seed": 20260733,
+      "derived_seed_by_family": {
+        "chirp": 10971006571914287132,
+        "noise": 15409854729409788512
+      },
+      "flagged_unknown_chirp": 1.0,
+      "flagged_unknown_noise": 0.7866666666666666,
+      "gated_fraction_chirp": 0.0033333333333333335,
+      "gated_fraction_noise": 0.4666666666666667,
+      "known_false_unknown_by_stage": {
+        "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+        "rejected_by_stage_one_only": 26,
+        "rejected_by_stage_two_only": 98,
+        "rows": 1309,
+        "stage_one_gate_rate": 0.019862490450725745,
+        "stage_two_false_unknown_rate_among_survivors": 0.07638347622759158,
+        "stage_two_false_unknown_rate_marginal": 0.0748663101604278,
+        "staged_false_unknown_rate": 0.09472880061115355,
+        "staged_threshold": 0.9740452030878427,
+        "unstaged_false_unknown_rate": 0.03972498090145149,
+        "unstaged_threshold": 0.9494921144079123
+      },
+      "known_false_unknown_rate": 0.09472880061115355,
+      "known_gated_fraction": 0.019862490450725745,
+      "known_rows": 1309,
+      "known_score_quantiles": {
+        "p50": 0.7729481641468683,
+        "p95": 0.9881209503239741
+      },
+      "maximum_length_realization_sha256": {
+        "chirp": "8617188cbda8b47a567b9cfe15090ecd8641c2470d342fc13e3339fc5b9e6df6",
+        "noise": "b7ca511f42cb6d1e034c331ed3ff532cdc38dd8cb327fad312821397d41f6f8b"
+      },
+      "novelty_rows_per_family": 300,
+      "recalibration_performed": false,
+      "score": "staged axis, policy version v3-staged-openset-policy-v2-composite-survivor: frozen stage-1 noise prefilter gates; survivors carry the COMPOSITE max(stage2_enrollment_rank, stage1_score_enrollment_rank) over the frozen enrollment-ranked branch-LOF + geometry blend and the enrollment-survivor stage-1 rank; gated rows are placed above every survivor",
+      "shorter_observation_rule": "each shorter novelty observation is the exact leading slice of the same in-memory maximum-length realization",
+      "stage_one_active": true,
+      "stage_one_feature_length": 16384,
+      "stage_one_prefix_rule_applied": false,
+      "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+      "subset_scoring_agreement": {
+        "chirp": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 299,
+          "tolerance": 1e-06
+        },
+        "known": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 1283,
+          "tolerance": 1e-06
+        },
+        "noise": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 160,
+          "tolerance": 1e-06
+        }
+      },
+      "threshold": 0.9740452030878427,
+      "threshold_rule": "frozen q95 of the composite over enrollment stage-1 survivors, loaded verbatim; the unstaged control below uses the stage-2 policy's own untouched threshold",
+      "unstaged_control": {
+        "auroc_chirp": 0.9987891520244462,
+        "auroc_noise": 0.6633766233766234,
+        "auroc_overall": 0.8310828877005347,
+        "flagged_unknown_chirp": 1.0,
+        "flagged_unknown_noise": 0.04,
+        "known_false_unknown_rate": 0.03972498090145149,
+        "role": "verification control: the additive path over the same rows against the stage-2 policy's own untouched threshold; never a gate input",
+        "threshold": 0.9494921144079123
+      }
+    },
+    "32768": {
+      "auroc_chirp": 0.9703959765724471,
+      "auroc_noise": 0.9398281130634072,
+      "auroc_overall": 0.9551120448179272,
+      "base_seed": 20260733,
+      "derived_seed_by_family": {
+        "chirp": 10971006571914287132,
+        "noise": 15409854729409788512
+      },
+      "flagged_unknown_chirp": 1.0,
+      "flagged_unknown_noise": 0.79,
+      "gated_fraction_chirp": 0.0033333333333333335,
+      "gated_fraction_noise": 0.4666666666666667,
+      "known_false_unknown_by_stage": {
+        "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+        "rejected_by_stage_one_only": 26,
+        "rejected_by_stage_two_only": 119,
+        "rows": 1309,
+        "stage_one_gate_rate": 0.019862490450725745,
+        "stage_two_false_unknown_rate_among_survivors": 0.09275136399064692,
+        "stage_two_false_unknown_rate_marginal": 0.09090909090909091,
+        "staged_false_unknown_rate": 0.11077158135981666,
+        "staged_threshold": 0.9740452030878427,
+        "unstaged_false_unknown_rate": 0.06799083269671505,
+        "unstaged_threshold": 0.9494921144079123
+      },
+      "known_false_unknown_rate": 0.11077158135981666,
+      "known_gated_fraction": 0.019862490450725745,
+      "known_rows": 1309,
+      "known_score_quantiles": {
+        "p50": 0.7856371490280778,
+        "p95": 0.9923635876571735
+      },
+      "maximum_length_realization_sha256": {
+        "chirp": "8617188cbda8b47a567b9cfe15090ecd8641c2470d342fc13e3339fc5b9e6df6",
+        "noise": "b7ca511f42cb6d1e034c331ed3ff532cdc38dd8cb327fad312821397d41f6f8b"
+      },
+      "novelty_rows_per_family": 300,
+      "recalibration_performed": false,
+      "score": "staged axis, policy version v3-staged-openset-policy-v2-composite-survivor: frozen stage-1 noise prefilter gates; survivors carry the COMPOSITE max(stage2_enrollment_rank, stage1_score_enrollment_rank) over the frozen enrollment-ranked branch-LOF + geometry blend and the enrollment-survivor stage-1 rank; gated rows are placed above every survivor",
+      "shorter_observation_rule": "each shorter novelty observation is the exact leading slice of the same in-memory maximum-length realization",
+      "stage_one_active": true,
+      "stage_one_feature_length": 16384,
+      "stage_one_prefix_rule_applied": true,
+      "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+      "subset_scoring_agreement": {
+        "chirp": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 299,
+          "tolerance": 1e-06
+        },
+        "known": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 1283,
+          "tolerance": 1e-06
+        },
+        "noise": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 160,
+          "tolerance": 1e-06
+        }
+      },
+      "threshold": 0.9740452030878427,
+      "threshold_rule": "frozen q95 of the composite over enrollment stage-1 survivors, loaded verbatim; the unstaged control below uses the stage-2 policy's own untouched threshold",
+      "unstaged_control": {
+        "auroc_chirp": 0.9949987267634326,
+        "auroc_noise": 0.6538757321110262,
+        "auroc_overall": 0.8244372294372294,
+        "flagged_unknown_chirp": 1.0,
+        "flagged_unknown_noise": 0.05,
+        "known_false_unknown_rate": 0.06799083269671505,
+        "role": "verification control: the additive path over the same rows against the stage-2 policy's own untouched threshold; never a gate input",
+        "threshold": 0.9494921144079123
+      }
+    },
+    "4096": {
+      "auroc_chirp": 0.9157053730583142,
+      "auroc_noise": 0.9596562261268143,
+      "auroc_overall": 0.9376807995925643,
+      "base_seed": 20260733,
+      "derived_seed_by_family": {
+        "chirp": 10971006571914287132,
+        "noise": 15409854729409788512
+      },
+      "flagged_unknown_chirp": 0.6,
+      "flagged_unknown_noise": 0.86,
+      "gated_fraction_chirp": 0.0,
+      "gated_fraction_noise": 0.48,
+      "known_false_unknown_by_stage": {
+        "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+        "rejected_by_stage_one_only": 23,
+        "rejected_by_stage_two_only": 88,
+        "rows": 1309,
+        "stage_one_gate_rate": 0.01757066462948816,
+        "stage_two_false_unknown_rate_among_survivors": 0.06842923794712286,
+        "stage_two_false_unknown_rate_marginal": 0.06722689075630252,
+        "staged_false_unknown_rate": 0.08479755538579067,
+        "staged_threshold": 0.9740452030878427,
+        "unstaged_false_unknown_rate": 0.03437738731856379,
+        "unstaged_threshold": 0.9494921144079123
+      },
+      "known_false_unknown_rate": 0.08479755538579067,
+      "known_gated_fraction": 0.01757066462948816,
+      "known_rows": 1309,
+      "known_score_quantiles": {
+        "p50": 0.7176025917926566,
+        "p95": 0.9865026242968725
+      },
+      "maximum_length_realization_sha256": {
+        "chirp": "8617188cbda8b47a567b9cfe15090ecd8641c2470d342fc13e3339fc5b9e6df6",
+        "noise": "b7ca511f42cb6d1e034c331ed3ff532cdc38dd8cb327fad312821397d41f6f8b"
+      },
+      "novelty_rows_per_family": 300,
+      "recalibration_performed": false,
+      "score": "staged axis, policy version v3-staged-openset-policy-v2-composite-survivor: frozen stage-1 noise prefilter gates; survivors carry the COMPOSITE max(stage2_enrollment_rank, stage1_score_enrollment_rank) over the frozen enrollment-ranked branch-LOF + geometry blend and the enrollment-survivor stage-1 rank; gated rows are placed above every survivor",
+      "shorter_observation_rule": "each shorter novelty observation is the exact leading slice of the same in-memory maximum-length realization",
+      "stage_one_active": true,
+      "stage_one_feature_length": 4096,
+      "stage_one_prefix_rule_applied": false,
+      "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+      "subset_scoring_agreement": {
+        "chirp": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 300,
+          "tolerance": 1e-06
+        },
+        "known": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 1286,
+          "tolerance": 1e-06
+        },
+        "noise": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 156,
+          "tolerance": 1e-06
+        }
+      },
+      "threshold": 0.9740452030878427,
+      "threshold_rule": "frozen q95 of the composite over enrollment stage-1 survivors, loaded verbatim; the unstaged control below uses the stage-2 policy's own untouched threshold",
+      "unstaged_control": {
+        "auroc_chirp": 0.9854405398523045,
+        "auroc_noise": 0.6729386299974536,
+        "auroc_overall": 0.829189584924879,
+        "flagged_unknown_chirp": 0.9633333333333334,
+        "flagged_unknown_noise": 0.03666666666666667,
+        "known_false_unknown_rate": 0.03437738731856379,
+        "role": "verification control: the additive path over the same rows against the stage-2 policy's own untouched threshold; never a gate input",
+        "threshold": 0.9494921144079123
+      }
+    },
+    "8192": {
+      "auroc_chirp": 0.969637127578304,
+      "auroc_noise": 0.9548892284186402,
+      "auroc_overall": 0.9622631779984722,
+      "base_seed": 20260733,
+      "derived_seed_by_family": {
+        "chirp": 10971006571914287132,
+        "noise": 15409854729409788512
+      },
+      "flagged_unknown_chirp": 0.9866666666666667,
+      "flagged_unknown_noise": 0.8433333333333334,
+      "gated_fraction_chirp": 0.0,
+      "gated_fraction_noise": 0.46,
+      "known_false_unknown_by_stage": {
+        "attribution": "a known row counted here was NOT classified if stage_one gated it; the stage-1 share is the cost of the architecture contract change. Survivor rejection is on the COMPOSITE axis against staged_threshold; the unstaged control uses the additive axis against unstaged_threshold",
+        "rejected_by_stage_one_only": 25,
+        "rejected_by_stage_two_only": 93,
+        "rows": 1309,
+        "stage_one_gate_rate": 0.019098548510313215,
+        "stage_two_false_unknown_rate_among_survivors": 0.07242990654205607,
+        "stage_two_false_unknown_rate_marginal": 0.07104660045836517,
+        "staged_false_unknown_rate": 0.09014514896867838,
+        "staged_threshold": 0.9740452030878427,
+        "unstaged_false_unknown_rate": 0.03284950343773873,
+        "unstaged_threshold": 0.9494921144079123
+      },
+      "known_false_unknown_rate": 0.09014514896867838,
+      "known_gated_fraction": 0.019098548510313215,
+      "known_rows": 1309,
+      "known_score_quantiles": {
+        "p50": 0.7249398556535686,
+        "p95": 0.9878509719222462
+      },
+      "maximum_length_realization_sha256": {
+        "chirp": "8617188cbda8b47a567b9cfe15090ecd8641c2470d342fc13e3339fc5b9e6df6",
+        "noise": "b7ca511f42cb6d1e034c331ed3ff532cdc38dd8cb327fad312821397d41f6f8b"
+      },
+      "novelty_rows_per_family": 300,
+      "recalibration_performed": false,
+      "score": "staged axis, policy version v3-staged-openset-policy-v2-composite-survivor: frozen stage-1 noise prefilter gates; survivors carry the COMPOSITE max(stage2_enrollment_rank, stage1_score_enrollment_rank) over the frozen enrollment-ranked branch-LOF + geometry blend and the enrollment-survivor stage-1 rank; gated rows are placed above every survivor",
+      "shorter_observation_rule": "each shorter novelty observation is the exact leading slice of the same in-memory maximum-length realization",
+      "stage_one_active": true,
+      "stage_one_feature_length": 8192,
+      "stage_one_prefix_rule_applied": false,
+      "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+      "subset_scoring_agreement": {
+        "chirp": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 300,
+          "tolerance": 1e-06
+        },
+        "known": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 1284,
+          "tolerance": 1e-06
+        },
+        "noise": {
+          "exact": true,
+          "max_abs_difference": 0.0,
+          "survivor_rows": 162,
+          "tolerance": 1e-06
+        }
+      },
+      "threshold": 0.9740452030878427,
+      "threshold_rule": "frozen q95 of the composite over enrollment stage-1 survivors, loaded verbatim; the unstaged control below uses the stage-2 policy's own untouched threshold",
+      "unstaged_control": {
+        "auroc_chirp": 0.9988375350140056,
+        "auroc_noise": 0.6754430863254393,
+        "auroc_overall": 0.8371403106697224,
+        "flagged_unknown_chirp": 1.0,
+        "flagged_unknown_noise": 0.02666666666666667,
+        "known_false_unknown_rate": 0.03284950343773873,
+        "role": "verification control: the additive path over the same rows against the stage-2 policy's own untouched threshold; never a gate input",
+        "threshold": 0.9494921144079123
+      }
+    }
+  },
+  "physical_scale_sweep": {
+    "definition": "normalized frequencies multiplied by s through deterministic linear resampling to N/s; common predeclared no-alias subset",
+    "effective_scale_by_requested_factor": {
+      "0.5": 0.499984740745262,
+      "0.75": 0.75,
+      "1.0": 1.0,
+      "1.5": 1.5,
+      "2.0": 2.0001220852154806
+    },
+    "eligible_by_class": {
+      "am": 127,
+      "bluetooth": 84,
+      "cw": 140,
+      "dsss": 35,
+      "fm": 122,
+      "gsm": 116,
+      "ofdm": 55
+    },
+    "eligible_indices_sha256": "6d76d65aa886bed98182d3dfe050a2549ab65b2a8787e3f271391b261fc6d200",
+    "eligible_rows": 679,
+    "excluded_by_class": {
+      "am": 60,
+      "bluetooth": 103,
+      "cw": 47,
+      "dsss": 152,
+      "fm": 65,
+      "gsm": 71,
+      "ofdm": 132
+    },
+    "excluded_total": 630,
+    "exclusion_reason": "transformed occupied support would meet/cross the predeclared Nyquist guard for at least one factor",
+    "factors": [
+      0.5,
+      0.75,
+      1.0,
+      1.5,
+      2.0
+    ],
+    "maximum_effective_scale": 2.0001220852154806,
+    "rejector_rule": "the causal-length and physical-scale sweeps measure the closed-set representation exactly as the v2 evaluator defined them; no stage gates their rows (rejection never participates in the closed and invariance gates, and the stage-1 causal-prefix rule does not change that)",
+    "rows": [
+      {
+        "accuracy": 0.7879234167893961,
+        "balanced_accuracy": 0.7995535849253894,
+        "effective_factor": 0.499984740745262,
+        "factor": 0.5,
+        "mean_pairwise_cosine": 0.5466133523135566,
+        "paired_to_factor1": {
+          "embedding_cosine_mean": 0.937583111351048,
+          "embedding_cosine_p05": 0.6635016784763915,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.9840892271081229,
+            "embedding_cosine_p05": 0.9497855366724933,
+            "n": 363,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9854260561186453,
+                "n": 66,
+                "prediction_agreement": 0.9545454545454546
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9529107898744813,
+                "n": 47,
+                "prediction_agreement": 0.9148936170212766
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9857672237953196,
+                "n": 61,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9913519498232146,
+                "n": 17,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9954855312102203,
+                "n": 74,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9874041700547499,
+                "n": 68,
+                "prediction_agreement": 0.9705882352941176
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.986842198017629,
+                "n": 30,
+                "prediction_agreement": 0.9666666666666667
+              }
+            },
+            "prediction_agreement": 0.9724517906336089
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.8841599467313701,
+            "embedding_cosine_p05": 0.5989523141830673,
+            "n": 316,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.8844104407826735,
+                "n": 61,
+                "prediction_agreement": 0.7213114754098361
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9377398464519562,
+                "n": 37,
+                "prediction_agreement": 0.8918918918918919
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.8699746607292327,
+                "n": 79,
+                "prediction_agreement": 0.6075949367088608
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.8846855535475586,
+                "n": 18,
+                "prediction_agreement": 0.6111111111111112
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.8393781766684079,
+                "n": 48,
+                "prediction_agreement": 0.6875
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.8958910068382853,
+                "n": 48,
+                "prediction_agreement": 0.6875
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9121549196344302,
+                "n": 25,
+                "prediction_agreement": 0.72
+              }
+            },
+            "prediction_agreement": 0.6962025316455697
+          },
+          "n": 679,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.9369067448155409,
+              "n": 127,
+              "prediction_agreement": 0.84251968503937
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9462283505097977,
+              "n": 84,
+              "prediction_agreement": 0.9047619047619048
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.9204271346365993,
+              "n": 140,
+              "prediction_agreement": 0.7785714285714286
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.9364949460243059,
+              "n": 35,
+              "prediction_agreement": 0.8
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.934066244177376,
+              "n": 122,
+              "prediction_agreement": 0.8770491803278688
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.9495366542410404,
+              "n": 116,
+              "prediction_agreement": 0.853448275862069
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.9528934351161751,
+              "n": 55,
+              "prediction_agreement": 0.8545454545454545
+            }
+          },
+          "prediction_agreement": 0.8438880706921944
+        },
+        "per_class_recall": {
+          "am": 0.8267716535433071,
+          "bluetooth": 0.8928571428571429,
+          "cw": 0.6642857142857143,
+          "dsss": 0.8,
+          "fm": 0.8524590163934426,
+          "gsm": 0.7241379310344828,
+          "ofdm": 0.8363636363636363
+        },
+        "raw_length": 32768,
+        "transformed_metadata": {
+          "bandwidth_hz_rule": "unchanged",
+          "centre_offset_fraction_rule": "original centreOffsetFrac * effective_factor",
+          "sample_rate_hz_max": 400012207.77635354,
+          "sample_rate_hz_min": 2000061.0388817678,
+          "sample_rate_hz_rule": "original sampleRateHz / effective_factor"
+        }
+      },
+      {
+        "accuracy": 0.7879234167893961,
+        "balanced_accuracy": 0.8135237290514622,
+        "effective_factor": 0.75,
+        "factor": 0.75,
+        "mean_pairwise_cosine": 0.5653019289988864,
+        "paired_to_factor1": {
+          "embedding_cosine_mean": 0.942548926443801,
+          "embedding_cosine_p05": 0.7449784351963191,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.9761048203391232,
+            "embedding_cosine_p05": 0.8426538433391959,
+            "n": 363,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9867270733170834,
+                "n": 66,
+                "prediction_agreement": 0.9545454545454546
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9566455079048419,
+                "n": 47,
+                "prediction_agreement": 0.9148936170212766
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9345109221140143,
+                "n": 61,
+                "prediction_agreement": 0.8524590163934426
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9868638422815867,
+                "n": 17,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9976148108556657,
+                "n": 74,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9888909478985094,
+                "n": 68,
+                "prediction_agreement": 0.9705882352941176
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9796597348162306,
+                "n": 30,
+                "prediction_agreement": 0.9333333333333333
+              }
+            },
+            "prediction_agreement": 0.9449035812672176
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.9040021242792375,
+            "embedding_cosine_p05": 0.6614759489870146,
+            "n": 316,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9065046670502993,
+                "n": 61,
+                "prediction_agreement": 0.8032786885245902
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9557132570759561,
+                "n": 37,
+                "prediction_agreement": 0.8918918918918919
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.8704308438694655,
+                "n": 79,
+                "prediction_agreement": 0.5949367088607594
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.939842083921393,
+                "n": 18,
+                "prediction_agreement": 0.8333333333333334
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.8790507148514659,
+                "n": 48,
+                "prediction_agreement": 0.6875
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9150290660827611,
+                "n": 48,
+                "prediction_agreement": 0.75
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9283788963697873,
+                "n": 25,
+                "prediction_agreement": 0.72
+              }
+            },
+            "prediction_agreement": 0.7310126582278481
+          },
+          "n": 679,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.9481950514094154,
+              "n": 127,
+              "prediction_agreement": 0.8818897637795275
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9562348736111661,
+              "n": 84,
+              "prediction_agreement": 0.9047619047619048
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.8983514493903046,
+              "n": 140,
+              "prediction_agreement": 0.7071428571428572
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.9626812236963441,
+              "n": 35,
+              "prediction_agreement": 0.9142857142857143
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.9509666419359805,
+              "n": 122,
+              "prediction_agreement": 0.8770491803278688
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.9583274105954411,
+              "n": 116,
+              "prediction_agreement": 0.8793103448275862
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.9563502627951201,
+              "n": 55,
+              "prediction_agreement": 0.8363636363636363
+            }
+          },
+          "prediction_agreement": 0.845360824742268
+        },
+        "per_class_recall": {
+          "am": 0.8188976377952756,
+          "bluetooth": 0.9285714285714286,
+          "cw": 0.6285714285714286,
+          "dsss": 0.9142857142857143,
+          "fm": 0.8524590163934426,
+          "gsm": 0.7155172413793104,
+          "ofdm": 0.8363636363636363
+        },
+        "raw_length": 21845,
+        "transformed_metadata": {
+          "bandwidth_hz_rule": "unchanged",
+          "centre_offset_fraction_rule": "original centreOffsetFrac * effective_factor",
+          "sample_rate_hz_max": 266666666.66666666,
+          "sample_rate_hz_min": 1333333.3333333333,
+          "sample_rate_hz_rule": "original sampleRateHz / effective_factor"
+        }
+      },
+      {
+        "accuracy": 0.8497790868924889,
+        "balanced_accuracy": 0.8720204881538905,
+        "effective_factor": 1.0,
+        "factor": 1.0,
+        "mean_pairwise_cosine": 0.5516188142265916,
+        "paired_to_factor1": {
+          "embedding_cosine_mean": 1.0,
+          "embedding_cosine_p05": 0.9999999999999998,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 1.0,
+            "embedding_cosine_p05": 0.9999999999999998,
+            "n": 363,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 1.0,
+                "n": 66,
+                "prediction_agreement": 1.0
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 1.0,
+                "n": 47,
+                "prediction_agreement": 1.0
+              },
+              "cw": {
+                "embedding_cosine_mean": 1.0,
+                "n": 61,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 1.0,
+                "n": 17,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 74,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 68,
+                "prediction_agreement": 1.0
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 30,
+                "prediction_agreement": 1.0
+              }
+            },
+            "prediction_agreement": 1.0
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 1.0,
+            "embedding_cosine_p05": 0.9999999999999998,
+            "n": 316,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 1.0,
+                "n": 61,
+                "prediction_agreement": 1.0
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 1.0,
+                "n": 37,
+                "prediction_agreement": 1.0
+              },
+              "cw": {
+                "embedding_cosine_mean": 1.0,
+                "n": 79,
+                "prediction_agreement": 1.0
+              },
+              "dsss": {
+                "embedding_cosine_mean": 1.0,
+                "n": 18,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 48,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 48,
+                "prediction_agreement": 1.0
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 1.0,
+                "n": 25,
+                "prediction_agreement": 1.0
+              }
+            },
+            "prediction_agreement": 1.0
+          },
+          "n": 679,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 1.0,
+              "n": 127,
+              "prediction_agreement": 1.0
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 1.0,
+              "n": 84,
+              "prediction_agreement": 1.0
+            },
+            "cw": {
+              "embedding_cosine_mean": 1.0,
+              "n": 140,
+              "prediction_agreement": 1.0
+            },
+            "dsss": {
+              "embedding_cosine_mean": 1.0,
+              "n": 35,
+              "prediction_agreement": 1.0
+            },
+            "fm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 122,
+              "prediction_agreement": 1.0
+            },
+            "gsm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 116,
+              "prediction_agreement": 1.0
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 1.0,
+              "n": 55,
+              "prediction_agreement": 1.0
+            }
+          },
+          "prediction_agreement": 1.0
+        },
+        "per_class_recall": {
+          "am": 0.8188976377952756,
+          "bluetooth": 0.9404761904761905,
+          "cw": 0.7785714285714286,
+          "dsss": 1.0,
+          "fm": 0.9262295081967213,
+          "gsm": 0.7672413793103449,
+          "ofdm": 0.8727272727272727
+        },
+        "raw_length": 16384,
+        "transformed_metadata": {
+          "bandwidth_hz_rule": "unchanged",
+          "centre_offset_fraction_rule": "original centreOffsetFrac * effective_factor",
+          "sample_rate_hz_max": 200000000.0,
+          "sample_rate_hz_min": 1000000.0,
+          "sample_rate_hz_rule": "original sampleRateHz / effective_factor"
+        }
+      },
+      {
+        "accuracy": 0.8365243004418262,
+        "balanced_accuracy": 0.8581543829031019,
+        "effective_factor": 1.5,
+        "factor": 1.5,
+        "mean_pairwise_cosine": 0.5758377782971509,
+        "paired_to_factor1": {
+          "embedding_cosine_mean": 0.9512789851169959,
+          "embedding_cosine_p05": 0.7651118018834103,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.9710612925750922,
+            "embedding_cosine_p05": 0.8090198768065012,
+            "n": 363,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9776556175819435,
+                "n": 66,
+                "prediction_agreement": 0.9545454545454546
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9514892836669521,
+                "n": 47,
+                "prediction_agreement": 0.9148936170212766
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9169129856009867,
+                "n": 61,
+                "prediction_agreement": 0.9016393442622951
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9861911131003528,
+                "n": 17,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9960532906601316,
+                "n": 74,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9892870157626772,
+                "n": 68,
+                "prediction_agreement": 0.9852941176470589
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9857860162308488,
+                "n": 30,
+                "prediction_agreement": 1.0
+              }
+            },
+            "prediction_agreement": 0.9614325068870524
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.9285543724357018,
+            "embedding_cosine_p05": 0.727591987683184,
+            "n": 316,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9224554885564732,
+                "n": 61,
+                "prediction_agreement": 0.7540983606557377
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9438291367021474,
+                "n": 37,
+                "prediction_agreement": 0.8378378378378378
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.8920165271979231,
+                "n": 79,
+                "prediction_agreement": 0.5569620253164557
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9800733558154106,
+                "n": 18,
+                "prediction_agreement": 0.9444444444444444
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9557135912630841,
+                "n": 48,
+                "prediction_agreement": 0.8125
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9434104115387876,
+                "n": 48,
+                "prediction_agreement": 0.8125
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.918525625678172,
+                "n": 25,
+                "prediction_agreement": 0.64
+              }
+            },
+            "prediction_agreement": 0.7341772151898734
+          },
+          "n": 679,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.9511421697823083,
+              "n": 127,
+              "prediction_agreement": 0.8582677165354331
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9481151713134073,
+              "n": 84,
+              "prediction_agreement": 0.8809523809523809
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.9028642697878293,
+              "n": 140,
+              "prediction_agreement": 0.7071428571428572
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.9830448379252397,
+              "n": 35,
+              "prediction_agreement": 0.9714285714285714
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.9801819335203096,
+              "n": 122,
+              "prediction_agreement": 0.9262295081967213
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.9703035933252057,
+              "n": 116,
+              "prediction_agreement": 0.9137931034482759
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.9552131114341776,
+              "n": 55,
+              "prediction_agreement": 0.8363636363636363
+            }
+          },
+          "prediction_agreement": 0.8556701030927835
+        },
+        "per_class_recall": {
+          "am": 0.7874015748031497,
+          "bluetooth": 0.9285714285714286,
+          "cw": 0.7142857142857143,
+          "dsss": 0.9714285714285714,
+          "fm": 0.9836065573770492,
+          "gsm": 0.7672413793103449,
+          "ofdm": 0.8545454545454545
+        },
+        "raw_length": 10923,
+        "transformed_metadata": {
+          "bandwidth_hz_rule": "unchanged",
+          "centre_offset_fraction_rule": "original centreOffsetFrac * effective_factor",
+          "sample_rate_hz_max": 133333333.33333333,
+          "sample_rate_hz_min": 666666.6666666666,
+          "sample_rate_hz_rule": "original sampleRateHz / effective_factor"
+        }
+      },
+      {
+        "accuracy": 0.882179675994109,
+        "balanced_accuracy": 0.8957830370496708,
+        "effective_factor": 2.0001220852154806,
+        "factor": 2.0,
+        "mean_pairwise_cosine": 0.5563596455794964,
+        "paired_to_factor1": {
+          "embedding_cosine_mean": 0.9615819952969704,
+          "embedding_cosine_p05": 0.7932648351963218,
+          "high_snr": {
+            "definition": "manifest snrDb >= 18",
+            "embedding_cosine_mean": 0.984728828609096,
+            "embedding_cosine_p05": 0.9339060714057141,
+            "n": 363,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9853521179727436,
+                "n": 66,
+                "prediction_agreement": 0.9696969696969697
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9659026487623115,
+                "n": 47,
+                "prediction_agreement": 0.9361702127659575
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9828396720435674,
+                "n": 61,
+                "prediction_agreement": 0.9508196721311475
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9866459753504463,
+                "n": 17,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9975127515409167,
+                "n": 74,
+                "prediction_agreement": 1.0
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9861478294075001,
+                "n": 68,
+                "prediction_agreement": 1.0
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9808567639239728,
+                "n": 30,
+                "prediction_agreement": 0.9333333333333333
+              }
+            },
+            "prediction_agreement": 0.9724517906336089
+          },
+          "low_snr": {
+            "definition": "manifest snrDb < 18",
+            "embedding_cosine_mean": 0.9349924367770286,
+            "embedding_cosine_p05": 0.7493222522098504,
+            "n": 316,
+            "per_class": {
+              "am": {
+                "embedding_cosine_mean": 0.9374207504750752,
+                "n": 61,
+                "prediction_agreement": 0.7868852459016393
+              },
+              "bluetooth": {
+                "embedding_cosine_mean": 0.9430089162791496,
+                "n": 37,
+                "prediction_agreement": 0.918918918918919
+              },
+              "cw": {
+                "embedding_cosine_mean": 0.9168086984158115,
+                "n": 79,
+                "prediction_agreement": 0.6708860759493671
+              },
+              "dsss": {
+                "embedding_cosine_mean": 0.9828787806723854,
+                "n": 18,
+                "prediction_agreement": 1.0
+              },
+              "fm": {
+                "embedding_cosine_mean": 0.9447176568300503,
+                "n": 48,
+                "prediction_agreement": 0.7916666666666666
+              },
+              "gsm": {
+                "embedding_cosine_mean": 0.9298699244856169,
+                "n": 48,
+                "prediction_agreement": 0.7708333333333334
+              },
+              "ofdm": {
+                "embedding_cosine_mean": 0.9313482084051549,
+                "n": 25,
+                "prediction_agreement": 0.72
+              }
+            },
+            "prediction_agreement": 0.7784810126582279
+          },
+          "n": 679,
+          "per_class": {
+            "am": {
+              "embedding_cosine_mean": 0.9623299650801627,
+              "n": 127,
+              "prediction_agreement": 0.8818897637795275
+            },
+            "bluetooth": {
+              "embedding_cosine_mean": 0.9558185046923471,
+              "n": 84,
+              "prediction_agreement": 0.9285714285714286
+            },
+            "cw": {
+              "embedding_cosine_mean": 0.945579336925048,
+              "n": 140,
+              "prediction_agreement": 0.7928571428571428
+            },
+            "dsss": {
+              "embedding_cosine_mean": 0.9847085609445864,
+              "n": 35,
+              "prediction_agreement": 1.0
+            },
+            "fm": {
+              "embedding_cosine_mean": 0.9767409109989366,
+              "n": 122,
+              "prediction_agreement": 0.9180327868852459
+            },
+            "gsm": {
+              "embedding_cosine_mean": 0.9628604204743068,
+              "n": 116,
+              "prediction_agreement": 0.9051724137931034
+            },
+            "ofdm": {
+              "embedding_cosine_mean": 0.9583528750517826,
+              "n": 55,
+              "prediction_agreement": 0.8363636363636363
+            }
+          },
+          "prediction_agreement": 0.882179675994109
+        },
+        "per_class_recall": {
+          "am": 0.8661417322834646,
+          "bluetooth": 0.9642857142857143,
+          "cw": 0.8428571428571429,
+          "dsss": 1.0,
+          "fm": 0.9754098360655737,
+          "gsm": 0.7672413793103449,
+          "ofdm": 0.8545454545454545
+        },
+        "raw_length": 8192,
+        "transformed_metadata": {
+          "bandwidth_hz_rule": "unchanged",
+          "centre_offset_fraction_rule": "original centreOffsetFrac * effective_factor",
+          "sample_rate_hz_max": 99993896.11182322,
+          "sample_rate_hz_min": 499969.4805591161,
+          "sample_rate_hz_rule": "original sampleRateHz / effective_factor"
+        }
+      }
+    ],
+    "worst_balanced_accuracy": 0.7995535849253894,
+    "worst_embedding_cosine_to_factor1": 0.937583111351048,
+    "worst_mean_pairwise_cosine": 0.5758377782971509,
+    "worst_prediction_agreement_to_factor1": 0.8438880706921944
+  },
+  "provenance": {
+    "candidate_sha256": "bfd972bf5e6e075d886bdcf930e7bb30a4694fde1d593a54bb3d62694d3b9e74",
+    "corpus_assets": [
+      {
+        "capture_length": 4096,
+        "derivation": "bit_exact_row_prefix_of_longest",
+        "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v3_sealed_seed20260733/n4096",
+        "files": {
+          "corpus.f32": {
+            "bytes": 44040192,
+            "sha256": "41baa1ac991b8e774278e91c5e70a9607afb200000d849b0d3be00cd25b40399"
+          },
+          "corpus.json": {
+            "bytes": 642294,
+            "sha256": "f350f133334c36d987da07f2d41bc9cec604289c363c979d0ef9b3c1bf54f06b"
+          },
+          "corpus_clean.f32": {
+            "bytes": 44040192,
+            "sha256": "062ec79632d7ef5ee6646d4c1f31d983b26afe68d142368307d1b597d2c4f70d"
+          }
+        }
+      },
+      {
+        "capture_length": 8192,
+        "derivation": "bit_exact_row_prefix_of_longest",
+        "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v3_sealed_seed20260733/n8192",
+        "files": {
+          "corpus.f32": {
+            "bytes": 88080384,
+            "sha256": "562048434b73dbc922dd9b6381e4a30b4cce340457dded00936799008ac1fcfd"
+          },
+          "corpus.json": {
+            "bytes": 642294,
+            "sha256": "93f3ca61b67f2a374b65f858e643527797b638bb0479b87528ea6eec70a81421"
+          },
+          "corpus_clean.f32": {
+            "bytes": 88080384,
+            "sha256": "972eaa71e6a3b8a256b9c6283afe26b90a91a21e49d2f8446a5df6e1f5277223"
+          }
+        }
+      },
+      {
+        "capture_length": 16384,
+        "derivation": "bit_exact_row_prefix_of_longest",
+        "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v3_sealed_seed20260733/n16384",
+        "files": {
+          "corpus.f32": {
+            "bytes": 176160768,
+            "sha256": "730afbba9a0d67c91350f043874c91611b194ff690a626a2ad34f1da7bdf8ca5"
+          },
+          "corpus.json": {
+            "bytes": 642299,
+            "sha256": "db02358b1817782af1609fb2d1f71242d22cea5fe79b6926d8fa0f18e34fb9d5"
+          },
+          "corpus_clean.f32": {
+            "bytes": 176160768,
+            "sha256": "e1f3281ff1ac6e2e7478f26ac44b30c3b5f9a4d7e784fc3f97dd2682738f0048"
+          }
+        }
+      },
+      {
+        "capture_length": 32768,
+        "derivation": "generated_once_at_longest_length",
+        "directory": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v3_sealed_seed20260733/n32768",
+        "files": {
+          "corpus.f32": {
+            "bytes": 352321536,
+            "sha256": "63eaf835936f1de0b9e88eade628c75928d546e758bd0e5520742a3ee8db1dec"
+          },
+          "corpus.json": {
+            "bytes": 455205,
+            "sha256": "287d4b98207d6938c6a061d283695d140e99ec8ac6bfc685a0b928cad28af7a5"
+          },
+          "corpus_clean.f32": {
+            "bytes": 352321536,
+            "sha256": "ccedd690c7e9d9b75425738bf0a24d360eac0f8c4ba25a7920fb9aff7cfa0247"
+          }
+        }
+      }
+    ],
+    "dependency_provenance": {
+      "atom_dsp": {
+        "dist_index_dts": {
+          "bytes": 3442,
+          "path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP/dist/index.d.ts",
+          "sha256": "fc6933a4c7e7d9aeaa2ca22043f6e22b2333671c08b81b1cd35b29a7de08c980"
+        },
+        "dist_index_dts_sha256": "fc6933a4c7e7d9aeaa2ca22043f6e22b2333671c08b81b1cd35b29a7de08c980",
+        "dist_index_js": {
+          "bytes": 13616,
+          "path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP/dist/index.js",
+          "sha256": "caef3a8b3cbf4c300f8ceab5619a1db6b4fcebb942d428577f50790a1fb360e7"
+        },
+        "dist_index_js_sha256": "caef3a8b3cbf4c300f8ceab5619a1db6b4fcebb942d428577f50790a1fb360e7",
+        "git_commit": "4bb4d7075ba0e30512480ffbf0cb6e5757ffa218",
+        "git_tree": "3d1a8b7a97658a98b8ef36adc7f74f97cf16e9d2",
+        "observed_source_tree": {
+          "file_count": 20,
+          "sha256": "80a8363407acfa60ea366a1b6f83401a07797ef7c9776579bc949eab16e04588"
+        },
+        "package_lock_path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP/package-lock.json",
+        "package_lock_sha256": "b1c8198c18a4b25ed605db0781ae57b6050e0123ab0696ca2bdcba112696c0ca",
+        "package_resolution": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab/node_modules/@atomos/dsp",
+        "root": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP",
+        "source_file_count": 20,
+        "source_tree_sha256": "80a8363407acfa60ea366a1b6f83401a07797ef7c9776579bc949eab16e04588"
+      },
+      "passes": true,
+      "runtime": {
+        "node": "v22.23.1",
+        "npm": "10.9.8",
+        "npx": "10.9.8"
+      },
+      "signallab": {
+        "git_commit": "7c8303a0338b0f7c088737f8df2d935fd04bb033",
+        "git_tree": "f0fade7d2dfd8f6ebd1e62caeae7d44d916d6796",
+        "observed_source_tree": {
+          "file_count": 81,
+          "sha256": "93bec60b8da571bd0cf4a51630bd2b053d95eaf1bf2da503251775545fb873c0"
+        },
+        "package_lock_path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab/package-lock.json",
+        "package_lock_sha256": "5dd71450021febce4acbb9a835a3cadea659e5b4ee088217b9b697bf3f0a5fa6",
+        "root": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab",
+        "source_file_count": 81,
+        "source_tree_sha256": "93bec60b8da571bd0cf4a51630bd2b053d95eaf1bf2da503251775545fb873c0"
+      },
+      "source_tree_digest_algorithm": "sha256(concat(sorted_posix_relative_path_utf8 + NUL + file_bytes)); exclude path components node_modules/dist and basename RELEASE_SOURCE_PROVENANCE.json; reject other non-regular entries"
+    },
+    "device": "cpu",
+    "evaluation_protocol": {
+      "five_shot": {
+        "hash_payload": "utf8(split_salt + NUL + release_seed_decimal + NUL + canonical_row_identity_json)",
+        "k": 5,
+        "prototype_source": "support rows embedded at matched_capture_length; one fixed five-shot prototype set reused at every capture length",
+        "query_rule": "all remaining rows; identical row indices at every matched capture length",
+        "split_salt": "atomos-invariant-release-five-shot-v1",
+        "split_version": "sha256-lowest-per-class-v1",
+        "support_rule": "lowest five lowercase SHA-256 digests per class; ties by corpus row index"
+      },
+      "gates": {
+        "closed_clean": 0.85,
+        "closed_family": 0.82,
+        "closed_fine": 0.72,
+        "closed_high_snr": 0.78,
+        "five_shot": 0.85,
+        "invariant_max_mean_pairwise_cosine": 0.78,
+        "invariant_worst_balanced_accuracy": 0.75,
+        "length_pair_embedding_cosine": 0.85,
+        "length_pair_prediction_agreement": 0.8,
+        "open_auroc_chirp": 0.8,
+        "open_auroc_noise": 0.8,
+        "open_auroc_overall": 0.72,
+        "open_known_false_unknown_max": 0.1,
+        "open_unknown_recall_chirp": 0.1,
+        "open_unknown_recall_noise": 0.1,
+        "scale_pair_embedding_cosine": 0.8,
+        "scale_pair_prediction_agreement": 0.75
+      },
+      "high_snr_db": 18,
+      "length_observation_rule": "generate maximum capture length once; every shorter observed and clean row is a bit-exact cf32le prefix of the corresponding maximum-length row",
+      "matched_capture_length": 16384,
+      "minimum_target_per_class": 80,
+      "novelty": {
+        "calibration": "none; frozen per-length stage-1 noise-prefilter bundles, the frozen stage-2 branch-LOF ensemble and geometry blend, and the frozen composite survivor policy (enrollment-survivor stage-1 rank calibration and its q95 composite threshold) are loaded verbatim",
+        "families": [
+          "noise",
+          "chirp"
+        ],
+        "generation": "generate each fresh openset_eval.NOVELTY realization once at maximum capture length; shorter observations are exact prefixes; one family seed derived by SHA-256 from base seed and family",
+        "n_each_per_length": 300,
+        "seed": 20260733,
+        "seed_derivation": "uint64 little-endian first 8 bytes of SHA-256(utf8(base seed decimal + NUL + family))",
+        "seed_rule": "the novelty base seed equals the untouched release seed; consumed release seeds and development novelty/fitting seed bands are refused"
+      },
+      "open_set": {
+        "additive_only": false,
+        "architecture": "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry",
+        "changes_closed_label": true,
+        "gates_before_classification": true,
+        "known_false_unknown_accounting": "counts both stages: a known row gated by the stage-1 noise prefilter and a known survivor whose COMPOSITE score exceeds the frozen staged threshold (q95 of the composite over enrollment survivors) are both false-unknown, and every per-length open report attributes each rejected known row to the stage that rejected it. The additive control arm uses the stage-2 policy's own untouched threshold",
+        "score_axis": "Stage-2 scores are enrollment empirical ranks in [0, 1).  A stage-1 survivor's staged score is the COMPOSITE max(stage2_enrollment_rank, stage1_score_enrollment_rank), also in [0, 1), where the stage-1 rank is the empirical enrollment rank of the stage-1 log-odds fit on ENROLLMENT stage-1 survivors only (searchsorted-left, the stage-2 convention).  A row gated at stage 1 has no stage-2 score at all -- that is the short circuit -- and is placed at 1.0 + a bounded monotone map (softsign) of its stage-1 log-odds, i.e. in (1, 2), above every survivor.  The staged unknown threshold is the frozen q95 of the composite over enrollment survivors, so the staged score is a single axis on which 'score > staged threshold' is exactly the staged decision 'gated at stage 1, or composite-rejected at stage 2', which is asserted row by row.  AUROC and threshold recall computed from it are properties of the staged system, not of either stage read in isolation.",
+        "stage_one_capture_lengths": [
+          4096,
+          8192,
+          16384
+        ],
+        "stage_one_max_fitted_length": 16384,
+        "stage_one_prefix_gated_lengths": [
+          32768
+        ],
+        "stage_one_prefix_rule": {
+          "max_fitted_length": 16384,
+          "rule": "at a capture length ABOVE the longest fitted prefilter length, the stage-1 pose-degeneracy features are computed on the capture's FIRST max-fitted-length samples and gated with that length's bundle.  The first N samples of a longer capture are exactly an N-sample capture of the same emission, so this is the same causal-prefix rule the release protocol's length suite is built on, not an approximation.  Lengths BELOW the smallest fitted length keep the existing refusal semantics: no fitted length is a causal prefix of such a capture, so no bundle may be substituted"
+        },
+        "stage_one_uncovered_lengths": [],
+        "stage_one_uncovered_rule": "at a capture length ABOVE the longest fitted stage-1 length the gate applies through the causal-prefix rule (stage_one_prefix_rule): features are computed on the capture's first max-fitted-length samples and gated with that length's bundle, recorded as stage_one_active: true with the effective stage_one_feature_length; at a capture length BELOW the smallest fitted length the gate cannot fire and every row flows to the unchanged additive stage-2 path, recorded as stage_one_active: false",
+        "staged_policy_schema": 2,
+        "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+        "survivor_score": "max(stage2_enrollment_rank, stage1_score_enrollment_rank)",
+        "sweep_rejector_rule": "the causal-length and physical-scale sweeps measure the closed-set representation exactly as the v2 evaluator defined them; no stage gates their rows (rejection never participates in the closed and invariance gates, and the stage-1 causal-prefix rule does not change that)",
+        "unknown_threshold_rule": "the staged unknown threshold is the frozen q0.95 of the composite over enrollment stage-1 survivors, fit on enrollment only and loaded verbatim from the staged artifact; the additive control arm keeps the stage-2 policy's own untouched enrollment threshold"
+      },
+      "physical_scale_factors": [
+        0.5,
+        0.75,
+        1.0,
+        1.5,
+        2.0
+      ],
+      "physical_scale_support": {
+        "edge_guard_fraction": 0.001953125,
+        "minimum_rows_per_class": 20,
+        "rule": "for every requested factor, effective resampling scale times (abs(centreOffsetFrac) + bandwidthHz/(2*sampleRateHz)) must be strictly below 0.5 - edge_guard_fraction",
+        "selection_timing": "metadata-only common subset fixed before preprocessing or inference"
+      },
+      "required_capture_lengths": [
+        4096,
+        8192,
+        16384,
+        32768
+      ],
+      "version": "time-domain-v3-release-evaluation-v1"
+    },
+    "evaluator_path": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/v3_scale/evaluate_v3_release_suite.py",
+    "evaluator_sha256": "b315bb12e8d68214b536d591bc575560dfbd723d5555999dcc90bf11a2f5bdfb",
+    "gate_helpers_imported_from_v2": [
+      "GATE_FLOORS",
+      "_gate",
+      "_assemble_release_gates",
+      "_closed_report",
+      "_simple_closed_report",
+      "_classification_subset",
+      "_paired_invariance_report",
+      "_five_shot_report",
+      "_auroc",
+      "_nearest",
+      "_scale_eligible_indices",
+      "predeclared_five_shot_split",
+      "verify_prefix_nesting",
+      "validate_prefix_derivation_records",
+      "_validate_unscored_start_probe",
+      "_validate_dependency_provenance"
+    ],
+    "novelty_prefix_generation": {
+      "base_seed": 20260733,
+      "derived_seed_by_family": {
+        "chirp": 10971006571914287132,
+        "noise": 15409854729409788512
+      },
+      "families": [
+        "noise",
+        "chirp"
+      ],
+      "longest_capture_length": 32768,
+      "longest_complex128_bytes_sha256": {
+        "chirp": "8617188cbda8b47a567b9cfe15090ecd8641c2470d342fc13e3339fc5b9e6df6",
+        "noise": "b7ca511f42cb6d1e034c331ed3ff532cdc38dd8cb327fad312821397d41f6f8b"
+      },
+      "prefix_rule": "each shorter novelty observation is the exact leading slice of the same in-memory maximum-length realization",
+      "recalibration_performed": false,
+      "rows_per_family": 300
+    },
+    "numpy": "2.0.2",
+    "predeclared_split": {
+      "k_per_class": 5,
+      "query_indices_sha256": "b3d5daa2c4c33909f2c88d5e468fd5dac2775879fe5f9a475f376b17490eb2b7",
+      "release_seed": 20260733,
+      "row_identity_sequence_sha256": "f40aacc833ab19b2bd095233f0c0dfaa1465c59206fbac659ce0390bfec4a7f5",
+      "salt": "atomos-invariant-release-five-shot-v1",
+      "support_by_class": {
+        "am": [
+          287,
+          374,
+          325,
+          355,
+          300
+        ],
+        "bluetooth": [
+          1286,
+          1336,
+          1241,
+          1326,
+          1251
+        ],
+        "cw": [
+          96,
+          166,
+          35,
+          90,
+          142
+        ],
+        "dsss": [
+          1039,
+          1124,
+          1072,
+          1121,
+          1139
+        ],
+        "fm": [
+          455,
+          502,
+          497,
+          468,
+          393
+        ],
+        "gsm": [
+          741,
+          711,
+          613,
+          684,
+          700
+        ],
+        "ofdm": [
+          920,
+          868,
+          809,
+          789,
+          770
+        ]
+      },
+      "support_digest_by_class": {
+        "am": [
+          "03332cbc9f063cd03d82ac37536c73262d2916c25008a8576f7e1d55bdad8dd4",
+          "03a61dc4331e1861a4f56939e60793ce3c3134fc8f43451b19d91577e469d962",
+          "086355ffb1d4e4ea1610bd3ad92e5030f8e6519f9a0916398177d4f94cf9c7df",
+          "098f0bf78878eb6cff168b2771970e1057707153c6562b06cf2e114b5dd8d3c1",
+          "098f9315f369583ea643bb6dfe4402c973807f6b9a3e4522ec6027e62de48e32"
+        ],
+        "bluetooth": [
+          "00b9c70cf82f357458d28bc781a97e2fb08a13a4d18e9f3bd9294308ee290426",
+          "01568a41f9fcf6325d235f3bd194183f7c8dd6417bf467c67881ac2d9cd34750",
+          "04a845298018096c184fb757a24a06188ef88b7785ef66120cb4082afcb9dc3a",
+          "07ef5e97533aa6b4504b55dcc1f15ebaa74a285f98a449869f937c09fa4684e8",
+          "09cfaa7802f615be8585e025e79eb6957df987847bdad90301493a9f65d584c7"
+        ],
+        "cw": [
+          "01827908acb54da9e6bccb7aa5487297e9a1c88075c3ba17a2dccba8ca5fa9a6",
+          "01928e988b3591cd66733fa58e2610e933b3a38a4a7189d01a1cbdb6019d217b",
+          "035d5b515ffaac43e217730f0c3a21903d21d5135d2af4a9b5bc4adda7f64b3b",
+          "03b7048ededfb5bc2afe936fa6d6c3b814328171f7c948798a05a4724abef0eb",
+          "040ef6f55caae7b637fdffdf3a91a9a5fba14492ffb9fba4cbd1b6fc5e0e15aa"
+        ],
+        "dsss": [
+          "025f1ab05bc57373936040a0a3dd8996aa454528d43c80cc892b90461e550a64",
+          "033092e65495771747f8309d6345c8ca5f7e0f9ddcb6ab5f26e5e378d2652256",
+          "04823e643030048e4dcb04c83cab9a9d6833a6d790c2ba6141c6e8d3380b1288",
+          "04ba4a7a0065cee660252b16ad476278b8fcd9fcc3a393c0f367a3bc28e3d49f",
+          "08ab813762372a8200a964bf8c5f14b76d8d25a9b478d5b78fb02b0fcdfc48bc"
+        ],
+        "fm": [
+          "011b72b2d192ff5db687252bcefd741db69b60ef5950748a10776a881bb4a5f6",
+          "01ffb2b4bd4b9616ffa6fd75d7f397373fcb4fabbcd92f11f6be23e1cd005485",
+          "020f67ac8f7c60339ef0914879efb8abde03575c5afdc1e2149c634c44bbbad8",
+          "02e98dd510da95ab777d884f9230aefcc91f95d0e916dc04e92bafb4272511a4",
+          "0677756caac57c2e2cda17184f08e8de2a8062e3cb18dfff683cc9ad93bc468e"
+        ],
+        "gsm": [
+          "00624e3c15ccd5ea541f39f67785db67a13840dadbffa06686611b8dc9384c87",
+          "0146f1561c4e5d9b83a95e2645d7accda1ef96c451213a2c53c75afd7264a68e",
+          "02b2f74e432197a4c3cdbd04c3fae59dbab291d5af1191a1354308b065f7eed6",
+          "02c2b1fe8cd27b22638815c60b3a9f9549e745dc8e4198796e8213723d1b197b",
+          "038c1776570e0fdeac85ee06a116823f6c8b108827f6a4fc6dc4b63442f12288"
+        ],
+        "ofdm": [
+          "012cbac10bf45170e5284e1859d236e516fd6e592786ad208a85e05d9042a286",
+          "012ff5fe048fc19f2fde52bc2211531c35d530cd748143862907ead21057039a",
+          "01467e5daa6ed23ed647959e468649c1e3b76eea460690eb88377da55cf61bea",
+          "02739e95bb0506b0f7496413b12a8b8d3ebca3751aada4a292ca5fb91f8b281d",
+          "033b4eed5cb4696404ff63b6fce583526ae6201c3d27635576ec09dc1bfc2c83"
+        ]
+      },
+      "support_indices_sha256": "0c4d0cf578950e820a6534d336e7c13f3a52b2482ab051d701e2d646318d87ce",
+      "version": "sha256-lowest-per-class-v1"
+    },
+    "prefix_nesting": {
+      "comparisons": [
+        {
+          "bit_exact": true,
+          "capture_length": 4096,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "observed",
+          "words_compared": 11010048
+        },
+        {
+          "bit_exact": true,
+          "capture_length": 4096,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "clean",
+          "words_compared": 11010048
+        },
+        {
+          "bit_exact": true,
+          "capture_length": 8192,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "observed",
+          "words_compared": 22020096
+        },
+        {
+          "bit_exact": true,
+          "capture_length": 8192,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "clean",
+          "words_compared": 22020096
+        },
+        {
+          "bit_exact": true,
+          "capture_length": 16384,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "observed",
+          "words_compared": 44040192
+        },
+        {
+          "bit_exact": true,
+          "capture_length": 16384,
+          "longest_capture_length": 32768,
+          "rows_compared": 1344,
+          "stream": "clean",
+          "words_compared": 44040192
+        }
+      ],
+      "definition": "every shorter observed and clean cf32 row must be a bit-exact prefix of the corresponding longest stored row",
+      "derivation_records": {
+        "derived": [
+          {
+            "capture_length": 4096,
+            "protocol": "signallab-row-prefix-v1",
+            "record_valid": true,
+            "source_capture_length": 32768
+          },
+          {
+            "capture_length": 8192,
+            "protocol": "signallab-row-prefix-v1",
+            "record_valid": true,
+            "source_capture_length": 32768
+          },
+          {
+            "capture_length": 16384,
+            "protocol": "signallab-row-prefix-v1",
+            "record_valid": true,
+            "source_capture_length": 32768
+          }
+        ],
+        "passes": true,
+        "source_capture_length": 32768
+      },
+      "longest_capture_length": 32768,
+      "passes": true,
+      "row_count": 1344,
+      "streams": [
+        "observed",
+        "clean"
+      ]
+    },
+    "python": "3.9.6",
+    "release_intent_sha256": "96b890b3a4f3c9031fd4cac9ebe676cf554e71d7005c4a86d2262d56250b418c",
+    "release_manifest_sha256": "19076c3d0e758b7c958fafece190b082163f236a68188013902d6a441dbc9dee",
+    "release_root": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/releases/invariant_fusion_v3_sealed_seed20260733",
+    "release_seed": 20260733,
+    "torch": "2.8.0",
+    "unscored_start_probe": {
+      "all_probe_rows_occupied": true,
+      "capture_length": 4096,
+      "class_counts": {
+        "am": 192,
+        "bluetooth": 192,
+        "cw": 192,
+        "dsss": 192,
+        "fm": 192,
+        "gsm": 192,
+        "ofdm": 192
+      },
+      "files": {
+        "corpus.f32": {
+          "bytes": 44040192,
+          "sha256": "9cf7a7915f3729294e20b6fe173f55021e2c3bbb00a02e1ef5437cf17165ec8e"
+        },
+        "corpus.json": {
+          "bytes": 455058,
+          "sha256": "9aa0171308291d1a1300bcadd4c26be864a0151d8feb88198442a9760af67b18"
+        },
+        "corpus_clean.f32": {
+          "bytes": 44040192,
+          "sha256": "0c175a7b039e320bc51e82a7aa37d01201d63168c4ac2fe862aef644aacda67c"
+        }
+      },
+      "matched_longest_rows": true,
+      "passes": true,
+      "purpose": "select one occupied start per row before longest-only nuisance realization",
+      "row_count": 1344,
+      "scored": false
+    },
+    "v2_evaluator_sha256": "1b8137b4c222a857a91f340730137fefd3fe17a026d9ba5eb172e7fd774c0541"
+  },
+  "recalibration_performed": false,
+  "release_evidence": true,
+  "retraining_performed": false,
+  "schema": 1,
+  "staged_known_decisions_per_length": {
+    "16384": {
+      "gated_at_stage_one": 26,
+      "rows": 1309,
+      "unknown": 124
+    },
+    "32768": {
+      "gated_at_stage_one": 26,
+      "rows": 1309,
+      "unknown": 145
+    },
+    "4096": {
+      "gated_at_stage_one": 23,
+      "rows": 1309,
+      "unknown": 111
+    },
+    "8192": {
+      "gated_at_stage_one": 25,
+      "rows": 1309,
+      "unknown": 118
+    }
+  },
+  "status": "complete"
+}

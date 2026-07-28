@@ -1,0 +1,172 @@
+{
+  "protocol": "signallab-matched-length-release-v1",
+  "status": "in_progress",
+  "development_data_used": false,
+  "candidate_path": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_runtime_bundle_seed20260730/bundle_manifest.json",
+  "candidate_sha256": "bfd972bf5e6e075d886bdcf930e7bb30a4694fde1d593a54bb3d62694d3b9e74",
+  "release_seed": 20260733,
+  "capture_lengths": [
+    4096,
+    8192,
+    16384,
+    32768
+  ],
+  "target_per_class": 192,
+  "exact_target_per_class": true,
+  "evaluation_protocol": {
+    "five_shot": {
+      "hash_payload": "utf8(split_salt + NUL + release_seed_decimal + NUL + canonical_row_identity_json)",
+      "k": 5,
+      "prototype_source": "support rows embedded at matched_capture_length; one fixed five-shot prototype set reused at every capture length",
+      "query_rule": "all remaining rows; identical row indices at every matched capture length",
+      "split_salt": "atomos-invariant-release-five-shot-v1",
+      "split_version": "sha256-lowest-per-class-v1",
+      "support_rule": "lowest five lowercase SHA-256 digests per class; ties by corpus row index"
+    },
+    "gates": {
+      "closed_clean": 0.85,
+      "closed_family": 0.82,
+      "closed_fine": 0.72,
+      "closed_high_snr": 0.78,
+      "five_shot": 0.85,
+      "invariant_max_mean_pairwise_cosine": 0.78,
+      "invariant_worst_balanced_accuracy": 0.75,
+      "length_pair_embedding_cosine": 0.85,
+      "length_pair_prediction_agreement": 0.8,
+      "open_auroc_chirp": 0.8,
+      "open_auroc_noise": 0.8,
+      "open_auroc_overall": 0.72,
+      "open_known_false_unknown_max": 0.1,
+      "open_unknown_recall_chirp": 0.1,
+      "open_unknown_recall_noise": 0.1,
+      "scale_pair_embedding_cosine": 0.8,
+      "scale_pair_prediction_agreement": 0.75
+    },
+    "high_snr_db": 18,
+    "length_observation_rule": "generate maximum capture length once; every shorter observed and clean row is a bit-exact cf32le prefix of the corresponding maximum-length row",
+    "matched_capture_length": 16384,
+    "minimum_target_per_class": 80,
+    "novelty": {
+      "calibration": "none; frozen per-length stage-1 noise-prefilter bundles, the frozen stage-2 branch-LOF ensemble and geometry blend, and the frozen composite survivor policy (enrollment-survivor stage-1 rank calibration and its q95 composite threshold) are loaded verbatim",
+      "families": [
+        "noise",
+        "chirp"
+      ],
+      "generation": "generate each fresh openset_eval.NOVELTY realization once at maximum capture length; shorter observations are exact prefixes; one family seed derived by SHA-256 from base seed and family",
+      "n_each_per_length": 300,
+      "seed": 20260733,
+      "seed_derivation": "uint64 little-endian first 8 bytes of SHA-256(utf8(base seed decimal + NUL + family))",
+      "seed_rule": "the novelty base seed equals the untouched release seed; consumed release seeds and development novelty/fitting seed bands are refused"
+    },
+    "open_set": {
+      "additive_only": false,
+      "architecture": "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry",
+      "changes_closed_label": true,
+      "gates_before_classification": true,
+      "known_false_unknown_accounting": "counts both stages: a known row gated by the stage-1 noise prefilter and a known survivor whose COMPOSITE score exceeds the frozen staged threshold (q95 of the composite over enrollment survivors) are both false-unknown, and every per-length open report attributes each rejected known row to the stage that rejected it. The additive control arm uses the stage-2 policy's own untouched threshold",
+      "score_axis": "Stage-2 scores are enrollment empirical ranks in [0, 1).  A stage-1 survivor's staged score is the COMPOSITE max(stage2_enrollment_rank, stage1_score_enrollment_rank), also in [0, 1), where the stage-1 rank is the empirical enrollment rank of the stage-1 log-odds fit on ENROLLMENT stage-1 survivors only (searchsorted-left, the stage-2 convention).  A row gated at stage 1 has no stage-2 score at all -- that is the short circuit -- and is placed at 1.0 + a bounded monotone map (softsign) of its stage-1 log-odds, i.e. in (1, 2), above every survivor.  The staged unknown threshold is the frozen q95 of the composite over enrollment survivors, so the staged score is a single axis on which 'score > staged threshold' is exactly the staged decision 'gated at stage 1, or composite-rejected at stage 2', which is asserted row by row.  AUROC and threshold recall computed from it are properties of the staged system, not of either stage read in isolation.",
+      "stage_one_capture_lengths": [
+        4096,
+        8192,
+        16384
+      ],
+      "stage_one_max_fitted_length": 16384,
+      "stage_one_prefix_gated_lengths": [
+        32768
+      ],
+      "stage_one_prefix_rule": {
+        "max_fitted_length": 16384,
+        "rule": "at a capture length ABOVE the longest fitted prefilter length, the stage-1 pose-degeneracy features are computed on the capture's FIRST max-fitted-length samples and gated with that length's bundle.  The first N samples of a longer capture are exactly an N-sample capture of the same emission, so this is the same causal-prefix rule the release protocol's length suite is built on, not an approximation.  Lengths BELOW the smallest fitted length keep the existing refusal semantics: no fitted length is a causal prefix of such a capture, so no bundle may be substituted"
+      },
+      "stage_one_uncovered_lengths": [],
+      "stage_one_uncovered_rule": "at a capture length ABOVE the longest fitted stage-1 length the gate applies through the causal-prefix rule (stage_one_prefix_rule): features are computed on the capture's first max-fitted-length samples and gated with that length's bundle, recorded as stage_one_active: true with the effective stage_one_feature_length; at a capture length BELOW the smallest fitted length the gate cannot fire and every row flows to the unchanged additive stage-2 path, recorded as stage_one_active: false",
+      "staged_policy_schema": 2,
+      "staged_policy_version": "v3-staged-openset-policy-v2-composite-survivor",
+      "survivor_score": "max(stage2_enrollment_rank, stage1_score_enrollment_rank)",
+      "sweep_rejector_rule": "the causal-length and physical-scale sweeps measure the closed-set representation exactly as the v2 evaluator defined them; no stage gates their rows (rejection never participates in the closed and invariance gates, and the stage-1 causal-prefix rule does not change that)",
+      "unknown_threshold_rule": "the staged unknown threshold is the frozen q0.95 of the composite over enrollment stage-1 survivors, fit on enrollment only and loaded verbatim from the staged artifact; the additive control arm keeps the stage-2 policy's own untouched enrollment threshold"
+    },
+    "physical_scale_factors": [
+      0.5,
+      0.75,
+      1,
+      1.5,
+      2
+    ],
+    "physical_scale_support": {
+      "edge_guard_fraction": 0.001953125,
+      "minimum_rows_per_class": 20,
+      "rule": "for every requested factor, effective resampling scale times (abs(centreOffsetFrac) + bandwidthHz/(2*sampleRateHz)) must be strictly below 0.5 - edge_guard_fraction",
+      "selection_timing": "metadata-only common subset fixed before preprocessing or inference"
+    },
+    "required_capture_lengths": [
+      4096,
+      8192,
+      16384,
+      32768
+    ],
+    "version": "time-domain-v3-release-evaluation-v1"
+  },
+  "source_sha256": {
+    "launcher": {
+      "path": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/tools/generate-signallab-iq-release-suite.mjs",
+      "sha256": "2773701b81ba9c89cee36a0bfa7be1e49cd2be1e83ce47a3d69b68e0ebac37fe"
+    },
+    "corpus_generator": {
+      "path": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/tools/generate-signallab-iq-corpus.ts",
+      "sha256": "305418a5bc7bd8f9a49799477f3a457b4c07d0c58b637766989fc9557565371b"
+    },
+    "prefix_deriver": {
+      "path": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/tools/derive-signallab-iq-prefix-corpus.mjs",
+      "sha256": "d9383a642d21a59f66f1f9e88fc7ce51ad50893a381985c4f53f2b0da9aec3a3"
+    },
+    "tsx_package": "tsx@4.20.3"
+  },
+  "dependency_provenance": {
+    "signallab": {
+      "root": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab",
+      "git_commit": "7c8303a0338b0f7c088737f8df2d935fd04bb033",
+      "git_tree": "f0fade7d2dfd8f6ebd1e62caeae7d44d916d6796",
+      "package_lock_sha256": "5dd71450021febce4acbb9a835a3cadea659e5b4ee088217b9b697bf3f0a5fa6",
+      "source_tree_sha256": "93bec60b8da571bd0cf4a51630bd2b053d95eaf1bf2da503251775545fb873c0",
+      "source_file_count": 81,
+      "observed_source_tree": {
+        "sha256": "93bec60b8da571bd0cf4a51630bd2b053d95eaf1bf2da503251775545fb873c0",
+        "file_count": 81
+      },
+      "package_lock_path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab/package-lock.json"
+    },
+    "atom_dsp": {
+      "root": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP",
+      "package_resolution": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab/node_modules/@atomos/dsp",
+      "git_commit": "4bb4d7075ba0e30512480ffbf0cb6e5757ffa218",
+      "git_tree": "3d1a8b7a97658a98b8ef36adc7f74f97cf16e9d2",
+      "package_lock_sha256": "b1c8198c18a4b25ed605db0781ae57b6050e0123ab0696ca2bdcba112696c0ca",
+      "source_tree_sha256": "80a8363407acfa60ea366a1b6f83401a07797ef7c9776579bc949eab16e04588",
+      "source_file_count": 20,
+      "dist_index_js_sha256": "caef3a8b3cbf4c300f8ceab5619a1db6b4fcebb942d428577f50790a1fb360e7",
+      "dist_index_dts_sha256": "fc6933a4c7e7d9aeaa2ca22043f6e22b2333671c08b81b1cd35b29a7de08c980",
+      "observed_source_tree": {
+        "sha256": "80a8363407acfa60ea366a1b6f83401a07797ef7c9776579bc949eab16e04588",
+        "file_count": 20
+      },
+      "package_lock_path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP/package-lock.json",
+      "dist_index_js": {
+        "path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP/dist/index.js",
+        "bytes": 13616,
+        "sha256": "caef3a8b3cbf4c300f8ceab5619a1db6b4fcebb942d428577f50790a1fb360e7"
+      },
+      "dist_index_dts": {
+        "path": "/private/tmp/atomos-release-source-final.RvbW7V/Atom-DSP/dist/index.d.ts",
+        "bytes": 3442,
+        "sha256": "fc6933a4c7e7d9aeaa2ca22043f6e22b2333671c08b81b1cd35b29a7de08c980"
+      }
+    }
+  },
+  "runtime_provenance": {
+    "node": "v22.23.1",
+    "npm": "10.9.8",
+    "npx": "10.9.8"
+  },
+  "started_at": "2026-07-28T07:15:50.380Z"
+}
