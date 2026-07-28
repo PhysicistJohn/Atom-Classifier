@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import inspect
 import json
 from pathlib import Path
 import sys
@@ -42,7 +43,7 @@ DESIGN_SEED = subject.PROPOSED_DESIGN_NOVELTY_SEED
 VALIDATION_SEED = subject.DEFAULT_VALIDATION_NOVELTY_SEEDS[0]
 # Unreserved clean seed used only by tiny synthetic unit fixtures. It is not
 # scored as project evidence and is never written to an artifact.
-UNIT_NOVELTY_SEED = 20260952
+UNIT_NOVELTY_SEED = 20260955
 FITTING_SEED = prefilter.PROPOSED_FITTING_SEED
 
 # Short lengths so the tests stay fast.  The prefilter is length dependent, so
@@ -79,7 +80,7 @@ def _bundle_set(
     directory: Path,
     *,
     lengths=(*TEST_LENGTHS, KNOWN_LENGTH),
-    budget: float = 0.05,
+    budget: float = subject.STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET,
 ) -> Path:
     """A real, fitted, thresholded prefilter set, built with the real module."""
     models = {}
@@ -380,15 +381,16 @@ class SeedLedgerTests(unittest.TestCase):
             ],
         )
         self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260952)
-        self.assertEqual(subject.PROPOSED_DESIGN_NOVELTY_SEED, 20260949)
+        self.assertEqual(subject.PROPOSED_DESIGN_NOVELTY_SEED, 20260952)
+        self.assertNotIn(20260952, subject.SPENT_NOVELTY_SEEDS)
         self.assertEqual(
-            subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, (20260950, 20260951)
+            subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, (20260953, 20260954)
         )
         self.assertEqual(
             sorted(subject.CONSUMED_SEALED_RELEASE_SEEDS),
-            [20260729, 20260731, 20260733, 20260734],
+            [20260729, 20260731, 20260733, 20260734, 20260735],
         )
-        self.assertEqual(subject.RELEASE_SEED_NEVER_SPENT_HERE, 20260735)
+        self.assertEqual(subject.RELEASE_SEED_NEVER_SPENT_HERE, 20260736)
 
     def test_the_ledger_extends_the_prefilter_modules_frozen_one(self) -> None:
         """The prefilter module's ledger froze with the fitted bundles; the
@@ -449,7 +451,14 @@ class SeedLedgerTests(unittest.TestCase):
             )
 
     def test_the_sealed_and_release_seeds_are_refused(self) -> None:
-        for seed in (20260729, 20260731, 20260733, 20260734, 20260735):
+        for seed in (
+            20260729,
+            20260731,
+            20260733,
+            20260734,
+            20260735,
+            20260736,
+        ):
             with self.assertRaises(ValueError):
                 subject.validate_novelty_seeds([seed])
             with self.assertRaises(ValueError):
@@ -460,13 +469,15 @@ class SeedLedgerTests(unittest.TestCase):
             subject.validate_novelty_seeds([20260731])
         with self.assertRaisesRegex(ValueError, "consumed sealed"):
             subject.validate_novelty_seeds([20260734])
-        with self.assertRaisesRegex(ValueError, "unspent release seed"):
+        with self.assertRaisesRegex(ValueError, "consumed sealed"):
             subject.validate_novelty_seeds([20260735])
+        with self.assertRaisesRegex(ValueError, "unspent release seed"):
+            subject.validate_novelty_seeds([20260736])
 
     def test_a_clean_seed_is_accepted(self) -> None:
         self.assertEqual(
-            subject.validate_novelty_seeds([20260952, 20260953]),
-            (20260952, 20260953),
+            subject.validate_novelty_seeds([20260952, 20260953, 20260954]),
+            (20260952, 20260953, 20260954),
         )
 
     def test_duplicate_and_empty_seed_sets_are_refused(self) -> None:
@@ -475,23 +486,19 @@ class SeedLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "distinct"):
             subject.validate_novelty_seeds([])
 
-    def test_validate_refuses_redrawing_the_spent_design_seed(self) -> None:
-        with self.assertRaisesRegex(ValueError, "SPENT"):
-            subject.validate_seed_plan("validate", 20260949, [20260949])
-
-    def test_validate_refuses_redrawing_the_consumed_default_pair(self) -> None:
-        with self.assertRaisesRegex(ValueError, "SPENT"):
+    def test_validation_is_refused_before_the_design_ledger_transition(self) -> None:
+        with self.assertRaisesRegex(ValueError, "not yet frozen"):
             subject.validate_seed_plan(
                 "validate", DESIGN_SEED, subject.DEFAULT_VALIDATION_NOVELTY_SEEDS
             )
 
     def test_a_default_validation_seed_may_not_be_the_design_seed(self) -> None:
-        with self.assertRaisesRegex(ValueError, "SPENT"):
+        with self.assertRaisesRegex(ValueError, "design seed is reserved"):
             subject.validate_seed_plan("design", VALIDATION_SEED, [VALIDATION_SEED])
 
-    def test_design_refuses_the_consumed_validation_seeds(self) -> None:
+    def test_design_refuses_the_reserved_validation_seeds(self) -> None:
         with _temporarily_unspent_design_seed():
-            with self.assertRaisesRegex(ValueError, "SPENT"):
+            with self.assertRaisesRegex(ValueError, "reserved validation"):
                 subject.validate_seed_plan(
                     "design", DESIGN_SEED, [DESIGN_SEED, VALIDATION_SEED]
                 )
@@ -535,7 +542,37 @@ class SeedLedgerTests(unittest.TestCase):
     def test_the_ledger_note_names_every_spent_seed(self) -> None:
         for seed in subject.SPENT_NOVELTY_SEEDS:
             self.assertIn(str(seed), subject.SEED_LEDGER_NOTE)
+        self.assertIn("intentionally not in SPENT", subject.SEED_LEDGER_NOTE)
         self.assertIn("evidence rule 4", subject.SEED_LEDGER_NOTE)
+
+    def test_future_design_and_validation_commands_are_explicit(self) -> None:
+        commands = subject.v34_design_and_validation_commands(
+            fusion_dir=Path("/development/frozen-rejector"),
+            prefilter_dir=Path("/development/frozen-prefilter"),
+            design_output_dir=Path("/development/v34-design"),
+            validation_output_dir=Path("/development/v34-validation"),
+        )
+        design = commands["design"]
+        validation = commands["validation_after_design_ledger_transition"]
+        self.assertEqual(design[design.index("--role") + 1], "design")
+        self.assertEqual(
+            design[design.index("--novelty-seeds") + 1 :],
+            ["20260952"],
+        )
+        prefix = design.index("--prefix-lengths")
+        output = design.index("--output-dir")
+        self.assertEqual(
+            design[prefix + 1 : output],
+            ["4096", "8192", "16384", "32768"],
+        )
+        self.assertEqual(design[design.index("--device") + 1], "cpu")
+        self.assertEqual(validation[validation.index("--role") + 1], "validate")
+        self.assertEqual(
+            validation[validation.index("--novelty-seeds") + 1 :],
+            ["20260953", "20260954"],
+        )
+        self.assertNotIn("20260736", design)
+        self.assertNotIn("20260736", validation)
 
 
 class ArchitectureContractTests(unittest.TestCase):
@@ -769,7 +806,7 @@ class StageOneLoadingTests(unittest.TestCase):
 
 
 class CompositeSurvivorPolicyTests(unittest.TestCase):
-    """Policy version 2: the composite survivor score, fit on enrollment."""
+    """Policy version 3: the q99 composite score, fit on enrollment."""
 
     def _gate(self, root: Path) -> "subject.StageOneGate":
         source, posedegen = _sources()
@@ -789,17 +826,27 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
         return features, stage_two
 
     def test_the_frozen_constants_are_the_bumped_policy_version(self) -> None:
-        self.assertEqual(subject.STAGED_POLICY_SCHEMA, 2)
+        self.assertEqual(subject.STAGED_POLICY_SCHEMA, 3)
         self.assertEqual(
             subject.STAGED_POLICY_VERSION,
-            "v3-staged-openset-policy-v2-composite-survivor",
+            "v3-staged-openset-policy-v3-composite-survivor-q99",
         )
         self.assertIn("composite_survivor", subject.STAGED_POLICY_KIND)
         self.assertIn("1", subject.STAGED_POLICY_VERSION_HISTORY)
         self.assertIn("2", subject.STAGED_POLICY_VERSION_HISTORY)
-        # The quantile is the imported frozen constant, never re-typed.
+        self.assertIn("3", subject.STAGED_POLICY_VERSION_HISTORY)
+        # Stage 2 stays at the imported q95; only the composite threshold moves.
         self.assertIs(
-            subject.COMPOSITE_THRESHOLD_QUANTILE, subject.THRESHOLD_QUANTILE
+            subject.LEGACY_COMPOSITE_THRESHOLD_QUANTILE,
+            subject.THRESHOLD_QUANTILE,
+        )
+        self.assertEqual(subject.THRESHOLD_QUANTILE, 0.95)
+        self.assertEqual(subject.COMPOSITE_THRESHOLD_QUANTILE, 0.99)
+        self.assertEqual(
+            subject.STAGE_ONE_KNOWN_FALSE_POSITIVE_BUDGET, 0.01
+        )
+        self.assertAlmostEqual(
+            subject.NOMINAL_ENROLLMENT_FALSE_UNKNOWN_BUDGET, 0.0199
         )
         self.assertEqual(
             subject.COMPOSITE_SURVIVOR_SCORE,
@@ -840,7 +887,7 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
         np.testing.assert_array_equal(
             rank, frozen.empirical_rank(raw[survivors], np.sort(raw[survivors]))
         )
-        # The composite is the max, and the threshold is its q95.
+        # The composite is unchanged, and only its threshold moves to q99.
         composite = policy.composite(stage_two[survivors], raw[survivors])
         np.testing.assert_array_equal(
             composite, np.maximum(stage_two[survivors], rank)
@@ -856,8 +903,44 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
         np.testing.assert_array_equal(
             policy.composite_calibration_raw, np.sort(composite)
         )
+        provenance = policy.provenance()
+        self.assertEqual(
+            provenance["threshold_population"],
+            "enrollment stage-1 survivors only (enrollment only, as every "
+            "rank and threshold in this chain)",
+        )
+        for population in ("training", "selection", "novelty", "release"):
+            self.assertEqual(
+                provenance[f"{population}_rows_used_for_threshold"], 0
+            )
+        self.assertEqual(
+            provenance["only_policy_change"],
+            "composite survivor enrollment threshold quantile q95 -> q99",
+        )
+        self.assertFalse(provenance["stage_one_changed"])
+        self.assertFalse(provenance["rejector_cnn_fusion_changed"])
+        self.assertFalse(provenance["classifier_cnn_fusion_changed"])
+        self.assertTrue(
+            provenance["gate_floors_and_known_fur_ceiling_unchanged"]
+        )
         self.assertGreaterEqual(policy.threshold, 0.0)
         self.assertLess(policy.threshold, 1.0)
+
+    def test_fit_api_cannot_receive_selection_novelty_or_release_rows(self) -> None:
+        parameters = set(inspect.signature(subject.fit_composite_policy).parameters)
+        self.assertEqual(
+            parameters,
+            {
+                "stage_one",
+                "enrollment_features",
+                "enrollment_capture_length",
+                "enrollment_stage_two_scores",
+                "stage_two_threshold",
+            },
+        )
+        self.assertFalse(
+            parameters & {"selection", "novelty", "release", "sealed"}
+        )
 
     def test_the_enrollment_length_must_be_fitted_exactly(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -947,6 +1030,98 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
         data.update(overrides)
         np.savez_compressed(path, **data)
 
+    def _legacy_saved(self, root: Path) -> Path:
+        path = self._saved(root)
+        with np.load(path) as payload:
+            data = {
+                name: payload[name]
+                for name in payload.files
+                if name
+                not in {
+                    "threshold_population",
+                    "training_rows_used_for_threshold",
+                    "selection_rows_used_for_threshold",
+                    "novelty_rows_used_for_threshold",
+                    "release_rows_used_for_threshold",
+                    "stage_one_known_false_positive_budget",
+                    "survivor_known_false_positive_budget",
+                    "nominal_enrollment_false_unknown_budget",
+                    "only_policy_change",
+                    "stage_one_changed",
+                    "rejector_cnn_fusion_changed",
+                    "classifier_cnn_fusion_changed",
+                    "gate_contract_changed",
+                }
+            }
+        data.update(
+            schema=np.asarray(
+                subject.LEGACY_STAGED_POLICY_SCHEMA, dtype=np.int64
+            ),
+            kind=np.asarray(subject.LEGACY_STAGED_POLICY_KIND),
+            policy_version=np.asarray(subject.LEGACY_STAGED_POLICY_VERSION),
+            threshold_quantile=np.asarray(
+                subject.LEGACY_COMPOSITE_THRESHOLD_QUANTILE,
+                dtype=np.float64,
+            ),
+            threshold=np.asarray(
+                np.quantile(
+                    data["composite_calibration_raw"],
+                    subject.LEGACY_COMPOSITE_THRESHOLD_QUANTILE,
+                ),
+                dtype=np.float64,
+            ),
+        )
+        np.savez_compressed(path, **data)
+        return path
+
+    def test_q99_is_monotone_from_the_same_verified_q95_calibration(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = self._legacy_saved(Path(root))
+            legacy = subject.load_composite_policy(
+                path,
+                expected_policy_version=subject.LEGACY_STAGED_POLICY_VERSION,
+            )
+            current = subject.rethreshold_legacy_composite_policy(legacy)
+        self.assertGreaterEqual(current.threshold, legacy.threshold)
+        np.testing.assert_array_equal(
+            current.stage_one_calibration_raw,
+            legacy.stage_one_calibration_raw,
+        )
+        np.testing.assert_array_equal(
+            current.composite_calibration_raw,
+            legacy.composite_calibration_raw,
+        )
+        self.assertEqual(
+            current.stage_two_threshold, legacy.stage_two_threshold
+        )
+
+    def test_old_artifact_loads_only_when_old_version_is_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = self._legacy_saved(Path(root))
+            with self.assertRaisesRegex(ValueError, "policy version mismatch"):
+                subject.load_composite_policy(path)
+            legacy = subject.load_composite_policy(
+                path,
+                expected_policy_version=subject.LEGACY_STAGED_POLICY_VERSION,
+            )
+        self.assertEqual(
+            legacy.policy_spec, subject.LEGACY_STAGED_POLICY_SPEC
+        )
+        self.assertEqual(
+            legacy.provenance()["threshold_quantile"], 0.95
+        )
+
+    def test_current_artifact_is_refused_under_the_old_version(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = self._saved(Path(root))
+            with self.assertRaisesRegex(ValueError, "policy version mismatch"):
+                subject.load_composite_policy(
+                    path,
+                    expected_policy_version=(
+                        subject.LEGACY_STAGED_POLICY_VERSION
+                    ),
+                )
+
     def test_a_wrong_policy_version_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             path = self._saved(Path(root))
@@ -966,6 +1141,18 @@ class CompositeSurvivorPolicyTests(unittest.TestCase):
             path = self._saved(Path(root))
             self._tamper(path, threshold=np.asarray(0.123456, dtype=np.float64))
             with self.assertRaisesRegex(ValueError, "frozen quantile"):
+                subject.load_composite_policy(path)
+
+    def test_policy_v3_hygiene_counts_cannot_be_tampered(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = self._saved(Path(root))
+            self._tamper(
+                path,
+                selection_rows_used_for_threshold=np.asarray(
+                    1, dtype=np.int64
+                ),
+            )
+            with self.assertRaisesRegex(ValueError, "may not be weakened"):
                 subject.load_composite_policy(path)
 
     def test_a_stage_two_threshold_mismatch_is_refused(self) -> None:
@@ -1259,7 +1446,14 @@ class KnownFalseUnknownByStageTests(unittest.TestCase):
         )
         self.assertEqual(report["staged_false_unknown_rate"], 0.5)
         self.assertEqual(report["unstaged_false_unknown_rate"], 0.25)
-        self.assertEqual(report["rejected_by_stage_one_only"], 1)
+        self.assertEqual(report["staged_rejected_total"], 2)
+        self.assertEqual(report["rejected_by_stage_one_total"], 1)
+        self.assertEqual(
+            report["stage_one_also_rejected_by_unstaged_control"], 0
+        )
+        self.assertEqual(report["rejected_by_stage_two_only"], 1)
+        self.assertEqual(report["attribution_partition_total"], 2)
+        self.assertTrue(report["attribution_partition_exact"])
 
     def test_a_prefilter_only_rejection_is_visible(self) -> None:
         outcome = _outcome([True, False], [np.nan, 0.1])
@@ -1268,8 +1462,29 @@ class KnownFalseUnknownByStageTests(unittest.TestCase):
         )
         self.assertEqual(report["staged_false_unknown_rate"], 0.5)
         self.assertEqual(report["unstaged_false_unknown_rate"], 0.0)
-        self.assertEqual(report["rejected_by_stage_one_only"], 1)
+        self.assertEqual(report["rejected_by_stage_one_total"], 1)
+        self.assertEqual(
+            report["stage_one_also_rejected_by_unstaged_control"], 0
+        )
         self.assertEqual(report["rejected_by_stage_two_only"], 0)
+        self.assertEqual(
+            report["staged_rejected_total"],
+            report["rejected_by_stage_one_total"]
+            + report["rejected_by_stage_two_only"],
+        )
+
+    def test_stage_one_overlap_with_unstaged_control_is_not_subtracted(self):
+        outcome = _outcome([True, False], [np.nan, 0.1])
+        report = subject.known_false_unknown_by_stage(
+            outcome, np.array([0.9, 0.1]), 0.5, 0.5
+        )
+        self.assertEqual(report["rejected_by_stage_one_total"], 1)
+        self.assertEqual(
+            report["stage_one_also_rejected_by_unstaged_control"], 1
+        )
+        self.assertEqual(report["rejected_by_stage_two_only"], 0)
+        self.assertEqual(report["staged_rejected_total"], 1)
+        self.assertTrue(report["attribution_partition_exact"])
 
     def test_a_fully_gated_population_reports_no_survivor_rate(self) -> None:
         outcome = _outcome([True, True], [np.nan, np.nan])
@@ -1733,7 +1948,18 @@ class EndToEndRunTests(unittest.TestCase):
     def _run(self, root: Path, **overrides) -> dict:
         args = self._args(root, **overrides)
         rebuilt = self._rebuilt(root)
-        with mock.patch.object(
+        post_design_ledger = {
+            **subject.SPENT_NOVELTY_SEEDS,
+            DESIGN_SEED: "synthetic unit-test design freeze; not evidence",
+        }
+        active_ledger = (
+            post_design_ledger
+            if args.role == "validate"
+            else dict(subject.SPENT_NOVELTY_SEEDS)
+        )
+        with mock.patch.dict(
+            subject.SPENT_NOVELTY_SEEDS, active_ledger, clear=True
+        ), mock.patch.object(
             subject, "rebuild_populations", return_value=rebuilt
         ), contextlib.redirect_stdout(io.StringIO()):
             return subject.run(args)
@@ -1772,10 +1998,10 @@ class EndToEndRunTests(unittest.TestCase):
         self.assertEqual(report["sealed_release_data_used"], 0)
         self.assertEqual(report["consumed_test_rows_used"], 0)
         self.assertEqual(report["sealed_release_paths_read"], 0)
-        self.assertFalse(report["release_seed_20260735_used"])
+        self.assertFalse(report["release_seed_20260736_used"])
         self.assertEqual(
             report["consumed_sealed_release_seeds_excluded"],
-            [20260729, 20260731, 20260733, 20260734],
+            [20260729, 20260731, 20260733, 20260734, 20260735],
         )
         self.assertTrue(report["development_only"])
         self.assertFalse(report["release_evidence"])
@@ -1816,7 +2042,7 @@ class EndToEndRunTests(unittest.TestCase):
         )
         self.assertEqual(len(report["fusion"]["directory_sha256"]), 64)
 
-    # -- the composite policy (staged policy version 2) ---------------------
+    # -- the composite policy (staged policy version 3 / q99) ---------------
 
     def test_the_report_states_the_policy_version_it_validates(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -1832,9 +2058,9 @@ class EndToEndRunTests(unittest.TestCase):
             architecture["survivor_score"], subject.COMPOSITE_SURVIVOR_SCORE
         )
         self.assertIn("composite", architecture)
-        self.assertIn(
-            "discarded below the gate", architecture["why_composite"]
-        )
+        self.assertIn("q95", architecture["why_composite"])
+        self.assertIn("q99", architecture["why_composite"])
+        self.assertIn("both CNN fusions are frozen", architecture["why_composite"])
 
     def test_the_composite_block_is_recorded_and_consistent(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -2005,7 +2231,13 @@ class EndToEndRunTests(unittest.TestCase):
             report = self._run(Path(root))
         stages = report["known"]["by_stage"]
         self.assertGreater(stages["stage_one_gate_rate"], 0.0)
-        self.assertGreater(stages["rejected_by_stage_one_only"], 0)
+        self.assertGreater(stages["rejected_by_stage_one_total"], 0)
+        self.assertEqual(
+            stages["staged_rejected_total"],
+            stages["rejected_by_stage_one_total"]
+            + stages["rejected_by_stage_two_only"],
+        )
+        self.assertTrue(stages["attribution_partition_exact"])
         self.assertIsNotNone(
             report["known"]["closed_selection_accuracy_on_stage_one_survivors"]
         )
@@ -2048,26 +2280,15 @@ class EndToEndRunTests(unittest.TestCase):
             )
             self.assertEqual(cell["stage_two_rows_scored_unstaged"], cell["rows"])
 
-    def test_a_heavily_gating_prefilter_short_circuits_novelty_rows(self) -> None:
-        """Exercise the short circuit on novelty, not only on known rows."""
+    def test_v34_refuses_a_non_frozen_stage_one_budget(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            directory = _bundle_set(Path(root) / "permissive", budget=0.90)
-            report = self._run(Path(root), prefilter_dir=str(directory))
-        total = report["compute_saved"]["novelty_total"]
-        self.assertGreater(total["short_circuited"], 0)
-        self.assertLess(
-            total["stage_two_rows_scored_staged"],
-            total["stage_two_rows_scored_unstaged"],
-        )
-        gated_any = any(
-            report["novelty"][str(UNIT_NOVELTY_SEED)][str(length)][family][
-                "gated_at_stage_one_fraction"
-            ]
-            > 0.0
-            for length in TEST_LENGTHS
-            for family in subject.NOVELTY_FAMILIES
-        )
-        self.assertTrue(gated_any)
+            directory = _bundle_set(
+                Path(root) / "wrong-budget", budget=0.90
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "expected the frozen 0.01"
+            ):
+                self._run(Path(root), prefilter_dir=str(directory))
 
     def test_subset_scoring_agreement_is_asserted_and_recorded(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -2154,12 +2375,12 @@ class EndToEndRunTests(unittest.TestCase):
     def test_the_release_seed_stops_the_run(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaisesRegex(ValueError, "unspent release seed"):
-                self._run(Path(root), novelty_seeds=[20260735])
+                self._run(Path(root), novelty_seeds=[20260736])
 
     def test_a_consumed_sealed_seed_stops_the_run(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaisesRegex(ValueError, "consumed sealed"):
-                self._run(Path(root), novelty_seeds=[20260731])
+                self._run(Path(root), novelty_seeds=[20260735])
 
     def test_a_prefilter_set_missing_a_scored_length_stops_the_run(self) -> None:
         with tempfile.TemporaryDirectory() as root:
