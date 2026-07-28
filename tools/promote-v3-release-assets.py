@@ -1,26 +1,11 @@
 #!/usr/bin/env python3
-"""Fail-closed promotion of the tracked v3 staging runtime package.
+"""Fail-closed promotion of the v3 dual-fusion staging package.
 
-This tool does not evaluate a model, open a sealed corpus, fit or recalibrate
-anything, modify the live v2 assets, or deploy.  It accepts only the exact
-tracked staging package and a completed seed-20260735 v3 release-evaluation
-report.  Before materializing a distinct release package it verifies:
-
-* every staging byte against the tracked package/export manifests;
-* the staging files are committed and unchanged in Git;
-* all 23 strict v2 release gates, including five-shot >= 0.85 and known
-  false-unknown <= 0.10;
-* the report's exact runtime-bundle, fusion, staged-policy, and prefilter
-  hashes against provenance embedded in all three cooperating runtime assets;
-* no development data was loaded by the evaluator, no training or
-  recalibration occurred, and the exported candidate consumed no sealed/test
-  rows before the one-shot release evaluation.
-
-Promotion changes only the top-level ``status`` of the fusion, classifier, and
-open-set assets from ``staging_not_release`` to ``release``.  The release
-package manifest binds the exact source-package and evaluation-report bytes.
-No timestamp or absolute path is emitted, so identical inputs produce
-byte-identical release packages.
+Promotion reads no corpus and performs no training or calibration. It accepts
+only the exact committed dual staging package plus a complete sealed
+seed-20260735 evaluator-v3 report. The four JSON assets are rewritten to
+``status: release``; the release binding is then rebuilt against the rewritten
+role/policy byte hashes before the complete directory is installed atomically.
 """
 
 from __future__ import annotations
@@ -41,65 +26,51 @@ from typing import Any, Mapping
 
 
 REPO = Path(__file__).resolve().parents[1]
-DEFAULT_STAGING_PACKAGE = REPO / "src/embedding/assets-v3-staging"
+DEFAULT_STAGING_PACKAGE = REPO / "src/embedding/assets-v3-dual-staging"
 DEFAULT_RELEASE_PACKAGE = REPO / "src/embedding/assets-v3-release"
 LIVE_V2_ASSETS = REPO / "src/embedding/assets"
+LEGACY_V3_STAGING = REPO / "src/embedding/assets-v3-staging"
 
 PACKAGE_MANIFEST = "runtime-package-manifest.json"
-FUSION_EXPORT_MANIFEST = "export-manifest.json"
-FUSION_WEIGHTS = "time-domain-fusion-weights-v3.json"
-CLASSIFIER_WEIGHTS = "time-domain-classifier-weights-v1.json"
-OPENSET_WEIGHTS = "time-domain-openset-weights-v1.json"
-OPENSET_SMOKE = "time-domain-openset-smoke-v1.json"
-FUSION_PROBE = "time-domain-probe-fixture-v3.json"
-
+REJECTOR_WEIGHTS = "time-domain-v3-rejector-weights.json"
+CLASSIFIER_WEIGHTS = "time-domain-v3-classifier-weights.json"
+OPENSET_POLICY = "time-domain-v3-openset-policy.json"
+DUAL_BINDING = "time-domain-v3-dual-binding.json"
 ASSET_NAMES = (
+    REJECTOR_WEIGHTS,
     CLASSIFIER_WEIGHTS,
-    FUSION_WEIGHTS,
-    OPENSET_SMOKE,
-    OPENSET_WEIGHTS,
-    FUSION_PROBE,
+    OPENSET_POLICY,
+    DUAL_BINDING,
 )
-STATUS_ASSET_NAMES = (
-    FUSION_WEIGHTS,
-    CLASSIFIER_WEIGHTS,
-    OPENSET_WEIGHTS,
-)
-STAGING_FILE_NAMES = frozenset(
-    (*ASSET_NAMES, PACKAGE_MANIFEST, FUSION_EXPORT_MANIFEST)
-)
+STAGING_FILE_NAMES = frozenset((*ASSET_NAMES, PACKAGE_MANIFEST))
 
-PACKAGE_SCHEMA = "atomos.v3.time-domain-classifier.runtime-package"
-FUSION_EXPORT_SCHEMA = (
-    "atomos.v3.time-domain-invariant-fusion.browser-weights.export-manifest"
+PACKAGE_SCHEMA = "atomos.v3.time-domain-classifier.dual-runtime-package"
+PACKAGE_SCHEMA_VERSION = 1
+FUSION_SCHEMA = "atomos.v3.time-domain-invariant-fusion.browser-weights"
+OPENSET_SCHEMA = "atomos.v3.time-domain-openset.staged"
+BINDING_SCHEMA = "atomos.v3.time-domain-dual-fusion.binding"
+CANDIDATE_SCHEMA = "time-domain-v3-dual-release-candidate-v1"
+VALIDATION_EVIDENCE_SCHEMA = (
+    "time-domain-v3-decoupled-validation-evidence-v1"
 )
-ASSET_CONTRACTS = {
-    FUSION_WEIGHTS: (
-        "atomos.v3.time-domain-invariant-fusion.browser-weights",
-        1,
-    ),
-    CLASSIFIER_WEIGHTS: (
-        "atomos.v3.time-domain-invariant-fusion.browser-decision",
-        1,
-    ),
-    OPENSET_WEIGHTS: ("atomos.v3.time-domain-openset.staged", 2),
-}
+PREVALIDATION_CONTRACT_SCHEMA = "time-domain-v3-decoupled-candidate-v1"
+BUNDLE_SCHEMA = "atomos.v3.time-domain-invariant-fusion.runtime-bundle"
+BUNDLE_KIND = "v3-time-domain-centered-invariant-fusion"
+BUNDLE_SCHEMA_VERSION = 1
+
+REJECTOR_ROLE = "known_unknown_rejector"
+CLASSIFIER_ROLE = "accepted_known_classifier"
+REJECTOR_RESPONSIBILITY = "known_unknown_only"
+CLASSIFIER_RESPONSIBILITY = "accepted_known_label_only"
+CANDIDATE_ID = "v3.3-decoupled-8k-classifier-4k-rejector"
 
 STAGING_STATUS = "staging_not_release"
 RELEASE_STATUS = "release"
+MAX_DEPLOYABLE_BYTES = 25 * 1024 * 1024
 RELEASE_SEED = 20260735
 HISTORICAL_RELAXED_SEED = 20260734
-EVALUATOR_SCHEMA = 2
-EVALUATION_VERSION = "time-domain-v3-release-evaluation-v2"
-RUNTIME_BUNDLE_SCHEMA = "atomos.v3.time-domain-invariant-fusion.runtime-bundle"
-RUNTIME_BUNDLE_KIND = "v3-time-domain-centered-invariant-fusion"
-RUNTIME_BUNDLE_SCHEMA_VERSION = 1
-STAGED_STATUS = "development_openset_pass"
-STAGED_POLICY_SCHEMA = 2
-STAGED_POLICY_VERSION = "v3-staged-openset-policy-v2-composite-survivor"
-STAGED_POLICY_KIND = (
-    "v3_staged_noise_prefilter_then_composite_survivor_lof_geometry"
-)
+EVALUATOR_SCHEMA = 3
+EVALUATION_VERSION = "time-domain-v3-release-evaluation-v3-dual-fusion"
 
 EXPECTED_BUNDLE_ASSETS = frozenset(
     {
@@ -120,9 +91,6 @@ EXPECTED_STAGED_ASSETS = frozenset(
     }
 )
 
-# This is the exact imported-v2 gate-floor object embedded by
-# evaluate_v3_release_suite.expected_evaluation_protocol.  The historical
-# seed-20260734 0.84/0.12 redeclaration is intentionally not accepted here.
 STRICT_V2_GATE_FLOORS = {
     "closed_fine": 0.72,
     "closed_family": 0.82,
@@ -142,13 +110,8 @@ STRICT_V2_GATE_FLOORS = {
     "scale_pair_prediction_agreement": 0.75,
     "scale_pair_embedding_cosine": 0.80,
 }
-
 BOOLEAN_GATE_NAMES = frozenset(
-    {
-        "prefix_nesting",
-        "dependency_provenance",
-        "start_probe_excluded",
-    }
+    {"prefix_nesting", "dependency_provenance", "start_probe_excluded"}
 )
 CANDIDATE_GATE_NAME = "candidate_sha_bound"
 NUMERIC_GATE_CONTRACT = {
@@ -173,15 +136,57 @@ NUMERIC_GATE_CONTRACT = {
     "physical_scale_worst_embedding_cosine_to_factor1": (0.80, "min"),
 }
 EXPECTED_GATE_NAMES = frozenset(
+    {*BOOLEAN_GATE_NAMES, CANDIDATE_GATE_NAME, *NUMERIC_GATE_CONTRACT}
+)
+if len(EXPECTED_GATE_NAMES) != 23:  # pragma: no cover
+    raise RuntimeError("strict release gate contract must contain 23 gates")
+
+REPORT_TOP_KEYS = frozenset(
     {
-        *BOOLEAN_GATE_NAMES,
-        CANDIDATE_GATE_NAME,
-        *NUMERIC_GATE_CONTRACT,
+        "schema",
+        "status",
+        "release_evidence",
+        "evaluation_version",
+        "development_data_loaded",
+        "retraining_performed",
+        "recalibration_performed",
+        "architecture_contract",
+        "candidate",
+        "closed_per_length",
+        "family_per_length",
+        "high_snr_per_length",
+        "low_snr_per_length",
+        "clean_subset_per_length",
+        "impaired_subset_per_length",
+        "five_shot_predeclared_per_length",
+        "open_staged_per_length",
+        "staged_known_decisions_per_length",
+        "matched_length_sweep",
+        "physical_scale_sweep",
+        "gates",
+        "historical_gate_redeclaration",
+        "all_release_gates_pass",
+        "provenance",
     }
 )
-if len(EXPECTED_GATE_NAMES) != 23:  # pragma: no cover - import-time invariant
-    raise RuntimeError("the frozen release gate contract must contain 23 gates")
-
+CANDIDATE_COMPONENT_KEYS = frozenset(
+    {
+        "candidate_contract",
+        "validation_evidence",
+        "frozen_prevalidation_contract",
+        "classifier_runtime_bundle",
+        "rejector_runtime_bundle",
+        "classifier_fusion",
+        "rejector_fusion",
+        "staged_validation",
+        "stage_one_prefilter",
+        "browser_assets",
+        "staging_package_manifest",
+        "dual_binding",
+        "dual_binding_sha256",
+        "source_sha256",
+    }
+)
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 
@@ -191,21 +196,22 @@ class PromotionError(RuntimeError):
 
 @dataclass(frozen=True)
 class PromotionPolicy:
-    """Paths and Git policy that define one allowed promotion channel."""
-
     repo_root: Path
     staging_package: Path
     release_package: Path
     live_v2_assets: Path
+    legacy_v3_staging: Path = LEGACY_V3_STAGING
     require_git_tracking: bool = True
 
 
 @dataclass(frozen=True)
 class VerifiedStaging:
     manifest: dict[str, Any]
+    manifest_raw: bytes
     manifest_sha256: str
     asset_bytes: dict[str, bytes]
     asset_payloads: dict[str, dict[str, Any]]
+    asset_records: dict[str, dict[str, Any]]
     tracked_paths: tuple[Path, ...]
 
 
@@ -222,18 +228,15 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def _is_exact_int(value: Any) -> bool:
-    return type(value) is int
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
-def _is_finite_number(value: Any) -> bool:
-    return (
-        type(value) in (int, float)
-        and math.isfinite(float(value))
-    )
-
-
-def _sha256(value: Any, label: str) -> str:
+def _sha(value: Any, label: str) -> str:
     if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
         raise PromotionError(f"{label} must be a lowercase SHA-256")
     return value
@@ -245,14 +248,13 @@ def _mapping(value: Any, label: str) -> Mapping[str, Any]:
     return value
 
 
-def _exact_object_keys(
+def _exact_keys(
     value: Mapping[str, Any], expected: set[str] | frozenset[str], label: str
 ) -> None:
-    actual = set(value)
-    if actual != set(expected):
+    if set(value) != set(expected):
         raise PromotionError(
             f"{label} keys differ: expected {sorted(expected)}, got "
-            f"{sorted(actual)}"
+            f"{sorted(value)}"
         )
 
 
@@ -269,406 +271,558 @@ def _reject_json_constant(value: str) -> None:
     raise PromotionError(f"non-finite JSON constant {value!r} is forbidden")
 
 
-def _parse_json(raw: bytes, label: str) -> Any:
+def _parse_json(raw: bytes, label: str) -> dict[str, Any]:
     try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise PromotionError(f"{label} is not UTF-8 JSON") from exc
-    try:
-        return json.loads(
-            text,
+        value = json.loads(
+            raw.decode("utf-8"),
             object_pairs_hook=_no_duplicate_object,
             parse_constant=_reject_json_constant,
         )
     except PromotionError:
         raise
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise PromotionError(f"{label} is not valid strict JSON") from exc
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        raise PromotionError(f"{label} is not strict UTF-8 JSON") from exc
+    return dict(_mapping(value, label))
 
 
-def _read_regular_file(path: Path, label: str) -> bytes:
+def _read_file(path: Path, label: str) -> bytes:
     if path.is_symlink() or not path.is_file():
-        raise PromotionError(f"{label} must be a regular, non-symlink file")
+        raise PromotionError(f"{label} must be a regular non-symlink file")
     try:
         return path.read_bytes()
     except OSError as exc:
-        raise PromotionError(f"cannot read {label}: {path}") from exc
+        raise PromotionError(f"cannot read {label}") from exc
 
 
-def _canonical_json_bytes(payload: Any) -> bytes:
+def _compact_json_bytes(payload: Any) -> bytes:
     try:
         text = json.dumps(
             payload,
-            indent=1,
             sort_keys=True,
+            separators=(",", ":"),
             allow_nan=False,
         )
-    except (TypeError, ValueError) as exc:  # pragma: no cover - internal only
-        raise PromotionError("cannot serialize deterministic release JSON") from exc
+    except (TypeError, ValueError) as exc:
+        raise PromotionError("cannot serialize release asset") from exc
     return f"{text}\n".encode("utf-8")
 
 
-def _within(path: Path, root: Path) -> bool:
-    return path == root or root in path.parents
+def _manifest_json_bytes(payload: Any) -> bytes:
+    try:
+        text = json.dumps(payload, indent=1, sort_keys=True, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise PromotionError("cannot serialize release manifest") from exc
+    return f"{text}\n".encode("utf-8")
+
+
+def _is_exact_int(value: Any) -> bool:
+    return type(value) is int
+
+
+def _is_finite_number(value: Any) -> bool:
+    return type(value) in (int, float) and math.isfinite(float(value))
 
 
 def _file_record(value: Any, label: str) -> dict[str, Any]:
     record = _mapping(value, label)
-    _exact_object_keys(record, {"bytes", "sha256"}, label)
-    size = record["bytes"]
-    if not _is_exact_int(size) or size <= 0:
+    size = record.get("bytes")
+    if type(size) is not int or size <= 0:
         raise PromotionError(f"{label}.bytes must be a positive integer")
-    return {
-        "bytes": size,
-        "sha256": _sha256(record["sha256"], f"{label}.sha256"),
-    }
+    return {"bytes": size, "sha256": _sha(record.get("sha256"), label)}
 
 
-def _hash_map(
-    value: Any,
-    label: str,
+def _resolve_path(value: Any, repo: Path, label: str) -> Path:
+    if not isinstance(value, str) or not value:
+        raise PromotionError(f"{label} must be a non-empty path")
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = repo / path
+    return path.resolve()
+
+
+def _resolve_package_path(
+    value: Any, package_manifest: Path, label: str
+) -> Path:
+    if not isinstance(value, str) or not value:
+        raise PromotionError(f"{label} must be a non-empty path")
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = package_manifest.parent / path
+    return path.resolve()
+
+
+def _verify_file_record(
+    record: Mapping[str, Any],
     *,
-    exact_names: frozenset[str] | None = None,
-) -> dict[str, str]:
-    source = _mapping(value, label)
-    if exact_names is not None and set(source) != set(exact_names):
-        raise PromotionError(
-            f"{label} names differ: expected {sorted(exact_names)}, got "
-            f"{sorted(source)}"
-        )
-    if not source:
-        raise PromotionError(f"{label} must not be empty")
-    return {
-        str(name): _sha256(digest, f"{label}[{name!r}]")
-        for name, digest in source.items()
-    }
+    path: Path,
+    label: str,
+) -> dict[str, Any]:
+    base = _file_record(record, label)
+    raw = _read_file(path, label)
+    if len(raw) != base["bytes"] or _sha256_bytes(raw) != base["sha256"]:
+        raise PromotionError(f"{label} differs from its byte record")
+    return base
 
 
-def _bundle_asset_records(value: Any) -> dict[str, dict[str, Any]]:
-    source = _mapping(value, "report candidate.components.bundle_assets")
-    if set(source) != set(EXPECTED_BUNDLE_ASSETS):
-        raise PromotionError(
-            "report candidate bundle asset names differ from the exact v3 "
-            f"runtime bundle: {sorted(source)}"
-        )
-    return {
-        str(name): _file_record(
-            record, f"report candidate.components.bundle_assets[{name!r}]"
-        )
-        for name, record in source.items()
-    }
+def _verify_json_record(
+    record: Mapping[str, Any],
+    *,
+    repo: Path,
+    label: str,
+    schema: str | None = None,
+    status: str | None = None,
+) -> tuple[Path, str, dict[str, Any]]:
+    path = _resolve_path(record.get("path"), repo, f"{label}.path")
+    digest = _sha(record.get("sha256"), f"{label}.sha256")
+    raw = _read_file(path, label)
+    if _sha256_bytes(raw) != digest:
+        raise PromotionError(f"{label} SHA differs from current bytes")
+    payload = _parse_json(raw, label)
+    expected_schema = schema if schema is not None else record.get("schema")
+    expected_status = status if status is not None else record.get("status")
+    if expected_schema is not None and payload.get("schema") != expected_schema:
+        raise PromotionError(f"{label} schema differs")
+    if expected_status is not None and payload.get("status") != expected_status:
+        raise PromotionError(f"{label} status differs")
+    return path, digest, payload
 
 
-def _run_git(repo: Path, arguments: list[str]) -> subprocess.CompletedProcess[str]:
+def _run_git(repo: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
-            ["git", "-C", str(repo), *arguments],
+            ["git", "-C", str(repo), *args],
             check=False,
             capture_output=True,
             text=True,
         )
     except OSError as exc:
-        raise PromotionError("Git is required to verify the staging package") from exc
+        raise PromotionError("Git is required for promotion") from exc
 
 
 def _verify_git_tracking(repo: Path, paths: tuple[Path, ...]) -> None:
     top = _run_git(repo, ["rev-parse", "--show-toplevel"])
-    if top.returncode != 0:
-        raise PromotionError("staging package is not inside a Git worktree")
-    try:
-        reported_top = Path(top.stdout.strip()).resolve(strict=True)
-    except OSError as exc:
-        raise PromotionError("Git reported an unusable worktree root") from exc
-    if reported_top != repo:
-        raise PromotionError(
-            f"Git worktree root {reported_top} differs from policy root {repo}"
-        )
-
+    if top.returncode != 0 or Path(top.stdout.strip()).resolve() != repo:
+        raise PromotionError("promotion policy root is not this Git worktree")
     relatives: list[str] = []
     for path in paths:
         try:
-            relative = path.relative_to(repo)
+            relatives.append(path.relative_to(repo).as_posix())
         except ValueError as exc:
-            raise PromotionError(f"tracked source escapes repository: {path}") from exc
-        relatives.append(relative.as_posix())
-
+            raise PromotionError("tracked staging input escapes repository") from exc
     tracked = _run_git(
         repo, ["ls-files", "--error-unmatch", "--", *sorted(relatives)]
     )
     if tracked.returncode != 0:
-        raise PromotionError(
-            "every staging package input must be tracked by Git"
-        )
+        raise PromotionError("every staging package file must be tracked")
     clean = _run_git(repo, ["diff", "--quiet", "HEAD", "--", *sorted(relatives)])
     if clean.returncode == 1:
-        raise PromotionError(
-            "staging package inputs differ from their committed HEAD bytes"
-        )
+        raise PromotionError("staging package differs from committed HEAD")
     if clean.returncode != 0:
-        raise PromotionError(
-            "cannot prove staging package inputs match committed HEAD bytes"
-        )
+        raise PromotionError("cannot prove staging package matches HEAD")
 
 
-def _resolved_policy(policy: PromotionPolicy) -> PromotionPolicy:
-    try:
-        repo = policy.repo_root.expanduser().resolve(strict=True)
-    except OSError as exc:
-        raise PromotionError("policy repository root does not exist") from exc
-    if repo.is_symlink() or not repo.is_dir():
-        raise PromotionError("policy repository root must be a regular directory")
+def _normalized_policy(policy: PromotionPolicy) -> PromotionPolicy:
+    repo = Path(policy.repo_root).resolve(strict=True)
     return PromotionPolicy(
         repo_root=repo,
-        staging_package=policy.staging_package.expanduser().resolve(),
-        release_package=policy.release_package.expanduser().resolve(),
-        live_v2_assets=policy.live_v2_assets.expanduser().resolve(),
+        staging_package=Path(policy.staging_package).resolve(),
+        release_package=Path(policy.release_package).resolve(),
+        live_v2_assets=Path(policy.live_v2_assets).resolve(),
+        legacy_v3_staging=Path(policy.legacy_v3_staging).resolve(),
         require_git_tracking=policy.require_git_tracking,
     )
 
 
+def _is_within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
 def _validate_paths(
-    staging_package: Path,
-    destination: Path,
-    policy: PromotionPolicy,
+    staging: Path, destination: Path, policy: PromotionPolicy
 ) -> tuple[Path, Path, PromotionPolicy]:
-    normalized = _resolved_policy(policy)
-    if staging_package.is_symlink():
+    normalized = _normalized_policy(policy)
+    if staging.is_symlink():
         raise PromotionError("staging package may not be a symlink")
-    staging = staging_package.expanduser().resolve()
-    release = destination.expanduser().resolve()
-    if staging != normalized.staging_package:
-        raise PromotionError(
-            "source is not the policy's exact tracked v3 staging package"
-        )
+    source = staging.resolve()
+    release = destination.resolve()
+    if source != normalized.staging_package:
+        raise PromotionError("source is not the exact dual staging package")
     if release != normalized.release_package:
-        raise PromotionError(
-            "destination is not the policy's exact v3 release package"
-        )
-    if _within(release, normalized.live_v2_assets):
-        raise PromotionError("refusing the live v2 asset directory or a descendant")
-    if _within(release, normalized.staging_package):
-        raise PromotionError("refusing the staging package or a descendant")
-    if _within(normalized.staging_package, release):
-        raise PromotionError("release destination may not contain the staging package")
-    if staging == release:
-        raise PromotionError("release and staging packages must be distinct")
+        raise PromotionError("destination is not the exact release package")
+    for forbidden, label in (
+        (normalized.live_v2_assets, "live v2"),
+        (normalized.legacy_v3_staging, "legacy single-fusion staging"),
+        (normalized.staging_package, "dual staging"),
+    ):
+        if _is_within(release, forbidden):
+            raise PromotionError(f"refusing {label} directory or descendant")
+    if source == release or _is_within(source, release):
+        raise PromotionError("release destination may not contain staging")
     if release.is_symlink():
         raise PromotionError("release destination may not be a symlink")
     if release.exists():
-        if not release.is_dir():
-            raise PromotionError("release destination exists and is not a directory")
-        try:
-            if next(release.iterdir(), None) is not None:
-                raise PromotionError("release destination must be empty")
-        except OSError as exc:
-            raise PromotionError("cannot inspect release destination") from exc
-    return staging, release, normalized
+        if not release.is_dir() or next(release.iterdir(), None) is not None:
+            raise PromotionError("release destination must be absent or empty")
+    return source, release, normalized
+
+
+def _verify_binding(
+    binding: Mapping[str, Any],
+    asset_records: Mapping[str, Mapping[str, Any]],
+    *,
+    status: str,
+) -> None:
+    if (
+        binding.get("schema") != BINDING_SCHEMA
+        or binding.get("schema_version") != 1
+        or binding.get("status") != status
+        or binding.get("candidate_id") != CANDIDATE_ID
+    ):
+        raise PromotionError("dual binding schema/status/candidate differs")
+    if binding.get("execution_order") != [
+        "stage_one_noise_gate",
+        "rejector_known_unknown",
+        "classifier_known_label",
+    ]:
+        raise PromotionError("dual binding execution order differs")
+    roles = _mapping(binding.get("roles"), "dual binding roles")
+    _exact_keys(roles, {"rejector", "classifier"}, "dual binding roles")
+    for label, name, role, responsibility in (
+        (
+            "rejector",
+            REJECTOR_WEIGHTS,
+            REJECTOR_ROLE,
+            REJECTOR_RESPONSIBILITY,
+        ),
+        (
+            "classifier",
+            CLASSIFIER_WEIGHTS,
+            CLASSIFIER_ROLE,
+            CLASSIFIER_RESPONSIBILITY,
+        ),
+    ):
+        value = _mapping(roles[label], f"dual binding {label}")
+        if (
+            value.get("asset") != name
+            or value.get("asset_sha256") != asset_records[name]["sha256"]
+            or value.get("runtime_role") != role
+            or value.get("responsibility") != responsibility
+        ):
+            raise PromotionError(f"dual binding {label} asset/role differs")
+        _sha(
+            value.get("runtime_bundle_manifest_sha256"),
+            f"dual binding {label} bundle",
+        )
+        _sha(
+            value.get("fusion_directory_sha256"),
+            f"dual binding {label} fusion",
+        )
+    for field in (
+        "asset_sha256",
+        "runtime_bundle_manifest_sha256",
+        "fusion_directory_sha256",
+    ):
+        if roles["rejector"][field] == roles["classifier"][field]:
+            raise PromotionError(f"dual binding aliases role {field}")
+    openset = _mapping(binding.get("openset_policy"), "binding openset_policy")
+    if (
+        openset.get("asset") != OPENSET_POLICY
+        or openset.get("asset_sha256") != asset_records[OPENSET_POLICY]["sha256"]
+        or openset.get("rejector_asset_sha256")
+        != asset_records[REJECTOR_WEIGHTS]["sha256"]
+        or openset.get("fitted_rejector_runtime_bundle_manifest_sha256")
+        != roles["rejector"]["runtime_bundle_manifest_sha256"]
+    ):
+        raise PromotionError("binding open-set policy is not rejector-bound")
+    report_sha = _sha(
+        openset.get("staged_validation_report_sha256"),
+        "binding validation report",
+    )
+    staged = _mapping(
+        openset.get("staged_artifacts_sha256"), "binding staged artifacts"
+    )
+    _exact_keys(staged, EXPECTED_STAGED_ASSETS, "binding staged artifacts")
+    for name, digest in staged.items():
+        _sha(digest, f"binding staged artifact {name}")
+    validation = _mapping(binding.get("validation"), "binding validation")
+    if dict(validation) != {
+        "report_sha256": report_sha,
+        "role": "validate",
+        "status": "development_openset_pass",
+        "novelty_seeds": [20260950, 20260951],
+    }:
+        raise PromotionError("binding validation record differs")
+    expected_flags = {
+        "role_assets_bound_by_sha256": True,
+        "distinct_role_assets": True,
+        "role_asset_sha256_must_differ": True,
+        "classifier_runs_only_after_rejector_acceptance": True,
+        "public_known_label_from_classifier_only": True,
+    }
+    if binding.get("fail_closed") != expected_flags:
+        raise PromotionError("binding fail_closed flags differ")
 
 
 def _verify_staging_package(
-    staging: Path,
-    policy: PromotionPolicy,
+    staging: Path, policy: PromotionPolicy
 ) -> VerifiedStaging:
     if staging.is_symlink() or not staging.is_dir():
-        raise PromotionError("staging package must be a regular, non-symlink directory")
-    try:
-        entries = tuple(staging.iterdir())
-    except OSError as exc:
-        raise PromotionError("cannot enumerate staging package") from exc
-    names = {entry.name for entry in entries}
-    if names != set(STAGING_FILE_NAMES):
-        raise PromotionError(
-            "staging package entries differ from the exact tracked package: "
-            f"expected {sorted(STAGING_FILE_NAMES)}, got {sorted(names)}"
-        )
-    for entry in entries:
-        if entry.is_symlink() or not entry.is_file():
-            raise PromotionError(
-                f"staging entry {entry.name!r} must be a regular file"
-            )
-
+        raise PromotionError("staging package must be a regular directory")
+    entries = tuple(staging.iterdir())
+    if {entry.name for entry in entries} != set(STAGING_FILE_NAMES):
+        raise PromotionError("staging package is not the exact five-file package")
+    if any(entry.is_symlink() or not entry.is_file() for entry in entries):
+        raise PromotionError("staging package contains a non-regular file")
     manifest_path = staging / PACKAGE_MANIFEST
-    manifest_raw = _read_regular_file(manifest_path, "staging package manifest")
-    manifest_value = _parse_json(manifest_raw, "staging package manifest")
-    manifest = dict(_mapping(manifest_value, "staging package manifest"))
-    if manifest.get("schema") != PACKAGE_SCHEMA:
-        raise PromotionError("staging package manifest has an unexpected schema")
-    if manifest.get("schema_version") != 1:
-        raise PromotionError("staging package manifest schema_version must be 1")
-    if manifest.get("status") != STAGING_STATUS:
-        raise PromotionError("staging package manifest is not staging_not_release")
-
-    asset_records_source = _mapping(
-        manifest.get("assets"), "staging package manifest.assets"
-    )
-    if set(asset_records_source) != set(ASSET_NAMES):
-        raise PromotionError(
-            "staging package manifest does not bind the exact five runtime assets"
-        )
-    asset_records = {
-        name: _file_record(
-            asset_records_source[name],
-            f"staging package manifest.assets[{name!r}]",
-        )
-        for name in ASSET_NAMES
+    manifest_raw = _read_file(manifest_path, "staging package manifest")
+    manifest = _parse_json(manifest_raw, "staging package manifest")
+    expected_top = {
+        "schema",
+        "schema_version",
+        "status",
+        "candidate_id",
+        "architecture",
+        "assets",
+        "roles",
+        "openset_policy",
+        "dual_binding",
+        "external_evidence",
+        "size_contract",
     }
+    _exact_keys(manifest, expected_top, "staging package manifest")
+    if (
+        manifest.get("schema") != PACKAGE_SCHEMA
+        or manifest.get("schema_version") != PACKAGE_SCHEMA_VERSION
+        or manifest.get("status") != STAGING_STATUS
+        or manifest.get("candidate_id") != CANDIDATE_ID
+    ):
+        raise PromotionError("staging package schema/status/candidate differs")
+    if manifest.get("architecture") != {
+        "execution_order": [
+            "stage_one_noise_gate",
+            "rejector_known_unknown",
+            "classifier_known_label",
+        ],
+        "classifier_runs_only_after_rejector_acceptance": True,
+        "public_known_label_from_classifier_only": True,
+    }:
+        raise PromotionError("staging package architecture differs")
 
+    assets = _mapping(manifest.get("assets"), "staging package assets")
+    _exact_keys(assets, set(ASSET_NAMES), "staging package assets")
+    contracts = {
+        REJECTOR_WEIGHTS: (FUSION_SCHEMA, 1, REJECTOR_ROLE),
+        CLASSIFIER_WEIGHTS: (FUSION_SCHEMA, 1, CLASSIFIER_ROLE),
+        OPENSET_POLICY: (OPENSET_SCHEMA, 2, None),
+        DUAL_BINDING: (BINDING_SCHEMA, 1, None),
+    }
     asset_bytes: dict[str, bytes] = {}
-    for name in ASSET_NAMES:
-        raw = _read_regular_file(staging / name, f"staging asset {name}")
-        record = asset_records[name]
-        if len(raw) != record["bytes"]:
-            raise PromotionError(f"staging asset {name} byte count changed")
-        if _sha256_bytes(raw) != record["sha256"]:
-            raise PromotionError(f"staging asset {name} SHA-256 changed")
+    payloads: dict[str, dict[str, Any]] = {}
+    records: dict[str, dict[str, Any]] = {}
+    for name, (schema, version, role) in contracts.items():
+        record = _mapping(assets[name], f"staging asset record {name}")
+        expected_keys = {
+            "path",
+            "bytes",
+            "sha256",
+            "schema",
+            "schema_version",
+            "status",
+        }
+        if role is not None:
+            expected_keys.add("runtime_role")
+        _exact_keys(record, expected_keys, f"staging asset record {name}")
+        if record.get("path") != name:
+            raise PromotionError(f"staging asset {name} path is not package-local")
+        path = staging / name
+        base = _verify_file_record(record, path=path, label=f"staging {name}")
+        raw = _read_file(path, f"staging {name}")
+        if len(raw) >= MAX_DEPLOYABLE_BYTES:
+            raise PromotionError(f"staging asset {name} is not below 25 MiB")
+        payload = _parse_json(raw, f"staging {name}")
+        if (
+            record.get("schema") != schema
+            or record.get("schema_version") != version
+            or record.get("status") != STAGING_STATUS
+            or payload.get("schema") != schema
+            or payload.get("schema_version") != version
+            or payload.get("status") != STAGING_STATUS
+        ):
+            raise PromotionError(f"staging asset {name} contract differs")
+        if role is not None and (
+            record.get("runtime_role") != role
+            or payload.get("runtime_role") != role
+        ):
+            raise PromotionError(f"staging asset {name} runtime role differs")
+        records[name] = dict(record)
         asset_bytes[name] = raw
+        payloads[name] = payload
 
-    sources = _mapping(manifest.get("sources"), "staging package manifest.sources")
-    _exact_object_keys(
-        sources,
-        {
-            FUSION_EXPORT_MANIFEST,
-            "openset-export-manifest.json",
-            "time-domain-openset-parity-v1.json",
-        },
-        "staging package manifest.sources",
+    _verify_binding(payloads[DUAL_BINDING], records, status=STAGING_STATUS)
+    roles = _mapping(manifest.get("roles"), "staging package roles")
+    _exact_keys(roles, {"rejector", "classifier"}, "staging package roles")
+    binding_roles = payloads[DUAL_BINDING]["roles"]
+    for label, name, role, responsibility in (
+        (
+            "rejector",
+            REJECTOR_WEIGHTS,
+            REJECTOR_ROLE,
+            REJECTOR_RESPONSIBILITY,
+        ),
+        (
+            "classifier",
+            CLASSIFIER_WEIGHTS,
+            CLASSIFIER_ROLE,
+            CLASSIFIER_RESPONSIBILITY,
+        ),
+    ):
+        value = _mapping(roles[label], f"package role {label}")
+        if (
+            value.get("runtime_role") != role
+            or value.get("responsibility") != responsibility
+            or value.get("asset") != records[name]
+            or value.get("source_bundle_manifest_sha256")
+            != binding_roles[label]["runtime_bundle_manifest_sha256"]
+            or value.get("fusion_directory_sha256")
+            != binding_roles[label]["fusion_directory_sha256"]
+        ):
+            raise PromotionError(f"package role {label} link differs")
+        role_payload = payloads[name]
+        blockers = role_payload.get("release_blockers")
+        if (
+            role_payload.get("development_only") is not True
+            or role_payload.get("release_evidence") is not False
+            or not isinstance(blockers, list)
+            or not blockers
+            or not all(
+                isinstance(blocker, str) and blocker.strip()
+                for blocker in blockers
+            )
+        ):
+            raise PromotionError(
+                f"staging role {label} does not retain its release blockers"
+            )
+    openset_record = _mapping(
+        manifest.get("openset_policy"), "package openset_policy"
     )
-    source_hashes = {
-        name: _sha256(value, f"staging package manifest.sources[{name!r}]")
-        for name, value in sources.items()
+    for key, value in records[OPENSET_POLICY].items():
+        if openset_record.get(key) != value:
+            raise PromotionError("package open-set asset link differs")
+    binding_openset = payloads[DUAL_BINDING]["openset_policy"]
+    for key in (
+        "fitted_rejector_runtime_bundle_manifest_sha256",
+        "staged_validation_report_sha256",
+        "staged_artifacts_sha256",
+    ):
+        if openset_record.get(key) != binding_openset.get(key):
+            raise PromotionError(f"package open-set evidence {key} differs")
+    if manifest.get("dual_binding") != records[DUAL_BINDING]:
+        raise PromotionError("package dual binding record differs")
+    policy_provenance = _mapping(
+        payloads[OPENSET_POLICY].get("provenance"),
+        "open-set policy provenance",
+    )
+    if (
+        policy_provenance.get("candidate_id") != CANDIDATE_ID
+        or policy_provenance.get("development_only") is not True
+        or policy_provenance.get("release_evidence") is not False
+        or policy_provenance.get("sealed_release_data_used") != 0
+        or policy_provenance.get("consumed_test_rows_used") != 0
+        or policy_provenance.get("release_seed_not_spent") != RELEASE_SEED
+        or policy_provenance.get("staged_validation_all_pass") is not True
+        or policy_provenance.get("staged_validation_role") != "validate"
+        or policy_provenance.get("staged_validation_status")
+        != "development_openset_pass"
+        or policy_provenance.get("staged_validation_report_sha256")
+        != binding_openset["staged_validation_report_sha256"]
+        or policy_provenance.get("staged_artifact_sha256")
+        != binding_openset["staged_artifacts_sha256"]
+    ):
+        raise PromotionError("open-set policy evidence differs from binding")
+    runtime_roles = _mapping(
+        policy_provenance.get("runtime_roles"),
+        "open-set runtime role provenance",
+    )
+    for label, name, role in (
+        ("rejector", REJECTOR_WEIGHTS, REJECTOR_ROLE),
+        ("classifier", CLASSIFIER_WEIGHTS, CLASSIFIER_ROLE),
+    ):
+        value = _mapping(runtime_roles.get(label), f"policy role {label}")
+        if (
+            value.get("runtime_role") != role
+            or value.get("browser_asset") != name
+            or value.get("browser_asset_sha256") != records[name]["sha256"]
+            or value.get("runtime_bundle_manifest_sha256")
+            != binding_roles[label]["runtime_bundle_manifest_sha256"]
+            or value.get("fusion_directory_sha256")
+            != binding_roles[label]["fusion_directory_sha256"]
+        ):
+            raise PromotionError(f"open-set policy role {label} differs")
+
+    external = _mapping(
+        manifest.get("external_evidence"), "package external_evidence"
+    )
+    expected_external = {
+        "rejector_export_manifest",
+        "classifier_export_manifest",
+        "openset_export_manifest",
+        "rejector_probe",
+        "classifier_probe",
+        "parity",
     }
-
-    export_path = staging / FUSION_EXPORT_MANIFEST
-    export_raw = _read_regular_file(export_path, "fusion export manifest")
-    if _sha256_bytes(export_raw) != source_hashes[FUSION_EXPORT_MANIFEST]:
-        raise PromotionError(
-            "fusion export manifest differs from the staging source binding"
+    _exact_keys(external, expected_external, "package external_evidence")
+    for name, value in external.items():
+        record = _mapping(value, f"external evidence {name}")
+        path = _resolve_package_path(
+            record.get("path"), manifest_path, f"external evidence {name}.path"
         )
-    export_value = _parse_json(export_raw, "fusion export manifest")
-    export_manifest = _mapping(export_value, "fusion export manifest")
-    if (
-        export_manifest.get("schema") != FUSION_EXPORT_SCHEMA
-        or export_manifest.get("schema_version") != 1
-    ):
-        raise PromotionError("fusion export manifest has an unexpected schema")
-    emitted = _mapping(export_manifest.get("emitted"), "fusion export emitted")
-    _exact_object_keys(
-        emitted,
-        {FUSION_WEIGHTS, FUSION_PROBE},
-        "fusion export emitted",
-    )
-    for name in (FUSION_WEIGHTS, FUSION_PROBE):
-        if _file_record(
-            emitted[name], f"fusion export emitted[{name!r}]"
-        ) != asset_records[name]:
-            raise PromotionError(
-                f"fusion export record for {name} differs from package manifest"
+        _verify_file_record(record, path=path, label=f"external evidence {name}")
+        if name in {"rejector_probe", "classifier_probe"}:
+            _exact_keys(
+                record,
+                {"path", "bytes", "sha256"},
+                f"external evidence {name}",
             )
-
-    asset_payloads: dict[str, dict[str, Any]] = {}
-    for name, (schema, schema_version) in ASSET_CONTRACTS.items():
-        value = _parse_json(asset_bytes[name], f"staging asset {name}")
-        payload = dict(_mapping(value, f"staging asset {name}"))
-        if payload.get("schema") != schema:
-            raise PromotionError(f"staging asset {name} has an unexpected schema")
-        if payload.get("schema_version") != schema_version:
-            raise PromotionError(
-                f"staging asset {name} has an unexpected schema_version"
-            )
-        if payload.get("status") != STAGING_STATUS:
-            raise PromotionError(
-                f"staging asset {name} is not staging_not_release"
-            )
-        asset_payloads[name] = payload
-
-    fusion_payload = asset_payloads[FUSION_WEIGHTS]
-    if (
-        fusion_payload.get("development_only") is not True
-        or fusion_payload.get("release_evidence") is not False
-    ):
-        raise PromotionError(
-            "fusion staging asset does not preserve development-only provenance"
+            continue
+        payload = _parse_json(
+            _read_file(path, f"external evidence {name}"),
+            f"external evidence {name}",
         )
+        if (
+            payload.get("schema") != record.get("schema")
+            or payload.get("schema_version") != record.get("schema_version")
+        ):
+            raise PromotionError(f"external evidence {name} schema differs")
+        if "status" in record and payload.get("status") != record.get("status"):
+            raise PromotionError(f"external evidence {name} status differs")
+        if name == "parity" and record.get("packaged") is not False:
+            raise PromotionError("parity must remain external")
+    if manifest.get("size_contract") != {
+        "maximum_file_bytes_exclusive": MAX_DEPLOYABLE_BYTES,
+        "all_deployable_files_below_limit": True,
+    }:
+        raise PromotionError("package size contract differs")
 
-    classifier_provenance = _mapping(
-        asset_payloads[CLASSIFIER_WEIGHTS].get("provenance"),
-        "classifier provenance",
-    )
-    openset_provenance = _mapping(
-        asset_payloads[OPENSET_WEIGHTS].get("provenance"),
-        "open-set provenance",
-    )
-    if classifier_provenance != openset_provenance:
-        raise PromotionError(
-            "classifier and open-set assets do not carry identical provenance"
-        )
-    for key, expected in (
-        ("development_only", True),
-        ("release_evidence", False),
-        ("sealed_release_data_used", 0),
-        ("consumed_test_rows_used", 0),
-        ("release_seed_not_spent", RELEASE_SEED),
-        ("staged_validation_status", STAGED_STATUS),
-        ("staged_validation_role", "validate"),
-        ("staged_validation_all_pass", True),
-    ):
-        if classifier_provenance.get(key) != expected:
-            raise PromotionError(
-                f"staging candidate provenance {key!r} is "
-                f"{classifier_provenance.get(key)!r}, expected {expected!r}"
-            )
-    _sha256(
-        classifier_provenance.get("staged_validation_report_sha256"),
-        "staging candidate provenance.staged_validation_report_sha256",
-    )
-
-    open_contract = _mapping(
-        asset_payloads[OPENSET_WEIGHTS].get("contract"), "open-set contract"
-    )
-    for key, expected in (
-        ("additive_only", False),
-        ("changes_closed_label", True),
-        ("gates_before_classification", True),
-    ):
-        if open_contract.get(key) is not expected:
-            raise PromotionError(f"open-set contract {key!r} is not {expected!r}")
-    composite = _mapping(
-        asset_payloads[OPENSET_WEIGHTS].get("composite"),
-        "open-set composite policy",
-    )
-    for key, expected in (
-        ("schema", STAGED_POLICY_SCHEMA),
-        ("kind", STAGED_POLICY_KIND),
-        ("policy_version", STAGED_POLICY_VERSION),
-    ):
-        if composite.get(key) != expected:
-            raise PromotionError(
-                f"open-set composite policy {key!r} differs from {expected!r}"
-            )
-
-    tracked_paths = tuple(sorted((entry.resolve() for entry in entries), key=str))
+    tracked = tuple(sorted((path.resolve() for path in entries), key=str))
     if policy.require_git_tracking:
-        _verify_git_tracking(policy.repo_root, tracked_paths)
-
+        _verify_git_tracking(policy.repo_root, tracked)
     return VerifiedStaging(
         manifest=manifest,
+        manifest_raw=manifest_raw,
         manifest_sha256=_sha256_bytes(manifest_raw),
         asset_bytes=asset_bytes,
-        asset_payloads=asset_payloads,
-        tracked_paths=tracked_paths,
+        asset_payloads=payloads,
+        asset_records=records,
+        tracked_paths=tracked,
     )
 
 
 def _verify_historical_metadata(
-    report: Mapping[str, Any],
-    protocol: Mapping[str, Any],
+    report: Mapping[str, Any], protocol: Mapping[str, Any]
 ) -> None:
     top = report.get("historical_gate_redeclaration")
-    nested = protocol.get("historical_gate_redeclaration")
-    if top != nested:
-        raise PromotionError(
-            "report and protocol historical gate metadata differ"
-        )
+    if top != protocol.get("historical_gate_redeclaration"):
+        raise PromotionError("report and protocol historical metadata differ")
     block = _mapping(top, "historical_gate_redeclaration")
     if (
         block.get("release_seed") != HISTORICAL_RELAXED_SEED
@@ -676,417 +830,807 @@ def _verify_historical_metadata(
         or block.get("current_protocol_gate_source")
         != "imported_v2_gate_floors_unchanged"
     ):
-        raise PromotionError(
-            "seed-20260734 relaxed gates must remain explicitly inactive history"
-        )
-    gates = _mapping(
-        block.get("gates_redeclared"),
-        "historical_gate_redeclaration.gates_redeclared",
-    )
+        raise PromotionError("historical relaxed gates are not explicitly inactive")
+    gates = _mapping(block.get("gates_redeclared"), "historical gates")
     expected = {
         "five_shot_worst_length_balanced": (0.85, 0.84),
         "open_known_false_unknown_worst_length": (0.10, 0.12),
     }
-    if set(gates) != set(expected):
-        raise PromotionError("historical gate metadata has an unexpected gate set")
+    _exact_keys(gates, set(expected), "historical gates")
     for name, (v2_level, v3_level) in expected.items():
-        record = _mapping(gates[name], f"historical gate {name}")
-        _exact_object_keys(
-            record,
-            {"v2_level", "v3_level", "owner_decision"},
-            f"historical gate {name}",
-        )
+        value = _mapping(gates[name], f"historical gate {name}")
         if (
-            record.get("v2_level") != v2_level
-            or record.get("v3_level") != v3_level
-            or not isinstance(record.get("owner_decision"), str)
-            or not record["owner_decision"].strip()
+            value.get("v2_level") != v2_level
+            or value.get("v3_level") != v3_level
+            or not isinstance(value.get("owner_decision"), str)
+            or not value["owner_decision"].strip()
         ):
-            raise PromotionError(f"historical gate metadata is invalid for {name}")
+            raise PromotionError(f"historical gate {name} differs")
 
 
-def _verify_release_gates(
-    gates_value: Any,
-    candidate_sha256: str,
-) -> None:
-    gates = _mapping(gates_value, "release report gates")
-    if set(gates) != set(EXPECTED_GATE_NAMES):
-        raise PromotionError(
-            "release report must contain exactly the 23 strict v2 gates; "
-            f"got {len(gates)}"
-        )
-
+def _verify_release_gates(value: Any, candidate_sha: str) -> None:
+    gates = _mapping(value, "release gates")
+    _exact_keys(gates, EXPECTED_GATE_NAMES, "release gates")
     for name in BOOLEAN_GATE_NAMES:
-        gate = _mapping(gates[name], f"release gate {name}")
-        if dict(gate) != {"value": True, "expected": True, "passes": True}:
-            raise PromotionError(f"release gate {name} did not strictly pass")
-
-    candidate_gate = _mapping(
-        gates[CANDIDATE_GATE_NAME],
-        f"release gate {CANDIDATE_GATE_NAME}",
-    )
-    if dict(candidate_gate) != {
-        "value": candidate_sha256,
-        "expected": candidate_sha256,
+        if gates[name] != {"value": True, "expected": True, "passes": True}:
+            raise PromotionError(f"boolean gate {name} did not strictly pass")
+    if gates[CANDIDATE_GATE_NAME] != {
+        "value": candidate_sha,
+        "expected": candidate_sha,
         "passes": True,
     }:
-        raise PromotionError("candidate_sha_bound gate is not exact and passing")
-
+        raise PromotionError("candidate_sha_bound gate differs")
     for name, (threshold, comparison) in NUMERIC_GATE_CONTRACT.items():
         gate = _mapping(gates[name], f"release gate {name}")
-        _exact_object_keys(
+        _exact_keys(
             gate,
             {"value", "threshold", "comparison", "passes"},
             f"release gate {name}",
         )
-        value = gate.get("value")
-        if not _is_finite_number(value):
-            raise PromotionError(f"release gate {name} value must be finite")
+        actual = gate.get("value")
         if (
-            not _is_finite_number(gate.get("threshold"))
-            or float(gate["threshold"]) != threshold
+            not _is_finite_number(actual)
+            or gate.get("threshold") != threshold
             or gate.get("comparison") != comparison
             or gate.get("passes") is not True
         ):
-            raise PromotionError(
-                f"release gate {name} does not use the strict v2 contract"
-            )
-        actual = float(value)
-        passes = actual >= threshold if comparison == "min" else actual <= threshold
+            raise PromotionError(f"release gate {name} contract differs")
+        passes = (
+            float(actual) >= threshold
+            if comparison == "min"
+            else float(actual) <= threshold
+        )
         if not passes:
-            raise PromotionError(
-                f"release gate {name} claims pass for failing value {actual}"
-            )
+            raise PromotionError(f"release gate {name} claims a false pass")
+
+
+def _verify_bound_file_map(
+    directory: Path,
+    file_sha256: Mapping[str, Any],
+    label: str,
+) -> dict[str, str]:
+    if not file_sha256:
+        raise PromotionError(f"{label} file hash map is empty")
+    verified: dict[str, str] = {}
+    for name, digest_value in file_sha256.items():
+        if (
+            not isinstance(name, str)
+            or not name
+            or Path(name).name != name
+            or Path(name).is_absolute()
+        ):
+            raise PromotionError(f"{label} contains a non-local file name")
+        digest = _sha(digest_value, f"{label} {name}")
+        path = directory / name
+        if _sha256_bytes(_read_file(path, f"{label} {name}")) != digest:
+            raise PromotionError(f"{label} file {name} differs")
+        verified[name] = digest
+    return verified
+
+
+def _record_core(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: record[key]
+        for key in ("path", "sha256", "schema", "status")
+        if key in record
+    }
 
 
 def _verify_evaluation_report(
     report_path: Path,
     staging: VerifiedStaging,
+    policy: PromotionPolicy,
 ) -> VerifiedEvaluation:
-    report_raw = _read_regular_file(report_path, "sealed evaluation report")
-    report_value = _parse_json(report_raw, "sealed evaluation report")
-    report = _mapping(report_value, "sealed evaluation report")
-
-    if type(report.get("schema")) is not int or report.get("schema") != EVALUATOR_SCHEMA:
-        raise PromotionError("release report evaluator schema must be integer 2")
-    if report.get("status") != "complete":
-        raise PromotionError("release report status must be complete")
-    if report.get("release_evidence") is not True:
-        raise PromotionError("release report is not release evidence")
-    if report.get("evaluation_version") != EVALUATION_VERSION:
-        raise PromotionError("release report evaluation_version is not v2")
-    for key, expected in (
-        ("development_data_loaded", False),
-        ("retraining_performed", False),
-        ("recalibration_performed", False),
-    ):
-        if report.get(key) is not expected:
-            raise PromotionError(
-                f"release report {key!r} is {report.get(key)!r}, "
-                f"expected {expected!r}"
-            )
-    if report.get("all_release_gates_pass") is not True:
-        raise PromotionError("release report does not pass every release gate")
-
-    provenance = _mapping(report.get("provenance"), "release report provenance")
+    raw = _read_file(report_path, "sealed evaluation report")
+    report = _parse_json(raw, "sealed evaluation report")
+    _exact_keys(report, REPORT_TOP_KEYS, "sealed evaluation report")
     if (
-        not _is_exact_int(provenance.get("release_seed"))
-        or provenance.get("release_seed") != RELEASE_SEED
+        report.get("schema") != EVALUATOR_SCHEMA
+        or report.get("status") != "complete"
+        or report.get("release_evidence") is not True
+        or report.get("evaluation_version") != EVALUATION_VERSION
+        or report.get("all_release_gates_pass") is not True
     ):
-        raise PromotionError(
-            f"release report must bind untouched seed {RELEASE_SEED}"
-        )
+        raise PromotionError("release report is not a complete evaluator-v3 pass")
+    for field in (
+        "development_data_loaded",
+        "retraining_performed",
+        "recalibration_performed",
+    ):
+        if report.get(field) is not False:
+            raise PromotionError(f"release report {field} must be false")
+
+    provenance = _mapping(report.get("provenance"), "release provenance")
+    if provenance.get("release_seed") != RELEASE_SEED:
+        raise PromotionError(f"release report must use seed {RELEASE_SEED}")
     protocol = _mapping(
-        provenance.get("evaluation_protocol"),
-        "release report evaluation protocol",
+        provenance.get("evaluation_protocol"), "release evaluation protocol"
     )
-    if protocol.get("version") != EVALUATION_VERSION:
-        raise PromotionError("embedded evaluation protocol has the wrong version")
-    protocol_gates = _mapping(
-        protocol.get("gates"), "release report protocol gates"
-    )
-    if dict(protocol_gates) != STRICT_V2_GATE_FLOORS:
-        raise PromotionError(
-            "embedded protocol gates differ from the strict imported v2 floors"
-        )
-    novelty = _mapping(
-        protocol.get("novelty"), "release report protocol novelty"
-    )
-    if novelty.get("seed") != RELEASE_SEED:
-        raise PromotionError(
-            f"embedded novelty protocol must bind seed {RELEASE_SEED}"
-        )
-    _verify_historical_metadata(report, protocol)
-
-    candidate = _mapping(report.get("candidate"), "release report candidate")
-    candidate_sha = _sha256(
-        candidate.get("sha256"), "release report candidate.sha256"
-    )
-    if provenance.get("candidate_sha256") != candidate_sha:
-        raise PromotionError(
-            "release report provenance candidate SHA differs from candidate"
-        )
-    for key, expected in (
-        ("runtime_schema", RUNTIME_BUNDLE_SCHEMA),
-        ("runtime_schema_version", RUNTIME_BUNDLE_SCHEMA_VERSION),
-        ("runtime_kind", RUNTIME_BUNDLE_KIND),
-    ):
-        if candidate.get(key) != expected:
-            raise PromotionError(
-                f"release report candidate {key!r} differs from {expected!r}"
-            )
-    frozen_assets = candidate.get("frozen_assets_used")
     if (
-        not isinstance(frozen_assets, list)
-        or not frozen_assets
-        or not all(isinstance(item, str) and item for item in frozen_assets)
+        protocol.get("version") != EVALUATION_VERSION
+        or protocol.get("gates") != STRICT_V2_GATE_FLOORS
+        or _mapping(protocol.get("novelty"), "protocol novelty").get("seed")
+        != RELEASE_SEED
+    ):
+        raise PromotionError("embedded protocol is not strict seed-20260735 v3")
+    open_protocol = _mapping(protocol.get("open_set"), "protocol open_set")
+    if (
+        open_protocol.get("intentional_dual_fusion") is not True
+        or open_protocol.get("candidate_architecture")
+        != "dual_fusion_classifier8k_rejector4k"
+    ):
+        raise PromotionError("protocol does not evaluate the dual architecture")
+    _verify_historical_metadata(report, protocol)
+    architecture = _mapping(
+        report.get("architecture_contract"), "release architecture contract"
+    )
+    for field, expected in (
+        ("intentional_dual_fusion", True),
+        ("candidate_architecture", "dual_fusion_classifier8k_rejector4k"),
+        ("known_label_source", "classifier_fusion_8k_regularized"),
+        ("known_unknown_source", "rejector_fusion_4k_frozen_policy"),
+        ("closed_gate_source", "classifier_fusion_8k_regularized"),
+        ("open_gate_source", "rejector_fusion_4k_frozen_policy"),
+        ("gates_before_classification", True),
+    ):
+        if architecture.get(field) != expected:
+            raise PromotionError(f"release architecture {field} differs")
+
+    candidate = _mapping(report.get("candidate"), "release candidate")
+    candidate_sha = _sha(candidate.get("sha256"), "candidate.sha256")
+    if (
+        candidate.get("schema") != CANDIDATE_SCHEMA
+        or candidate.get("candidate_id") != CANDIDATE_ID
+        or provenance.get("candidate_sha256") != candidate_sha
+    ):
+        raise PromotionError("release report candidate identity differs")
+    candidate_path = _resolve_path(
+        candidate.get("path"), policy.repo_root, "candidate.path"
+    )
+    candidate_raw = _read_file(candidate_path, "candidate manifest")
+    if _sha256_bytes(candidate_raw) != candidate_sha:
+        raise PromotionError("candidate manifest SHA differs from report")
+    candidate_manifest = _parse_json(candidate_raw, "candidate manifest")
+    expected_candidate_keys = {
+        "schema",
+        "status",
+        "candidate_id",
+        "validation_evidence",
+        "classifier",
+        "rejector",
+        "staged_validation",
+        "stage_one_prefilter",
+        "browser_assets",
+        "staging_package_manifest",
+        "dual_binding",
+    }
+    _exact_keys(
+        candidate_manifest,
+        expected_candidate_keys,
+        "candidate manifest",
+    )
+    if (
+        candidate_manifest.get("schema") != CANDIDATE_SCHEMA
+        or candidate_manifest.get("status") != "release_candidate_frozen"
+        or candidate_manifest.get("candidate_id") != CANDIDATE_ID
+    ):
+        raise PromotionError("candidate manifest is not the frozen dual candidate")
+    classes = candidate.get("classes")
+    if (
+        not isinstance(classes, list)
+        or not classes
+        or not all(isinstance(name, str) and name for name in classes)
+    ):
+        raise PromotionError("release report candidate classes are invalid")
+    frozen = candidate.get("frozen_assets_used")
+    if (
+        not isinstance(frozen, list)
+        or not frozen
+        or not all(isinstance(item, str) and item for item in frozen)
     ):
         raise PromotionError("release report does not enumerate frozen assets")
 
-    components = _mapping(
-        candidate.get("components"), "release report candidate.components"
+    components = _mapping(candidate.get("components"), "candidate components")
+    _exact_keys(components, CANDIDATE_COMPONENT_KEYS, "candidate components")
+    contract = _mapping(
+        components.get("candidate_contract"), "candidate_contract"
     )
-    if components.get("bundle_manifest_sha256") != candidate_sha:
-        raise PromotionError(
-            "candidate component bundle manifest SHA differs from candidate SHA"
+    if (
+        _resolve_path(contract.get("path"), policy.repo_root, "contract.path")
+        != candidate_path
+        or contract.get("sha256") != candidate_sha
+        or contract.get("schema") != CANDIDATE_SCHEMA
+        or contract.get("candidate_id") != CANDIDATE_ID
+        or contract.get("status") != "release_candidate_frozen"
+    ):
+        raise PromotionError("candidate_contract does not identify candidate bytes")
+
+    validation_record = _mapping(
+        components.get("validation_evidence"), "validation_evidence"
+    )
+    validation_path, validation_sha, validation = _verify_json_record(
+        validation_record,
+        repo=policy.repo_root,
+        label="validation evidence",
+        schema=VALIDATION_EVIDENCE_SCHEMA,
+        status="development_openset_pass",
+    )
+    candidate_validation = _mapping(
+        candidate_manifest.get("validation_evidence"),
+        "manifest validation_evidence",
+    )
+    if (
+        _resolve_path(
+            candidate_validation.get("path"),
+            policy.repo_root,
+            "manifest validation_evidence.path",
         )
-    bundle_assets = _bundle_asset_records(components.get("bundle_assets"))
-    bundle_asset_hashes = {
-        name: record["sha256"] for name, record in bundle_assets.items()
+        != validation_path
+        or candidate_validation.get("sha256") != validation_sha
+    ):
+        raise PromotionError("candidate validation_evidence link differs")
+    frozen_record = _mapping(
+        components.get("frozen_prevalidation_contract"),
+        "frozen_prevalidation_contract",
+    )
+    frozen_path, frozen_sha, frozen_payload = _verify_json_record(
+        frozen_record,
+        repo=policy.repo_root,
+        label="frozen prevalidation contract",
+        schema=PREVALIDATION_CONTRACT_SCHEMA,
+        status="frozen_before_validation",
+    )
+    if frozen_payload.get("candidate_id") != CANDIDATE_ID:
+        raise PromotionError("prevalidation contract candidate_id differs")
+    validation_contract = _mapping(
+        validation.get("candidate_contract"),
+        "validation evidence candidate_contract",
+    )
+    if (
+        _resolve_path(
+            validation_contract.get("path"),
+            policy.repo_root,
+            "validation candidate_contract.path",
+        )
+        != frozen_path
+        or validation_contract.get("sha256") != frozen_sha
+    ):
+        raise PromotionError("validation evidence does not bind frozen contract")
+
+    binding = staging.asset_payloads[DUAL_BINDING]
+    binding_roles = binding["roles"]
+    bundle_summaries: dict[str, Any] = {}
+    fusion_summaries: dict[str, Any] = {}
+    for label, runtime_role, fusion_role in (
+        ("classifier", CLASSIFIER_ROLE, "known_class_label"),
+        ("rejector", REJECTOR_ROLE, "known_unknown_decision"),
+    ):
+        bundle = _mapping(
+            components.get(f"{label}_runtime_bundle"),
+            f"{label}_runtime_bundle",
+        )
+        if (
+            bundle.get("schema") != BUNDLE_SCHEMA
+            or bundle.get("schema_version") != BUNDLE_SCHEMA_VERSION
+            or bundle.get("kind") != BUNDLE_KIND
+            or bundle.get("manifest_sha256")
+            != binding_roles[label]["runtime_bundle_manifest_sha256"]
+        ):
+            raise PromotionError(f"{label} runtime bundle contract differs")
+        bundle_dir = _resolve_path(
+            bundle.get("directory"), policy.repo_root, f"{label} bundle directory"
+        )
+        bundle_manifest_path = _resolve_path(
+            bundle.get("manifest_path"),
+            policy.repo_root,
+            f"{label} bundle manifest",
+        )
+        if bundle_manifest_path.parent != bundle_dir:
+            raise PromotionError(f"{label} bundle manifest escapes bundle directory")
+        bundle_manifest_raw = _read_file(
+            bundle_manifest_path, f"{label} bundle manifest"
+        )
+        if _sha256_bytes(bundle_manifest_raw) != bundle["manifest_sha256"]:
+            raise PromotionError(f"{label} bundle manifest SHA differs")
+        bundle_manifest = _parse_json(
+            bundle_manifest_raw, f"{label} bundle manifest"
+        )
+        if (
+            bundle_manifest.get("schema") != BUNDLE_SCHEMA
+            or bundle_manifest.get("schema_version") != 1
+            or bundle_manifest.get("kind") != BUNDLE_KIND
+            or bundle_manifest.get("runtime_role") != runtime_role
+            or bundle_manifest.get("assets") != bundle.get("assets")
+        ):
+            raise PromotionError(f"{label} bundle bytes differ from report")
+        assets = _mapping(bundle.get("assets"), f"{label} bundle assets")
+        _exact_keys(assets, EXPECTED_BUNDLE_ASSETS, f"{label} bundle assets")
+        for name, value in assets.items():
+            _verify_file_record(
+                _mapping(value, f"{label} bundle {name}"),
+                path=bundle_dir / name,
+                label=f"{label} bundle {name}",
+            )
+        candidate_role = _mapping(
+            candidate_manifest.get(label), f"candidate manifest {label}"
+        )
+        candidate_bundle = _mapping(
+            candidate_role.get("runtime_bundle"),
+            f"candidate {label} runtime bundle",
+        )
+        if (
+            candidate_role.get("role") != fusion_role
+            or _resolve_path(
+                candidate_bundle.get("directory"),
+                policy.repo_root,
+                f"candidate {label} bundle directory",
+            )
+            != bundle_dir
+            or _resolve_path(
+                candidate_bundle.get("manifest_path"),
+                policy.repo_root,
+                f"candidate {label} bundle manifest",
+            )
+            != bundle_manifest_path
+            or candidate_bundle.get("manifest_sha256")
+            != bundle["manifest_sha256"]
+        ):
+            raise PromotionError(f"candidate manifest {label} bundle differs")
+        bundle_summaries[label] = {
+            "manifest_sha256": bundle["manifest_sha256"],
+            "assets_sha256": {
+                name: value["sha256"] for name, value in assets.items()
+            },
+        }
+
+        fusion = _mapping(
+            components.get(f"{label}_fusion"), f"{label}_fusion"
+        )
+        if (
+            fusion.get("role") != fusion_role
+            or fusion.get("directory_sha256")
+            != binding_roles[label]["fusion_directory_sha256"]
+            or not _is_exact_int(fusion.get("seed"))
+        ):
+            raise PromotionError(f"{label} fusion role/hash differs")
+        fusion_dir = _resolve_path(
+            fusion.get("directory"), policy.repo_root, f"{label} fusion directory"
+        )
+        files = _verify_bound_file_map(
+            fusion_dir,
+            _mapping(fusion.get("file_sha256"), f"{label} fusion files"),
+            f"{label} fusion",
+        )
+        candidate_fusion = _mapping(
+            candidate_role.get("fusion"), f"candidate {label} fusion"
+        )
+        if (
+            _resolve_path(
+                candidate_fusion.get("directory"),
+                policy.repo_root,
+                f"candidate {label} fusion directory",
+            )
+            != fusion_dir
+            or candidate_fusion.get("directory_sha256")
+            != fusion["directory_sha256"]
+            or candidate_fusion.get("file_sha256") != fusion["file_sha256"]
+        ):
+            raise PromotionError(f"candidate manifest {label} fusion differs")
+        fusion_summaries[label] = {
+            "directory_sha256": fusion["directory_sha256"],
+            "files_sha256": files,
+            "seed": fusion["seed"],
+        }
+
+    staged = _mapping(
+        components.get("staged_validation"), "staged_validation"
+    )
+    if (
+        staged.get("status") != "development_openset_pass"
+        or staged.get("novelty_seeds") != [20260950, 20260951]
+        or staged.get("report_sha256")
+        != binding["openset_policy"]["staged_validation_report_sha256"]
+        or staged.get("artifact_sha256")
+        != binding["openset_policy"]["staged_artifacts_sha256"]
+    ):
+        raise PromotionError("staged validation evidence differs from binding")
+    staged_dir = _resolve_path(
+        staged.get("directory"), policy.repo_root, "staged directory"
+    )
+    staged_report_path = _resolve_path(
+        staged.get("report_path"), policy.repo_root, "staged report"
+    )
+    if (
+        staged_report_path.parent != staged_dir
+        or _sha256_file(staged_report_path) != staged["report_sha256"]
+    ):
+        raise PromotionError("staged validation report bytes differ")
+    staged_hashes = _mapping(
+        staged.get("artifact_sha256"), "staged artifact hashes"
+    )
+    _exact_keys(staged_hashes, EXPECTED_STAGED_ASSETS, "staged artifact hashes")
+    for name, digest in staged_hashes.items():
+        if _sha256_bytes(
+            _read_file(staged_dir / name, f"staged artifact {name}")
+        ) != _sha(digest, f"staged artifact {name}"):
+            raise PromotionError(f"staged artifact {name} differs")
+    candidate_staged = _mapping(
+        candidate_manifest.get("staged_validation"),
+        "candidate staged_validation",
+    )
+    if (
+        _resolve_path(
+            candidate_staged.get("directory"),
+            policy.repo_root,
+            "candidate staged directory",
+        )
+        != staged_dir
+        or _resolve_path(
+            candidate_staged.get("report_path"),
+            policy.repo_root,
+            "candidate staged report",
+        )
+        != staged_report_path
+        or candidate_staged.get("report_sha256") != staged["report_sha256"]
+        or candidate_staged.get("artifact_sha256") != staged["artifact_sha256"]
+    ):
+        raise PromotionError("candidate manifest staged validation differs")
+
+    prefilter = _mapping(
+        components.get("stage_one_prefilter"), "stage_one_prefilter"
+    )
+    prefilter_sha = _sha(prefilter.get("set_sha256"), "prefilter set SHA")
+    bundle_hashes = _mapping(
+        prefilter.get("bundle_sha256"), "prefilter bundle hashes"
+    )
+    if (
+        not bundle_hashes
+        or any(
+            not isinstance(length, str)
+            or SHA256_RE.fullmatch(str(digest)) is None
+            for length, digest in bundle_hashes.items()
+        )
+        or staging.asset_payloads[OPENSET_POLICY]
+        .get("provenance", {})
+        .get("prefilter_set_sha256")
+        != prefilter_sha
+    ):
+        raise PromotionError("prefilter evidence differs from open-set policy")
+    candidate_prefilter = _mapping(
+        candidate_manifest.get("stage_one_prefilter"),
+        "candidate stage_one_prefilter",
+    )
+    prefilter_dir = _resolve_path(
+        prefilter.get("directory"),
+        policy.repo_root,
+        "prefilter directory",
+    )
+    if (
+        _resolve_path(
+            candidate_prefilter.get("directory"),
+            policy.repo_root,
+            "candidate prefilter directory",
+        )
+        != prefilter_dir
+        or candidate_prefilter.get("set_sha256") != prefilter_sha
+        or candidate_prefilter.get("bundle_sha256") != bundle_hashes
+    ):
+        raise PromotionError("candidate manifest prefilter differs")
+
+    browser = _mapping(components.get("browser_assets"), "browser_assets")
+    _exact_keys(
+        browser, {"classifier", "rejector", "openset_policy"}, "browser_assets"
+    )
+    browser_contract = {
+        "classifier": (CLASSIFIER_WEIGHTS, FUSION_SCHEMA, CLASSIFIER_ROLE),
+        "rejector": (REJECTOR_WEIGHTS, FUSION_SCHEMA, REJECTOR_ROLE),
+        "openset_policy": (OPENSET_POLICY, OPENSET_SCHEMA, None),
     }
-    fusion_directory_sha = _sha256(
-        components.get("fusion_directory_sha256"),
-        "candidate fusion_directory_sha256",
+    browser_hashes: dict[str, str] = {}
+    candidate_browser = _mapping(
+        candidate_manifest.get("browser_assets"), "candidate browser_assets"
     )
-    fusion_file_hashes = _hash_map(
-        components.get("fusion_file_sha256"),
-        "candidate fusion_file_sha256",
+    for label, (name, schema, runtime_role) in browser_contract.items():
+        record = _mapping(browser[label], f"browser asset {label}")
+        path, digest, payload = _verify_json_record(
+            record,
+            repo=policy.repo_root,
+            label=f"browser asset {label}",
+            schema=schema,
+            status=STAGING_STATUS,
+        )
+        if path != policy.staging_package / name:
+            raise PromotionError(f"browser asset {label} is outside staging package")
+        if digest != staging.asset_records[name]["sha256"]:
+            raise PromotionError(f"browser asset {label} SHA differs from package")
+        if runtime_role is not None and payload.get("runtime_role") != runtime_role:
+            raise PromotionError(f"browser asset {label} runtime role differs")
+        if _record_core(record) != _record_core(
+            _mapping(candidate_browser.get(label), f"candidate browser {label}")
+        ):
+            raise PromotionError(f"candidate manifest browser {label} differs")
+        browser_hashes[label] = digest
+    if browser_hashes["classifier"] == browser_hashes["rejector"]:
+        raise PromotionError("browser role assets alias")
+
+    package_record = _mapping(
+        components.get("staging_package_manifest"),
+        "staging_package_manifest",
+    )
+    package_path, package_sha, package_payload = _verify_json_record(
+        package_record,
+        repo=policy.repo_root,
+        label="staging package manifest",
+        schema=PACKAGE_SCHEMA,
+        status=STAGING_STATUS,
     )
     if (
-        bundle_asset_hashes["fusion_state_dict.pt"]
-        not in set(fusion_file_hashes.values())
-    ):
-        raise PromotionError(
-            "runtime bundle fusion state is not bound to a fusion artifact file"
+        package_path != policy.staging_package / PACKAGE_MANIFEST
+        or package_sha != staging.manifest_sha256
+        or package_payload != staging.manifest
+        or _record_core(package_record)
+        != _record_core(
+            _mapping(
+                candidate_manifest.get("staging_package_manifest"),
+                "candidate staging_package_manifest",
+            )
         )
-    fusion_seed = components.get("fusion_seed")
-    if not _is_exact_int(fusion_seed):
-        raise PromotionError("candidate fusion_seed must be an integer")
-    staged_hashes = _hash_map(
-        components.get("staged_artifact_sha256"),
-        "candidate staged_artifact_sha256",
-        exact_names=EXPECTED_STAGED_ASSETS,
-    )
-    if components.get("staged_status") != STAGED_STATUS:
-        raise PromotionError("candidate staged artifact did not pass validation")
-    prefilter_hash = _sha256(
-        components.get("prefilter_set_sha256"),
-        "candidate prefilter_set_sha256",
-    )
-    if components.get("staged_policy_version") != STAGED_POLICY_VERSION:
-        raise PromotionError("candidate staged policy version is not v2 composite")
+    ):
+        raise PromotionError("report/candidate staging package differs")
 
-    stage_one_lengths = components.get("stage_one_capture_lengths")
+    binding_record = _mapping(components.get("dual_binding"), "dual_binding")
+    binding_path, binding_sha, binding_payload = _verify_json_record(
+        binding_record,
+        repo=policy.repo_root,
+        label="dual binding",
+        schema=BINDING_SCHEMA,
+        status=STAGING_STATUS,
+    )
     if (
-        not isinstance(stage_one_lengths, list)
-        or not stage_one_lengths
-        or any(not _is_exact_int(value) or value <= 0 for value in stage_one_lengths)
-        or len(stage_one_lengths) != len(set(stage_one_lengths))
-    ):
-        raise PromotionError("candidate stage-one capture lengths are invalid")
-    open_protocol = _mapping(
-        protocol.get("open_set"), "release report protocol open_set"
-    )
-    for key, expected in (
-        ("staged_policy_schema", STAGED_POLICY_SCHEMA),
-        ("staged_policy_version", STAGED_POLICY_VERSION),
-        ("architecture", STAGED_POLICY_KIND),
-        ("additive_only", False),
-        ("changes_closed_label", True),
-        ("gates_before_classification", True),
-    ):
-        if open_protocol.get(key) != expected:
-            raise PromotionError(
-                f"release protocol open_set {key!r} differs from {expected!r}"
+        binding_path != policy.staging_package / DUAL_BINDING
+        or binding_sha != staging.asset_records[DUAL_BINDING]["sha256"]
+        or binding_payload != binding
+        or components.get("dual_binding_sha256") != binding_sha
+        or _record_core(binding_record)
+        != _record_core(
+            _mapping(
+                candidate_manifest.get("dual_binding"),
+                "candidate dual_binding",
             )
-    if open_protocol.get("stage_one_capture_lengths") != stage_one_lengths:
-        raise PromotionError(
-            "release protocol and candidate stage-one lengths differ"
         )
-
-    architecture = _mapping(
-        report.get("architecture_contract"),
-        "release report architecture_contract",
-    )
-    for key, expected in (
-        ("additive_only", False),
-        ("changes_closed_label", True),
-        ("gates_before_classification", True),
-        ("staged_policy_schema", STAGED_POLICY_SCHEMA),
-        ("staged_policy_version", STAGED_POLICY_VERSION),
-        ("staged_policy_kind", STAGED_POLICY_KIND),
     ):
-        if architecture.get(key) != expected:
-            raise PromotionError(
-                f"release architecture {key!r} differs from {expected!r}"
-            )
-    if architecture.get("stage_one_capture_lengths") != stage_one_lengths:
-        raise PromotionError(
-            "release architecture and candidate stage-one lengths differ"
-        )
+        raise PromotionError("report/candidate dual binding differs")
 
     _verify_release_gates(report.get("gates"), candidate_sha)
-
-    classifier = staging.asset_payloads[CLASSIFIER_WEIGHTS]
-    openset = staging.asset_payloads[OPENSET_WEIGHTS]
-    fusion = staging.asset_payloads[FUSION_WEIGHTS]
-    classifier_provenance = _mapping(
-        classifier.get("provenance"), "classifier provenance"
+    release_root = _resolve_path(
+        provenance.get("release_root"), policy.repo_root, "release_root"
     )
-    openset_provenance = _mapping(
-        openset.get("provenance"), "open-set provenance"
-    )
-    fusion_provenance = _mapping(fusion.get("provenance"), "fusion provenance")
-
-    for label, asset_provenance in (
-        ("classifier", classifier_provenance),
-        ("open-set", openset_provenance),
+    if release_root.is_symlink() or not release_root.is_dir():
+        raise PromotionError("release_root must be a regular directory")
+    intent_path = release_root / "RELEASE_INTENT.json"
+    release_manifest_path = release_root / "RELEASE_MANIFEST.json"
+    intent_raw = _read_file(intent_path, "RELEASE_INTENT")
+    release_manifest_raw = _read_file(release_manifest_path, "RELEASE_MANIFEST")
+    intent_sha = _sha256_bytes(intent_raw)
+    release_manifest_sha = _sha256_bytes(release_manifest_raw)
+    if (
+        provenance.get("release_intent_sha256") != intent_sha
+        or provenance.get("release_manifest_sha256") != release_manifest_sha
     ):
-        if asset_provenance.get("runtime_bundle_manifest_sha256") != candidate_sha:
-            raise PromotionError(
-                f"{label} asset is from a different runtime bundle"
-            )
-        if asset_provenance.get("fusion_directory_sha256") != fusion_directory_sha:
-            raise PromotionError(f"{label} asset is from a different fusion artifact")
-        asset_staged_hashes = _hash_map(
-            asset_provenance.get("staged_artifact_sha256"),
-            f"{label} provenance staged_artifact_sha256",
-            exact_names=EXPECTED_STAGED_ASSETS,
+        raise PromotionError("release report suite manifest hashes differ")
+    intent = _parse_json(intent_raw, "RELEASE_INTENT")
+    release_manifest = _parse_json(release_manifest_raw, "RELEASE_MANIFEST")
+    if (
+        intent.get("release_seed") != RELEASE_SEED
+        or release_manifest.get("release_seed") != RELEASE_SEED
+        or intent.get("status") != "in_progress"
+        or release_manifest.get("status") != "complete"
+        or _resolve_path(
+            intent.get("candidate_path"), policy.repo_root, "intent candidate"
         )
-        if asset_staged_hashes != staged_hashes:
-            raise PromotionError(f"{label} asset is from a different staged artifact")
-        if asset_provenance.get("prefilter_set_sha256") != prefilter_hash:
-            raise PromotionError(f"{label} asset is from a different prefilter set")
-
-    exported_bundle_hashes = _hash_map(
-        fusion_provenance.get("source_bundle_assets_sha256"),
-        "fusion provenance source_bundle_assets_sha256",
-        exact_names=EXPECTED_BUNDLE_ASSETS,
-    )
-    if exported_bundle_hashes != bundle_asset_hashes:
-        raise PromotionError(
-            "fusion asset is from different runtime-bundle bytes"
+        != candidate_path
+        or _resolve_path(
+            release_manifest.get("candidate_path"),
+            policy.repo_root,
+            "release manifest candidate",
         )
-    if fusion_provenance.get("source_bundle_schema") != RUNTIME_BUNDLE_SCHEMA:
-        raise PromotionError("fusion asset records an unexpected runtime schema")
-    if fusion_provenance.get("assembly_seed") != fusion_seed:
-        raise PromotionError("fusion asset and report disagree on fusion seed")
+        != candidate_path
+        or intent.get("candidate_sha256") != candidate_sha
+        or release_manifest.get("candidate_sha256") != candidate_sha
+        or release_manifest.get("release_intent_sha256") != intent_sha
+        or intent.get("evaluation_protocol") != protocol
+        or release_manifest.get("evaluation_protocol") != protocol
+    ):
+        raise PromotionError("release intent/manifest candidate chain differs")
 
-    release_intent_sha = _sha256(
-        provenance.get("release_intent_sha256"),
-        "release report provenance.release_intent_sha256",
-    )
-    release_manifest_sha = _sha256(
-        provenance.get("release_manifest_sha256"),
-        "release report provenance.release_manifest_sha256",
-    )
-    staged_validation_sha = _sha256(
-        classifier_provenance.get("staged_validation_report_sha256"),
-        "candidate staged validation report SHA",
-    )
-    candidate_artifacts = {
-        "runtime_bundle_manifest_sha256": candidate_sha,
-        "runtime_bundle_assets_sha256": bundle_asset_hashes,
-        "fusion_directory_sha256": fusion_directory_sha,
-        "fusion_files_sha256": fusion_file_hashes,
-        "fusion_seed": fusion_seed,
-        "staged_artifacts_sha256": staged_hashes,
-        "staged_validation_report_sha256": staged_validation_sha,
-        "prefilter_set_sha256": prefilter_hash,
-        "stage_one_capture_lengths": list(stage_one_lengths),
-        "staged_policy_version": STAGED_POLICY_VERSION,
+    artifacts = {
+        "candidate_manifest_sha256": candidate_sha,
+        "validation_evidence_sha256": validation_sha,
+        "frozen_prevalidation_contract_sha256": frozen_sha,
+        "runtime_bundles": bundle_summaries,
+        "fusions": fusion_summaries,
+        "staged_validation_report_sha256": staged["report_sha256"],
+        "staged_artifacts_sha256": dict(staged_hashes),
+        "prefilter_set_sha256": prefilter_sha,
+        "prefilter_bundle_sha256": dict(bundle_hashes),
+        "browser_assets_sha256": browser_hashes,
+        "staging_package_manifest_sha256": package_sha,
+        "staging_dual_binding_sha256": binding_sha,
     }
     return VerifiedEvaluation(
-        report_sha256=_sha256_bytes(report_raw),
+        report_sha256=_sha256_bytes(raw),
         candidate_sha256=candidate_sha,
-        candidate_artifacts=candidate_artifacts,
-        release_intent_sha256=release_intent_sha,
+        candidate_artifacts=artifacts,
+        release_intent_sha256=intent_sha,
         release_manifest_sha256=release_manifest_sha,
     )
 
 
 def _release_files(
-    staging: VerifiedStaging,
-    evaluation: VerifiedEvaluation,
+    staging: VerifiedStaging, evaluation: VerifiedEvaluation
 ) -> dict[str, bytes]:
+    payloads: dict[str, dict[str, Any]] = {}
     output: dict[str, bytes] = {}
-    source_asset_records = _mapping(
-        staging.manifest["assets"], "staging package manifest.assets"
+    for name in (REJECTOR_WEIGHTS, CLASSIFIER_WEIGHTS):
+        payload = copy.deepcopy(staging.asset_payloads[name])
+        payload["status"] = RELEASE_STATUS
+        if "development_only" in payload:
+            payload["development_only"] = False
+        if "release_evidence" in payload:
+            payload["release_evidence"] = True
+        if "release_blockers" in payload:
+            payload["release_blockers"] = []
+        raw = _compact_json_bytes(payload)
+        if len(raw) >= MAX_DEPLOYABLE_BYTES:
+            raise PromotionError(f"release asset {name} is not below 25 MiB")
+        payloads[name] = payload
+        output[name] = raw
+    policy_payload = copy.deepcopy(staging.asset_payloads[OPENSET_POLICY])
+    policy_payload["status"] = RELEASE_STATUS
+    policy_roles = _mapping(
+        _mapping(
+            policy_payload.get("provenance"),
+            "release open-set provenance",
+        ).get("runtime_roles"),
+        "release open-set runtime roles",
     )
-    for name in ASSET_NAMES:
-        if name in STATUS_ASSET_NAMES:
-            payload = copy.deepcopy(staging.asset_payloads[name])
-            if payload.get("status") != STAGING_STATUS:  # defensive
-                raise PromotionError(f"source asset {name} changed during verification")
-            payload["status"] = RELEASE_STATUS
-            output[name] = _canonical_json_bytes(payload)
-        else:
-            output[name] = staging.asset_bytes[name]
-
-    output_records = {
+    for label, name in (
+        ("rejector", REJECTOR_WEIGHTS),
+        ("classifier", CLASSIFIER_WEIGHTS),
+    ):
+        role = _mapping(
+            policy_roles.get(label),
+            f"release open-set role {label}",
+        )
+        role["browser_asset_sha256"] = _sha256_bytes(output[name])
+    policy_raw = _compact_json_bytes(policy_payload)
+    if len(policy_raw) >= MAX_DEPLOYABLE_BYTES:
+        raise PromotionError(
+            f"release asset {OPENSET_POLICY} is not below 25 MiB"
+        )
+    payloads[OPENSET_POLICY] = policy_payload
+    output[OPENSET_POLICY] = policy_raw
+    release_records = {
         name: {
+            **{
+                key: value
+                for key, value in staging.asset_records[name].items()
+                if key not in {"bytes", "sha256", "status"}
+            },
             "bytes": len(output[name]),
             "sha256": _sha256_bytes(output[name]),
+            "status": RELEASE_STATUS,
         }
-        for name in ASSET_NAMES
+        for name in (REJECTOR_WEIGHTS, CLASSIFIER_WEIGHTS, OPENSET_POLICY)
     }
-    source_records = {
-        name: {
-            "bytes": int(source_asset_records[name]["bytes"]),
-            "sha256": str(source_asset_records[name]["sha256"]),
-        }
-        for name in ASSET_NAMES
-    }
-    manifest = {
-        "schema": PACKAGE_SCHEMA,
-        "schema_version": 1,
+
+    binding = copy.deepcopy(staging.asset_payloads[DUAL_BINDING])
+    binding["status"] = RELEASE_STATUS
+    binding["roles"]["rejector"]["asset_sha256"] = release_records[
+        REJECTOR_WEIGHTS
+    ]["sha256"]
+    binding["roles"]["classifier"]["asset_sha256"] = release_records[
+        CLASSIFIER_WEIGHTS
+    ]["sha256"]
+    binding["openset_policy"]["asset_sha256"] = release_records[
+        OPENSET_POLICY
+    ]["sha256"]
+    binding["openset_policy"]["rejector_asset_sha256"] = release_records[
+        REJECTOR_WEIGHTS
+    ]["sha256"]
+    binding_raw = _compact_json_bytes(binding)
+    if len(binding_raw) >= MAX_DEPLOYABLE_BYTES:
+        raise PromotionError("release dual binding is not below 25 MiB")
+    output[DUAL_BINDING] = binding_raw
+    payloads[DUAL_BINDING] = binding
+    release_records[DUAL_BINDING] = {
+        **{
+            key: value
+            for key, value in staging.asset_records[DUAL_BINDING].items()
+            if key not in {"bytes", "sha256", "status"}
+        },
+        "bytes": len(binding_raw),
+        "sha256": _sha256_bytes(binding_raw),
         "status": RELEASE_STATUS,
-        "assets": output_records,
-        "sources": dict(staging.manifest["sources"]),
-        "promotion": {
-            "schema": "atomos.v3.time-domain-classifier.release-promotion",
-            "schema_version": 1,
-            "release_seed": RELEASE_SEED,
-            "source": {
-                "package_status": STAGING_STATUS,
-                "package_manifest_sha256": staging.manifest_sha256,
-                "asset_records": source_records,
-            },
-            "evaluation": {
-                "status": "complete",
-                "all_release_gates_pass": True,
-                "gate_contract": "strict_imported_v2_23_of_23",
-                "five_shot_minimum": 0.85,
-                "known_false_unknown_maximum": 0.10,
-                "report_sha256": evaluation.report_sha256,
-                "release_intent_sha256": evaluation.release_intent_sha256,
-                "release_manifest_sha256": evaluation.release_manifest_sha256,
-                "evaluation_version": EVALUATION_VERSION,
-            },
-            "candidate_artifacts": evaluation.candidate_artifacts,
-            "status_rewrites": {
-                name: {"from": STAGING_STATUS, "to": RELEASE_STATUS}
-                for name in STATUS_ASSET_NAMES
-            },
-            "operation": {
-                "development_data_loaded": False,
-                "training_performed": False,
-                "recalibration_performed": False,
-                "sealed_corpus_opened_by_promoter": False,
-            },
+    }
+    _verify_binding(binding, release_records, status=RELEASE_STATUS)
+
+    manifest = copy.deepcopy(staging.manifest)
+    manifest["status"] = RELEASE_STATUS
+    manifest["assets"] = release_records
+    for label, name in (
+        ("rejector", REJECTOR_WEIGHTS),
+        ("classifier", CLASSIFIER_WEIGHTS),
+    ):
+        manifest["roles"][label]["asset"] = release_records[name]
+    openset_extra = {
+        key: value
+        for key, value in manifest["openset_policy"].items()
+        if key
+        not in {
+            "path",
+            "bytes",
+            "sha256",
+            "schema",
+            "schema_version",
+            "status",
+        }
+    }
+    manifest["openset_policy"] = {
+        **release_records[OPENSET_POLICY],
+        **openset_extra,
+    }
+    manifest["dual_binding"] = release_records[DUAL_BINDING]
+    manifest["promotion"] = {
+        "schema": "atomos.v3.time-domain-classifier.dual-release-promotion",
+        "schema_version": 1,
+        "release_seed": RELEASE_SEED,
+        "source": {
+            "package_status": STAGING_STATUS,
+            "package_manifest_sha256": staging.manifest_sha256,
+            "asset_records": copy.deepcopy(staging.asset_records),
+        },
+        "evaluation": {
+            "status": "complete",
+            "release_evidence": True,
+            "all_release_gates_pass": True,
+            "gate_contract": "strict_imported_v2_23_of_23",
+            "five_shot_minimum": 0.85,
+            "known_false_unknown_maximum": 0.10,
+            "evaluation_version": EVALUATION_VERSION,
+            "report_sha256": evaluation.report_sha256,
+            "candidate_sha256": evaluation.candidate_sha256,
+            "release_intent_sha256": evaluation.release_intent_sha256,
+            "release_manifest_sha256": evaluation.release_manifest_sha256,
+        },
+        "candidate_artifacts": evaluation.candidate_artifacts,
+        "status_rewrites": {
+            name: {"from": STAGING_STATUS, "to": RELEASE_STATUS}
+            for name in ASSET_NAMES
+        },
+        "binding_rewrites": {
+            "rejector_asset_sha256": release_records[REJECTOR_WEIGHTS][
+                "sha256"
+            ],
+            "classifier_asset_sha256": release_records[CLASSIFIER_WEIGHTS][
+                "sha256"
+            ],
+            "openset_policy_asset_sha256": release_records[OPENSET_POLICY][
+                "sha256"
+            ],
+            "release_binding_sha256": release_records[DUAL_BINDING]["sha256"],
+        },
+        "operation": {
+            "development_data_loaded": False,
+            "training_performed": False,
+            "recalibration_performed": False,
+            "sealed_corpus_opened_by_promoter": False,
         },
     }
-    output[PACKAGE_MANIFEST] = _canonical_json_bytes(manifest)
+    manifest_raw = _manifest_json_bytes(manifest)
+    if len(manifest_raw) >= MAX_DEPLOYABLE_BYTES:
+        raise PromotionError("release package manifest is not below 25 MiB")
+    output[PACKAGE_MANIFEST] = manifest_raw
     return output
 
 
@@ -1098,41 +1642,31 @@ def _write_new_file(path: Path, raw: bytes) -> None:
             os.fsync(handle.fileno())
         os.chmod(path, 0o644)
     except OSError as exc:
-        raise PromotionError(f"cannot materialize release file {path.name}") from exc
+        raise PromotionError(f"cannot materialize {path.name}") from exc
 
 
-def _materialize_release(destination: Path, files: Mapping[str, bytes]) -> None:
-    try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        raise PromotionError("cannot create release package parent") from exc
-
-    try:
-        temporary = Path(
-            tempfile.mkdtemp(
-                prefix=f".{destination.name}.tmp-",
-                dir=destination.parent,
-            )
+def _materialize(destination: Path, files: Mapping[str, bytes]) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(
+        tempfile.mkdtemp(
+            prefix=f".{destination.name}.tmp-", dir=destination.parent
         )
-    except OSError as exc:
-        raise PromotionError("cannot create temporary release package") from exc
-
+    )
     moved = False
-    removed_empty_destination = False
+    removed_empty = False
     try:
-        # Manifest last: a partially written temporary directory never looks
-        # like a complete package even before the atomic directory rename.
         for name in ASSET_NAMES:
             _write_new_file(temporary / name, files[name])
-        _write_new_file(temporary / PACKAGE_MANIFEST, files[PACKAGE_MANIFEST])
-
+        _write_new_file(
+            temporary / PACKAGE_MANIFEST, files[PACKAGE_MANIFEST]
+        )
         if destination.exists():
             if destination.is_symlink() or not destination.is_dir():
-                raise PromotionError("release destination changed during promotion")
+                raise PromotionError("release destination changed")
             if next(destination.iterdir(), None) is not None:
                 raise PromotionError("release destination became nonempty")
             destination.rmdir()
-            removed_empty_destination = True
+            removed_empty = True
         temporary.rename(destination)
         moved = True
     except PromotionError:
@@ -1142,33 +1676,24 @@ def _materialize_release(destination: Path, files: Mapping[str, bytes]) -> None:
     finally:
         if not moved:
             shutil.rmtree(temporary, ignore_errors=True)
-            if removed_empty_destination and not destination.exists():
-                try:
-                    destination.mkdir()
-                except OSError:
-                    pass
+            if removed_empty and not destination.exists():
+                destination.mkdir()
 
 
-def _verify_materialized_release(
-    destination: Path,
-    expected_files: Mapping[str, bytes],
+def _verify_materialized(
+    destination: Path, files: Mapping[str, bytes]
 ) -> None:
-    expected_names = {*ASSET_NAMES, PACKAGE_MANIFEST}
-    try:
-        entries = tuple(destination.iterdir())
-    except OSError as exc:
-        raise PromotionError("cannot verify materialized release package") from exc
-    if {entry.name for entry in entries} != expected_names:
-        raise PromotionError("materialized release package has unexpected entries")
+    entries = tuple(destination.iterdir())
+    if {entry.name for entry in entries} != set(STAGING_FILE_NAMES):
+        raise PromotionError("materialized release has unexpected files")
     for entry in entries:
-        if entry.is_symlink() or not entry.is_file():
-            raise PromotionError("materialized release contains a non-regular file")
-        if _read_regular_file(entry, f"release file {entry.name}") != expected_files[
-            entry.name
-        ]:
-            raise PromotionError(
-                f"materialized release file {entry.name} changed while writing"
-            )
+        if (
+            entry.is_symlink()
+            or not entry.is_file()
+            or _read_file(entry, f"release {entry.name}") != files[entry.name]
+            or entry.stat().st_size >= MAX_DEPLOYABLE_BYTES
+        ):
+            raise PromotionError(f"materialized release {entry.name} differs")
 
 
 def promote(
@@ -1178,33 +1703,25 @@ def promote(
     *,
     policy: PromotionPolicy,
 ) -> dict[str, Any]:
-    """Verify and atomically materialize one release package.
-
-    All validation completes before the destination is touched.  The return
-    value is the newly written release package manifest.
-    """
-
-    staging_path, destination_path, normalized = _validate_paths(
+    staging, release, normalized = _validate_paths(
         Path(staging_package), Path(destination), policy
     )
-    evaluation_path = Path(evaluation_report).expanduser()
-    if evaluation_path.is_symlink():
+    report = Path(evaluation_report).expanduser()
+    if report.is_symlink():
         raise PromotionError("sealed evaluation report may not be a symlink")
-    evaluation_path = evaluation_path.resolve()
-    if _within(evaluation_path, destination_path):
-        raise PromotionError("evaluation report may not be inside the destination")
-
-    verified_staging = _verify_staging_package(staging_path, normalized)
+    report = report.resolve()
+    if _is_within(report, release):
+        raise PromotionError("evaluation report may not be inside destination")
+    verified_staging = _verify_staging_package(staging, normalized)
     verified_evaluation = _verify_evaluation_report(
-        evaluation_path, verified_staging
+        report, verified_staging, normalized
     )
     files = _release_files(verified_staging, verified_evaluation)
-    _materialize_release(destination_path, files)
-    _verify_materialized_release(destination_path, files)
-    manifest_value = _parse_json(
-        files[PACKAGE_MANIFEST], "materialized release package manifest"
+    _materialize(release, files)
+    _verify_materialized(release, files)
+    return _parse_json(
+        files[PACKAGE_MANIFEST], "release package manifest"
     )
-    return dict(_mapping(manifest_value, "materialized release package manifest"))
 
 
 def parser() -> argparse.ArgumentParser:
@@ -1219,13 +1736,11 @@ def parser() -> argparse.ArgumentParser:
         "--staging-package",
         type=Path,
         default=DEFAULT_STAGING_PACKAGE,
-        help="must resolve to the exact tracked v3 staging package",
     )
     result.add_argument(
         "--destination",
         type=Path,
         default=DEFAULT_RELEASE_PACKAGE,
-        help="must resolve to the distinct v3 release package path",
     )
     return result
 
@@ -1237,6 +1752,7 @@ def main() -> None:
         staging_package=DEFAULT_STAGING_PACKAGE,
         release_package=DEFAULT_RELEASE_PACKAGE,
         live_v2_assets=LIVE_V2_ASSETS,
+        legacy_v3_staging=LEGACY_V3_STAGING,
         require_git_tracking=True,
     )
     try:
@@ -1249,8 +1765,8 @@ def main() -> None:
     except PromotionError as exc:
         raise SystemExit(f"release promotion refused: {exc}") from exc
     print(
-        f"promoted {len(manifest['assets'])} verified v3 runtime assets to "
-        f"{DEFAULT_RELEASE_PACKAGE}"
+        f"promoted {len(manifest['assets'])} verified dual v3 assets to "
+        f"{arguments.destination}"
     )
 
 

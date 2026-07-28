@@ -81,6 +81,8 @@ def valid_staged_report() -> dict:
         "release_evidence": False,
         "sealed_release_data_used": 0,
         "consumed_test_rows_used": 0,
+        "sealed_release_paths_read": 0,
+        "release_seed_20260735_used": False,
         "all_pass": True,
         "closed_label_can_be_gated": True,
         "additive_only": False,
@@ -106,6 +108,11 @@ def valid_staged_report() -> dict:
                 "32768": 16384,
             },
             "stage_one_causal_prefix_rule_lengths": [32768],
+        },
+        "seeds": {
+            "design_novelty_seed": 20260949,
+            "novelty_seeds": [20260950, 20260951],
+            "release_seed_not_spent": 20260735,
         },
     }
 
@@ -209,6 +216,7 @@ class RuntimeBundleAdmission(unittest.TestCase):
                 bundle / "bundle_manifest.json",
                 {
                     "kind": "v3-time-domain-centered-invariant-fusion",
+                    "runtime_role": exporter.REJECTOR_RUNTIME_ROLE,
                     "development_only": True,
                     "rejection": {
                         "state": "unset",
@@ -221,7 +229,28 @@ class RuntimeBundleAdmission(unittest.TestCase):
                 },
             )
             with self.assertRaisesRegex(RuntimeError, "staged rejection"):
-                exporter.load_bundle(bundle)
+                exporter.load_bundle(
+                    bundle,
+                    expected_role=exporter.REJECTOR_RUNTIME_ROLE,
+                )
+
+    def test_anonymous_or_swapped_role_is_refused_first(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = Path(temporary)
+            exporter.write_json(
+                bundle / "bundle_manifest.json",
+                {
+                    "kind": "v3-time-domain-centered-invariant-fusion",
+                    "runtime_role": exporter.CLASSIFIER_RUNTIME_ROLE,
+                    "development_only": True,
+                    "assets": {},
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "runtime_role"):
+                exporter.load_bundle(
+                    bundle,
+                    expected_role=exporter.REJECTOR_RUNTIME_ROLE,
+                )
 
 
 class PrefilterConversion(unittest.TestCase):
@@ -315,6 +344,11 @@ class JsonDeterminism(unittest.TestCase):
         self.assertEqual(value["integer"], 3)
         self.assertIs(value["flag"], True)
 
+    def test_compact_encoding_has_no_indentation_and_is_deterministic(self) -> None:
+        payload = {"z": [1, 2], "a": {"x": True}}
+        raw = exporter.json_bytes(payload, compact=True)
+        self.assertEqual(raw, b'{"a":{"x":true},"z":[1,2]}\n')
+
 
 class RawLofDecomposition(unittest.TestCase):
     def test_raw_matches_scorer_rank_ordering(self) -> None:
@@ -341,7 +375,13 @@ class ContractKeys(unittest.TestCase):
         enrollment = rng.normal(size=(24, 4))
         components = [
             ("real", 0.4, KnownOnlyLOFOpenSet.fit(training, enrollment, neighbors=2)),
-            ("complex", 0.6, KnownOnlyLOFOpenSet.fit(training, enrollment, neighbors=3)),
+            (
+                "complex",
+                0.6,
+                KnownOnlyLOFOpenSet.fit(
+                    training, enrollment, neighbors=3
+                ),
+            ),
         ]
 
         class PolicyStub:
@@ -430,6 +470,90 @@ class CompositePayload(unittest.TestCase):
                 )
             ),
         )
+
+
+class DualBindingContract(unittest.TestCase):
+    def payload(self) -> dict:
+        return exporter.dual_binding_payload(
+            frontend={
+                "version": "invariant-patch-time-domain-v1",
+                "patch_length": 64,
+                "patch_count": 16,
+                "target_frac": 0.5,
+                "packed_length": 1024,
+                "uses_frequency_transform": False,
+            },
+            rejector_asset_sha256="1" * 64,
+            classifier_asset_sha256="2" * 64,
+            openset_asset_sha256="3" * 64,
+            rejector_bundle_manifest_sha256="4" * 64,
+            classifier_bundle_manifest_sha256="5" * 64,
+            rejector_fusion_directory_sha256="6" * 64,
+            classifier_fusion_directory_sha256="7" * 64,
+            staged_validation_report_sha256="8" * 64,
+            staged_artifacts_sha256={
+                "v3_branch_lof_components.npz": "9" * 64,
+                "v3_open_policy_stage_two.npz": "a" * 64,
+                staged.COMPOSITE_POLICY_FILENAME: "b" * 64,
+            },
+            novelty_seeds=[20260950, 20260951],
+        )
+
+    def test_roles_and_execution_are_explicit(self) -> None:
+        payload = self.payload()
+        self.assertEqual(payload["schema"], exporter.DUAL_BINDING_SCHEMA)
+        self.assertEqual(
+            payload["execution_order"],
+            [
+                "stage_one_noise_gate",
+                "rejector_known_unknown",
+                "classifier_known_label",
+            ],
+        )
+        self.assertEqual(
+            payload["roles"]["rejector"]["runtime_role"],
+            exporter.REJECTOR_RUNTIME_ROLE,
+        )
+        self.assertEqual(
+            payload["roles"]["classifier"]["runtime_role"],
+            exporter.CLASSIFIER_RUNTIME_ROLE,
+        )
+        self.assertTrue(
+            payload["fail_closed"][
+                "classifier_runs_only_after_rejector_acceptance"
+            ]
+        )
+        self.assertEqual(
+            payload["openset_policy"][
+                "fitted_rejector_runtime_bundle_manifest_sha256"
+            ],
+            "4" * 64,
+        )
+
+    def test_same_role_asset_is_refused(self) -> None:
+        with self.assertRaisesRegex(ValueError, "assets must differ"):
+            exporter.dual_binding_payload(
+                frontend={
+                    "patch_length": 64,
+                    "patch_count": 16,
+                    "target_frac": 0.5,
+                    "packed_length": 1024,
+                },
+                rejector_asset_sha256="1" * 64,
+                classifier_asset_sha256="1" * 64,
+                openset_asset_sha256="3" * 64,
+                rejector_bundle_manifest_sha256="4" * 64,
+                classifier_bundle_manifest_sha256="5" * 64,
+                rejector_fusion_directory_sha256="6" * 64,
+                classifier_fusion_directory_sha256="7" * 64,
+                staged_validation_report_sha256="8" * 64,
+                staged_artifacts_sha256={
+                    "v3_branch_lof_components.npz": "9" * 64,
+                    "v3_open_policy_stage_two.npz": "a" * 64,
+                    staged.COMPOSITE_POLICY_FILENAME: "b" * 64,
+                },
+                novelty_seeds=[20260950, 20260951],
+            )
 
 
 if __name__ == "__main__":
