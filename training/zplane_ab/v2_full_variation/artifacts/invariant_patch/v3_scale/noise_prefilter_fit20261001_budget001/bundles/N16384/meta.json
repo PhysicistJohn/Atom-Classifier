@@ -1,0 +1,242 @@
+{
+  "additive_only": false,
+  "architecture_contract_change": "The v3 open-set rejector is strictly additive and never alters the closed label. This noise prefilter is a GATE: when it fires, classification does not run and the row has no closed label at all. That is a deliberate change to the architecture contract, not an oversight, and it must be stated in the emitted JSON and in any release claim. It also means a gated row skips the encoder, the fusion, the prototype distance and the branch LOF; that saving is measured by compute_saving() and is never asserted.",
+  "capture_length": 16384,
+  "changes_closed_label": true,
+  "consumed_test_rows_used": 0,
+  "decides": "noise vs not-noise only; chirp stays on the v3 path",
+  "extractor": {
+    "bandwidth_floor": 1e-05,
+    "base_lags": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "changes_closed_label": false,
+    "estimator_version": "time-correlation-v1",
+    "feature_count": 21,
+    "feature_names": [
+      "log10_relative_lag1_magnitude",
+      "log10_relative_lag_magnitude_mean",
+      "log10_relative_lag_magnitude_max",
+      "log10_lag1_sampling_margin",
+      "relative_lag_magnitude_decay_slope",
+      "bandwidth_log_dispersion",
+      "bandwidth_log_range",
+      "max_abs_unclipped_quotient",
+      "quotient_clip_fraction",
+      "carrier_phase_coherence",
+      "carrier_phase_coherence_sign_blind",
+      "degenerate_full_band_fallback",
+      "bandwidth_clipped_to_minimum",
+      "bandwidth_clipped_to_full",
+      "log2_selected_base_lag",
+      "high_lag_qualified_fraction",
+      "prefix_bandwidth_log_dispersion",
+      "prefix_centre_dispersion",
+      "prefix_relative_lag1_log_dispersion",
+      "zero_magnitude_prefix_fraction",
+      "peak_normalized_mean_power"
+    ],
+    "invariant_to_global_phase": true,
+    "invariant_to_global_scale": true,
+    "learned_calibration": false,
+    "magnitude_floor": 1e-09,
+    "maximum_lag": 32,
+    "minimum_prefix_samples": 66,
+    "prefix_fractions": [
+      0.25,
+      0.5,
+      1.0
+    ],
+    "quotient_cap": 10.0,
+    "uses_absolute_scale": false,
+    "uses_frequency_transform": false,
+    "version": "pose-degeneracy-v1"
+  },
+  "feature_names": [
+    "log10_relative_lag_magnitude_mean",
+    "relative_lag_magnitude_decay_slope",
+    "bandwidth_log_dispersion",
+    "carrier_phase_coherence",
+    "high_lag_qualified_fraction",
+    "prefix_bandwidth_log_dispersion",
+    "peak_normalized_mean_power"
+  ],
+  "feature_selection": {
+    "dropped": [
+      {
+        "feature": "log10_relative_lag1_magnitude",
+        "reason": "near-duplicate: the lag-one element of the same log-ratio statistic whose mean over BASE_LAGS is retained."
+      },
+      {
+        "feature": "log10_relative_lag_magnitude_max",
+        "reason": "near-duplicate: the max reduction of the same log-ratio statistic whose mean is retained."
+      },
+      {
+        "feature": "log10_lag1_sampling_margin",
+        "reason": "near-duplicate: log10_relative_lag1_magnitude minus a deterministic function of capture length. One model is fitted per length, so the length offset is a constant absorbed by the intercept and this reduces to the already-dropped lag-one element."
+      },
+      {
+        "feature": "bandwidth_log_range",
+        "reason": "near-duplicate: max minus min of the same per-lag log bandwidths whose population standard deviation is retained, and the less robust of the two reductions."
+      },
+      {
+        "feature": "max_abs_unclipped_quotient",
+        "reason": "cap-saturating heavy-tailed tail statistic of the same per-lag quotient set summarised by the retained bandwidth_log_dispersion and high_lag_qualified_fraction. A column that saturates at QUOTIENT_CAP is the worst kind of input to a standardised linear model. This is the most defensible re-addition candidate if the operating point misses, and it would need a fresh design seed."
+      },
+      {
+        "feature": "quotient_clip_fraction",
+        "reason": "measured dead: AUROC 0.5144 (HANDOFF 19.1)."
+      },
+      {
+        "feature": "carrier_phase_coherence_sign_blind",
+        "reason": "near-duplicate: the same circular-mean statistic evaluated on doubled angles; retained sibling is carrier_phase_coherence."
+      },
+      {
+        "feature": "degenerate_full_band_fallback",
+        "reason": "measured dead: AUROC exactly 0.5000 (HANDOFF 19.1). The estimator's own degeneracy flag never fires on any development or novelty row. Also a binary indicator."
+      },
+      {
+        "feature": "bandwidth_clipped_to_minimum",
+        "reason": "binary indicator of the same clipping mechanism whose continuous expression (bandwidth_log_dispersion) is retained; near-constant on the fit population, so standardising it divides by noise."
+      },
+      {
+        "feature": "bandwidth_clipped_to_full",
+        "reason": "measured dead: AUROC 0.5009 (HANDOFF 19.1). Also a binary indicator."
+      },
+      {
+        "feature": "log2_selected_base_lag",
+        "reason": "discrete estimator-internal index over five possible base lags; a small-support ordinal code is the wrong input to a standardised linear model, and its continuous counterpart (high_lag_qualified_fraction) is retained."
+      },
+      {
+        "feature": "prefix_centre_dispersion",
+        "reason": "the CHIRP carrier, not the noise carrier: chirp AUROC 0.9612 against noise AUROC 0.7230 (HANDOFF 19.1). Chirp is already solved by the existing v3 path (AUROC 0.9716, threshold recall 0.72-1.00) and is deliberately left there. A noise prefilter that also chases chirp reintroduces the very trade-off section 19.2 measured."
+      },
+      {
+        "feature": "prefix_relative_lag1_log_dispersion",
+        "reason": "near-duplicate: prefix dispersion of the lag-one magnitude, one of three prefix-dispersion statistics of which prefix_bandwidth_log_dispersion is retained."
+      },
+      {
+        "feature": "zero_magnitude_prefix_fraction",
+        "reason": "measured dead: AUROC 0.5066 (HANDOFF 19.1). Also near-constant."
+      }
+    ],
+    "rules": [
+      "measured dead in HANDOFF 19.1",
+      "continuous columns only: no binary indicators, no small-support discrete codes",
+      "one member per mechanism family: near-duplicate reductions of the same statistic are dropped",
+      "chirp-carrying features are left to the existing v3 path"
+    ],
+    "source_feature_count": 21,
+    "used": [
+      {
+        "feature": "log10_relative_lag_magnitude_mean",
+        "reason": "magnitude family: how much coherent structure exists at all, averaged over BASE_LAGS. Noise AUROC 0.9004 standalone (HANDOFF 19.1). Retained over the lag-one element and the max because the mean is the lowest-variance reduction of the same statistic."
+      },
+      {
+        "feature": "relative_lag_magnitude_decay_slope",
+        "reason": "lag-decay family: slope of that log ratio against log2(lag). A short-memory process collapses with lag, a narrowband emission does not. Noise AUROC 0.8872. Independent of the level above by construction (slope versus intercept)."
+      },
+      {
+        "feature": "bandwidth_log_dispersion",
+        "reason": "multiscale-agreement family: population standard deviation of log10 of the per-lag bandwidth estimates. A coherent emission must agree across scales; a degenerate pose estimate disagrees. This is the quantity the frontend computes and discards, and is the direct expression of the HANDOFF 17 mechanism."
+      },
+      {
+        "feature": "carrier_phase_coherence",
+        "reason": "phase family: |mean_k exp(i(angle(R[k]) - k angle(R[1])))|. A single carrier makes every term identically 1. Best standalone noise separator measured, AUROC 0.9154."
+      },
+      {
+        "feature": "high_lag_qualified_fraction",
+        "reason": "estimator-admission family: fraction of higher base lags passing both of estimate_band's own admission tests. Noise AUROC 0.8579. It says how much of the estimator's evidence survived its own gate, which no other retained feature reports."
+      },
+      {
+        "feature": "prefix_bandwidth_log_dispersion",
+        "reason": "temporal-stability family: dispersion of log10(bandwidth) re-estimated on nested prefixes of the same capture. Multiscale agreement (bandwidth_log_dispersion) and temporal agreement are different failures; noise fails both, a gated or bursty emission fails only the second."
+      },
+      {
+        "feature": "peak_normalized_mean_power",
+        "reason": "amplitude-shape family: inverse squared crest factor, in (0, 1], exactly invariant to global scale and phase. It is a shape statistic, not an absolute level, so it adds no scale dependence; complex Gaussian noise has a characteristic crest factor that no retained correlation statistic sees."
+      }
+    ],
+    "used_feature_count": 7
+  },
+  "fit": {
+    "class_weighting": "balanced, 0.5 total mass per class",
+    "clean_validation_seeds_from": 20260942,
+    "consumed_test_rows_used_in_fit": 0,
+    "converged": true,
+    "enrollment_rows_used_in_fit": 0,
+    "fitting_noise": {
+      "chirp_drawn": false,
+      "family": "noise",
+      "generated_once_at": 16384,
+      "generator": "openset_eval.NOVELTY['noise']",
+      "longest_capture_sha256": "4137525383a659e6d90ce67afb92a60b11f78e6e770d3deb5267ba4585879a3b",
+      "min_bandwidth_mode": "frontend",
+      "n_rows": 600,
+      "seed": 20261001,
+      "seed_role": "fit only",
+      "shorter_lengths_are_exact_raw_prefixes": true
+    },
+    "fitting_noise_rows": 600,
+    "fitting_seed": 20261001,
+    "fitting_seed_is_not_a_validation_seed": true,
+    "fitting_seed_namespace": [
+      20261000,
+      20261999
+    ],
+    "iterations": 8,
+    "known_population": "train",
+    "known_rows": 5049,
+    "l2_penalty": 0.01,
+    "max_iterations": 100,
+    "objective": 0.25235473401820374,
+    "selection_rows_used_in_fit": 0,
+    "solver": "damped Newton / IRLS, zero start, fixed halving backtrack",
+    "spent_novelty_seeds_refused": [
+      20260938,
+      20260939,
+      20260940,
+      20260941
+    ],
+    "standardizer_population": "training known rows plus fitting-seed noise, class-balanced weighted mean and standard deviation",
+    "tolerance": 1e-12
+  },
+  "fit_population": "train",
+  "fitting_noise_generator_uses_frequency_transform": true,
+  "gates_before_classification": true,
+  "inference_uses_frequency_transform": false,
+  "invariant_to_global_phase": true,
+  "invariant_to_global_scale": true,
+  "model": "ridge logistic regression on standardised features",
+  "operating_point": {
+    "allowance": 37,
+    "chosen": true,
+    "gate_rule": "gated as NOISE when score >= threshold_score",
+    "inherited_from_another_model": false,
+    "known_false_positive_budget": 0.01,
+    "novelty_rows_used_for_threshold": 0,
+    "policy": "enrollment_known_false_positive_budget",
+    "population": "enroll",
+    "realised_known_false_positive_rate": 0.009893048128342246,
+    "rows": 3740,
+    "selection_rows_used_for_threshold": 0,
+    "threshold_probability": 0.9223123766185274,
+    "threshold_score": 2.4741880120033097,
+    "threshold_space": "linear score (log-odds), not probability, because probabilities saturate to 1.0 in float64",
+    "training_rows_used_for_threshold": 0
+  },
+  "release_seed_not_spent": 20260731,
+  "schema": "noise-prefilter-bundle-v1",
+  "sealed_release_paths_read": 0,
+  "selection_rows_used": 0,
+  "threshold_population": "enroll",
+  "threshold_probability_repr": "0.9223123766185274",
+  "threshold_score_is_set": true,
+  "threshold_score_repr": "2.4741880120033097",
+  "uses_absolute_scale": false,
+  "version": "noise-prefilter-v1"
+}

@@ -1,0 +1,340 @@
+{
+  "architecture": {
+    "alpha_complex": 0.20000000298023224,
+    "alpha_real": 0.20000000298023224,
+    "complex": {
+      "dropout": 0.2,
+      "embed_dim": 32,
+      "encoder": "complex",
+      "hidden": 96,
+      "n_features": 12,
+      "patch_count": 16,
+      "patch_dim": 64,
+      "patch_length": 64,
+      "set_pool": "mean_std"
+    },
+    "embed_dim": 64,
+    "eps": 9.999999960041972e-13,
+    "kind": "centered_invariant_fusion",
+    "real": {
+      "dropout": 0.2,
+      "embed_dim": 32,
+      "encoder": "real",
+      "hidden": 96,
+      "n_features": 12,
+      "patch_count": 16,
+      "patch_dim": 64,
+      "patch_length": 64,
+      "set_pool": "mean_std"
+    },
+    "weight_real": 0.5
+  },
+  "assets": {
+    "complex_center.npy": {
+      "bytes": 256,
+      "sha256": "dd281fe23c628bb454c175eb594e0f3fa87a4b033c61cae364ee99e618b95d84"
+    },
+    "feature_mean.npy": {
+      "bytes": 176,
+      "sha256": "29883542bd57f812b74050d2814497ec169cac240ed1fd6d136d7887fdbf8b64"
+    },
+    "feature_std.npy": {
+      "bytes": 176,
+      "sha256": "28f9f430d40603fab7ba3f6f49951a2b18033b91425363ae36e679850d1635fe"
+    },
+    "fusion_prototypes.npy": {
+      "bytes": 1920,
+      "sha256": "aa4fe2a4e0f9999f541d90ffbf99084c7cb670bcd8072422b5d62e11e100dee4"
+    },
+    "fusion_state_dict.pt": {
+      "bytes": 454020,
+      "sha256": "b8da74d10d684fcd1c231a226cef520db31a55c6d54d4c1b607641799f95f894"
+    },
+    "probe_fixture.json": {
+      "bytes": 1165350,
+      "sha256": "8398a604b2ce92ae58347fa387bf50e91f27e49e2d6e223e9725580100d69691"
+    },
+    "real_center.npy": {
+      "bytes": 256,
+      "sha256": "a347253f4f3e13938a72ea8bf4309995575d57ee5b679b589bc24d94dd9bca9c"
+    }
+  },
+  "centers": {
+    "complex_asset": "complex_center.npy",
+    "embed_dim": 32,
+    "fit_population": "training only",
+    "real_asset": "real_center.npy"
+  },
+  "classification": {
+    "class_order_rule": "sorted(corpus manifest classes); recovered from dev_metrics data_audit.class_counts without opening the corpus",
+    "classes": [
+      "am",
+      "bluetooth",
+      "cw",
+      "dsss",
+      "fm",
+      "gsm",
+      "ofdm"
+    ],
+    "distance": "squared_euclidean",
+    "embedding": "centered_fusion",
+    "label": "argmin over prototypes",
+    "prototype_asset": "fusion_prototypes.npy",
+    "prototype_population": "enrollment only"
+  },
+  "consumed_test_rows_used": 0,
+  "determinism": {
+    "array_format": "npy",
+    "json_sort_keys": true,
+    "note": "a .npz zip container records member modification times, which would make the bundle SHA-256 unstable across identical exports",
+    "npz_containers_used": false,
+    "timestamps_recorded": false
+  },
+  "development_only": true,
+  "feature_standardization": {
+    "epsilon": 1e-06,
+    "feature_count": 12,
+    "fit_population": "training raw features only",
+    "mean_asset": "feature_mean.npy",
+    "rule": "(raw_float32 - mean) / std, cast to float32",
+    "std_asset": "feature_std.npy"
+  },
+  "frontend": {
+    "estimator_version": "time-correlation-v1",
+    "feature_count": 12,
+    "module_metadata": {
+      "geometry": {
+        "base_lags": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ],
+        "full_bandwidth": 0.95,
+        "learned_calibration": false,
+        "max_unambiguous_lag_arc": 0.45,
+        "maximum_lag": 32,
+        "method": "multiscale non-zero-lag autocorrelation quotient",
+        "min_lag_signal_to_sampling_noise": 4.0,
+        "minimum_bandwidth": 0.001953125,
+        "uses_frequency_transform": false,
+        "version": "time-correlation-v1"
+      },
+      "patch_count": 16,
+      "patch_length": 64,
+      "target_frac": 0.5,
+      "uses_frequency_transform": false,
+      "version": "invariant-patch-time-domain-v1"
+    },
+    "packed_dtype": "float32",
+    "packed_length": 1024,
+    "patch_count": 16,
+    "patch_length": 64,
+    "raw_feature_dtype": "float32",
+    "recorded_in_assembly": {
+      "geometry": {
+        "base_lags": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ],
+        "full_bandwidth": 0.95,
+        "learned_calibration": false,
+        "max_unambiguous_lag_arc": 0.45,
+        "maximum_lag": 32,
+        "method": "multiscale non-zero-lag autocorrelation quotient",
+        "min_lag_signal_to_sampling_noise": 4.0,
+        "minimum_bandwidth": 0.001953125,
+        "uses_frequency_transform": false,
+        "version": "time-correlation-v1"
+      },
+      "patch_count": 16,
+      "patch_length": 64,
+      "target_frac": 0.5,
+      "uses_frequency_transform": false,
+      "version": "invariant-patch-time-domain-v1"
+    },
+    "source_sha256": {
+      "training/time_domain_geometry.py": "a9735473f44105d20cffb9d4888ff8cf8e02503746f70b50e6d5d3737138da33",
+      "training/time_domain_invariant_patch_preprocess.py": "5cd1787aed0e5fd95adc2e4de56db460d753d0557350aa8f3aff0e393c0bb10a"
+    },
+    "target_frac": 0.5,
+    "uses_frequency_transform": false,
+    "version": "invariant-patch-time-domain-v1"
+  },
+  "fusion": {
+    "alpha_complex": 0.2,
+    "alpha_real": 0.2,
+    "eps": 1e-12,
+    "kind": "centered_invariant_fusion",
+    "rule": "unit(concat(sqrt(w) * unit(real - alpha_real * real_center), sqrt(1 - w) * unit(complex - alpha_complex * complex_center)))",
+    "state_dict_asset": "fusion_state_dict.pt",
+    "weight_complex": 0.5,
+    "weight_real": 0.5
+  },
+  "kind": "v3-time-domain-centered-invariant-fusion",
+  "not_compatible_with_schema_ids": [
+    "atomos.invariant-fusion.paired-real",
+    "hybrid-v3",
+    "invariant-centered-fusion-with-lof-rank-ensemble",
+    "invariant-patch-v1"
+  ],
+  "parameter_count": 108832,
+  "probe_fixture": {
+    "case_count": 4,
+    "case_names": [
+      "two-tone-scale-1x",
+      "two-tone-scale-2x",
+      "chirped-envelope",
+      "bursty-fm"
+    ],
+    "file": "probe_fixture.json",
+    "sha256": "8398a604b2ce92ae58347fa387bf50e91f27e49e2d6e223e9725580100d69691"
+  },
+  "provenance": {
+    "assembly_seed": 20260730,
+    "assembly_source_sha256": {
+      "assemble_v3_fusion.py": "961e493697d1d941395dafe32570262dc09996b53fed9b2a0e82525e43560daa",
+      "invariant_fusion.py": "22a46a75c95cb4aa452bc44228b156b57474b981da20cf7095fff8a129f1c281",
+      "invariant_patch_cnn.py": "b402e8bb75a5809f4a57e8de231268e9ad18afc26b2cfcbf57d2f0b43804ede4",
+      "invariant_patch_data.py": "63e6134bddb927149a54c73fb011c580d1423b8b9977bab0e0b88655c3d0a798",
+      "invariant_patch_preprocess.py": "04c66362e6978bc1827791653963d0921bcdde51f93b9dd74e6eb9b4e8217420",
+      "run_invariant_cnn_dev.py": "22036917af78e48e00dcfe0922c464d0cab352750c00fcb45d6aece1f4fd9cfb",
+      "run_time_domain_dev.py": "8ed452ce30eef1395eb96b348224681672e89252903f82a4332789d2f8240acd",
+      "time_domain_geometry.py": "a9735473f44105d20cffb9d4888ff8cf8e02503746f70b50e6d5d3737138da33",
+      "time_domain_invariant_patch_preprocess.py": "5cd1787aed0e5fd95adc2e4de56db460d753d0557350aa8f3aff0e393c0bb10a",
+      "train.py": "0669704ff4933b2ab7f8e35b0b6fb58553a06a8d75c93f54ee928ad33e2e257c"
+    },
+    "closed_selection_balanced_accuracy": 0.8674917547483391,
+    "corpus_or_split_loaded": false,
+    "exporter": "export_v3_fusion_runtime.py",
+    "fitting_contract": {
+      "branch_prototype_reproduction_tolerance": 0.0001,
+      "center_fit_population": "training only",
+      "center_rows": 14502,
+      "consumed_test_rows_loaded": 0,
+      "feature_standardization_population": "training raw features only, rebuilt by run_time_domain_dev",
+      "prototype_population": "enrollment only",
+      "prototype_rows": 3740,
+      "sealed_release_rows_loaded": 0,
+      "selection_population_role": "scored for metrics only; never fit, calibrated, or selected on"
+    },
+    "nothing_fitted_here": true,
+    "sealed_or_consumed_rows_loaded": 0,
+    "source_branches": {
+      "complex": {
+        "architecture": {
+          "dropout": 0.2,
+          "embed_dim": 32,
+          "encoder": "complex",
+          "hidden": 96,
+          "n_features": 12,
+          "patch_count": 16,
+          "patch_dim": 64,
+          "patch_length": 64,
+          "set_pool": "mean_std"
+        },
+        "closed_selection_balanced_accuracy": 0.8286173221202836,
+        "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/timecorr_complex_multilength_4000_seed20260730",
+        "encoder": "complex",
+        "episodes": 4000,
+        "parameter_count": 55936,
+        "prototype_reproduction_max_abs_error": 0.0,
+        "sha256": {
+          "complex_prototypes.npy": "7e0aad900650f7dcc33c1ae0735d02ab9bf2c87f2cc4d467f40a9bcf3a928247",
+          "complex_state_dict.pt": "edf50fb29afad66f9e5595f8378033992612f1028e73e955a4283ecb620adc9e",
+          "dev_metrics.json": "dbd11c580f164e2431d39a1389fccd6bd79687306cd3dd6efd2ba802af56ca9b"
+        },
+        "training_views_enabled": true
+      },
+      "real": {
+        "architecture": {
+          "dropout": 0.2,
+          "embed_dim": 32,
+          "encoder": "real",
+          "hidden": 96,
+          "n_features": 12,
+          "patch_count": 16,
+          "patch_dim": 64,
+          "patch_length": 64,
+          "set_pool": "mean_std"
+        },
+        "closed_selection_balanced_accuracy": 0.8623174533990673,
+        "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/timecorr_real_multilength_4000_seed20260730",
+        "encoder": "real",
+        "episodes": 4000,
+        "parameter_count": 52896,
+        "prototype_reproduction_max_abs_error": 0.0,
+        "sha256": {
+          "dev_metrics.json": "75d07d046482839d7c4374200f0932d5c6a466688d57e61e5c355eda3622d18b",
+          "real_prototypes.npy": "f45df14f3221fc4cd50ea737a2d19c27eddae63bcf957162b12ec149653c8184",
+          "real_state_dict.pt": "7c184900b60e2c3dcb10f29a890d588d32a3fdc64a01386910eae12d326df45d"
+        },
+        "training_views_enabled": true
+      }
+    },
+    "source_dev_metrics_sha256": "ddf0768bec34dead441a3c5dc26c6627cfa4830c395b5b1521d6337af634e3a2",
+    "source_fusion_artifact": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/v3_fusion_multilength_seed20260730"
+  },
+  "rejection": {
+    "asset_directory": null,
+    "cannot_change_closed_label": true,
+    "external_staged_policy_required_for_abstention": true,
+    "fitted": false,
+    "policy": null,
+    "reason": "this bundle supplies the embeddings used by the separately validated staged rejector; the stage-1 gate, stage-2 fitted state, composite survivor policy and validation report remain separate hash-bound artifacts",
+    "required_contract": {
+      "cannot_change_closed_label": true,
+      "density_fit_population": "training only",
+      "geometry_feature": "across_patch_frequency_dispersion",
+      "geometry_weight": 0.2,
+      "module": "v3_time_domain_openset",
+      "must_be_fit_against": "the embeddings of this exact fusion assembly, identified by provenance.source_dev_metrics_sha256",
+      "policy_kind": "v3_known_only_lof_frequency_dispersion_rank_blend",
+      "policy_schema": 1,
+      "rank_and_threshold_population": "enrollment only",
+      "scope": "stage two on stage-one survivors only; the validated stage-one gate and composite survivor policy are separate artifacts",
+      "this_bundle_supplies_known_unknown_decision": true,
+      "this_bundle_supplies_public_known_label": false,
+      "threshold_quantile": 0.95,
+      "v2_weight": 0.8
+    },
+    "runtime_behaviour": "known/unknown decisions require the separately validated staged v3 policy fitted against this exact rejector fusion; this bundle must never substitute a v2 or unvalidated policy",
+    "state": "unset"
+  },
+  "release_blockers": [
+    "this is a development classifier bundle, not sealed release evidence",
+    "the separately exported staged open-set policy must be a passing validate-role artifact bound to this exact fusion",
+    "release promotion requires the current candidate preflight, a passing sealed suite, and explicit owner authorization"
+  ],
+  "release_evidence": false,
+  "runtime_role": "known_unknown_rejector",
+  "schema": "atomos.v3.time-domain-invariant-fusion.runtime-bundle",
+  "schema_version": 1,
+  "sealed_release_data_used": 0,
+  "self_verification": {
+    "closed_label_agreement": true,
+    "max_abs_error": {
+      "complex_embedding": 0.0,
+      "fused_embedding": 0.0,
+      "packed": 0.0,
+      "raw_features": 0.0,
+      "real_embedding": 0.0,
+      "standardized_features": 0.0
+    },
+    "probe_case_count": 4,
+    "reload_path_is_bundle_only": true,
+    "reloaded_closed_labels": [
+      "bluetooth",
+      "bluetooth",
+      "bluetooth",
+      "am"
+    ],
+    "tolerance": 1e-06,
+    "worst_max_abs_error": 0.0
+  },
+  "status": "development_bundle_not_release"
+}
