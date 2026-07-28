@@ -613,6 +613,10 @@ DEFAULT_CANDIDATE_MANIFEST = (
 DEFAULT_CANDIDATE_CONTRACT = (
     HERE / "evidence" / "v3_q97_candidate_contract.json"
 )
+DEFAULT_VALIDATION_EVIDENCE = (
+    HERE / "evidence"
+    / "v3_q97_validation_seeds20260953_20260954.json"
+)
 # Unit tests patch this only for their synthetic mini candidate.  Production
 # code has no CLI escape hatch: relocated manifests must still bind the exact
 # design55 report/source/commit.
@@ -933,12 +937,9 @@ LEGACY_V3_3_POST_VALIDATION_LEDGER_TRANSITION = {
 #   2. the validation artifact records that post-design source; after its
 #      single draw, seeds 20260953/20260954 are marked spent before release.
 #
-# Unknown endpoints are deliberate placeholders at this pre-validation stage.
-# They MUST be replaced by lowercase SHA-256/commit/diff bindings from the
-# actual ledger-only commits.  Any attempted source admission while one is
-# unbound fails closed.  The ordered verifier can bind either the complete
-# predesign -> postdesign -> postvalidation chain or only the validation ->
-# postvalidation suffix.
+# Every endpoint is bound to the frozen Git history.  The ordered verifier can
+# bind either the complete predesign -> postdesign -> postvalidation chain or
+# only the validation -> postvalidation suffix.
 ORDERED_STAGED_SOURCE_TRANSITIONS = (
     {
         "order": 1,
@@ -979,14 +980,24 @@ ORDERED_STAGED_SOURCE_TRANSITIONS = (
         "origin": "the staged validation artifact",
         "from_phase": "postdesign",
         "to_phase": "postvalidation",
-        "from_sha256": None,
-        "to_sha256": None,
-        "normalized_ast_sha256": None,
-        "from_commit": None,
-        "evidence_commit": None,
-        "evidence_report_sha256": None,
-        "to_commit": None,
-        "full_index_diff_sha256": None,
+        "from_sha256": (
+            "c412a6f9d0ea81ca760bceadcfe4eec6ddcbb43dc5174d6bdb6724395a1f17fa"
+        ),
+        "to_sha256": (
+            "da79f85b68ffd5ab7b4bdba8f78e336af698bbeef9bfabdf766f0eb96f23ad88"
+        ),
+        "normalized_ast_sha256": (
+            "679ada28aadfac0abde474eb9fa5cf152e35bf4478a9c247b17c2873f1be4a60"
+        ),
+        "from_commit": "58e0737c7df07e83f598ae6a57ec08225cd057c5",
+        "evidence_commit": "b6af6e9274ae3076709a61ec2871a950bf50a605",
+        "evidence_report_sha256": (
+            "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7"
+        ),
+        "to_commit": "4ba2f3cdfa5bb2d94a70ababd149fbe57614f45e",
+        "full_index_diff_sha256": (
+            "fe432735ed70040dee37c07d8429d3073a5ab886506dde339c32ca6b189fc526"
+        ),
         "excluded_top_level_assignments": (
             "SPENT_NOVELTY_SEEDS",
             "FIRST_CLEAN_NOVELTY_SEED",
@@ -3162,6 +3173,14 @@ def _validate_candidate_manifest(
         expected_schema=CANDIDATE_EVIDENCE_SCHEMA,
     )
     if (
+        manifest_path == DEFAULT_CANDIDATE_MANIFEST.resolve()
+        and evidence_path != DEFAULT_VALIDATION_EVIDENCE.resolve()
+    ):
+        raise ValueError(
+            "canonical release manifest must bind "
+            f"{DEFAULT_VALIDATION_EVIDENCE}"
+        )
+    if (
         evidence.get("status") != "development_openset_pass"
         or evidence.get("candidate_id") != CANDIDATE_ID
     ):
@@ -3218,6 +3237,29 @@ def _validate_candidate_manifest(
         frozen_contract,
         canonical_release_candidate=canonical_release_candidate,
     )
+    validation_transition = ORDERED_STAGED_SOURCE_TRANSITIONS[1]
+    if canonical_release_candidate:
+        contract_commit = contract_record.get("commit")
+        if contract_commit != validation_transition["from_commit"]:
+            raise ValueError(
+                "canonical q97 validation evidence does not bind the exact "
+                "pre-validation contract commit"
+            )
+        try:
+            contract_repo_path = frozen_path.relative_to(REPO.resolve())
+        except ValueError as exc:
+            raise ValueError(
+                "canonical pre-validation contract is outside the repository"
+            ) from exc
+        committed_contract = _git_blob(
+            str(contract_commit),
+            contract_repo_path.as_posix(),
+        )
+        if hashlib.sha256(committed_contract).hexdigest() != frozen_sha256:
+            raise ValueError(
+                "canonical pre-validation contract bytes differ from their "
+                "bound Git commit"
+            )
 
     for field, artifact in (
         ("classifier_fusion_8k_regularized", classifier_artifact),
@@ -3266,6 +3308,15 @@ def _validate_candidate_manifest(
     )
     if _sha256(staged_metrics_path) != report_sha256:
         raise ValueError("validation report SHA-256 does not match")
+    if (
+        canonical_release_candidate
+        and report_sha256
+        != validation_transition["evidence_report_sha256"]
+    ):
+        raise ValueError(
+            "canonical validation evidence does not bind the exact frozen "
+            "validation report"
+        )
 
     validated_rejector = evidence.get("validated_rejector", {})
     if (

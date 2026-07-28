@@ -3293,39 +3293,44 @@ class CandidateTamperTests(unittest.TestCase):
 class OrderedLedgerTransitionTests(unittest.TestCase):
     """Only the ordered q97 design/validation bookkeeping chain is admissible."""
 
-    def test_exact_design_transition_is_ast_verified_and_reported(self):
-        transition = evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS[0]
+    def test_exact_full_transition_chain_is_ast_verified_and_reported(self):
+        first = evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS[0]
+        final = evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS[1]
         checked, transitions = evaluator._verify_source_contract(
             {
-                str(transition["source"]): str(
-                    transition["from_sha256"]
-                )
+                str(first["source"]): str(first["from_sha256"])
             },
-            (str(transition["source"]),),
-            origin=str(transition["origin"]),
+            (str(first["source"]),),
+            origin=str(first["origin"]),
         )
-        name = str(transition["source"])
-        self.assertEqual(checked[name], transition["to_sha256"])
+        name = str(first["source"])
+        self.assertEqual(checked[name], final["to_sha256"])
         self.assertEqual(
             transitions[name]["admission"],
             "exact_ordered_q97_seed_ledger_transition_chain",
         )
         self.assertEqual(
             transitions[name]["normalized_ast_sha256"],
-            transition["normalized_ast_sha256"],
+            final["normalized_ast_sha256"],
         )
         self.assertFalse(
             transitions[name]["candidate_inference_behavior_changed"]
         )
         self.assertEqual(
             transitions[name]["ordered_transition_ids"],
-            ["predesign_to_postdesign"],
+            [
+                "predesign_to_postdesign",
+                "validation_to_postvalidation",
+            ],
         )
         self.assertEqual(
             transitions[name]["consumed_novelty_seeds"],
-            [evaluator.DESIGN_NOVELTY_SEED],
+            [
+                evaluator.DESIGN_NOVELTY_SEED,
+                *evaluator.VALIDATION_NOVELTY_SEEDS,
+            ],
         )
-        self.assertEqual(transitions[name]["next_clean_novelty_seed"], 20260953)
+        self.assertEqual(transitions[name]["next_clean_novelty_seed"], 20260956)
 
     def test_transition_is_not_accepted_for_another_origin(self):
         transition = evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS[0]
@@ -3340,9 +3345,31 @@ class OrderedLedgerTransitionTests(unittest.TestCase):
                 origin="an untrusted source record",
             )
 
-    def test_postvalidation_transition_placeholders_fail_closed(self):
-        with self.assertRaisesRegex(ValueError, "unbound"):
-            evaluator._validated_ordered_source_transitions()
+    def test_exact_validation_transition_suffix_is_git_verified(self):
+        transition = evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS[1]
+        checked, transitions = evaluator._verify_source_contract(
+            {
+                str(transition["source"]): str(
+                    transition["from_sha256"]
+                )
+            },
+            (str(transition["source"]),),
+            origin=str(transition["origin"]),
+        )
+        name = str(transition["source"])
+        self.assertEqual(checked[name], transition["to_sha256"])
+        self.assertEqual(
+            transitions[name]["ordered_transition_ids"],
+            ["validation_to_postvalidation"],
+        )
+        self.assertEqual(
+            transitions[name]["consumed_novelty_seeds"],
+            [
+                evaluator.DESIGN_NOVELTY_SEED,
+                *evaluator.VALIDATION_NOVELTY_SEEDS,
+            ],
+        )
+        self.assertEqual(transitions[name]["next_clean_novelty_seed"], 20260956)
 
     def test_transition_order_mutation_is_refused_before_hash_admission(self):
         mutated = copy.deepcopy(evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS)
@@ -3809,6 +3836,7 @@ class V4AdmissionHardeningTests(unittest.TestCase):
             evaluator.V2
             / "artifacts/invariant_patch/v3_scale/"
             "noise_prefilter_fit20261001_budget001/noise_prefilter_fit.json",
+            evaluator.DEFAULT_VALIDATION_EVIDENCE,
             evaluator.TRAINING
             / "artifacts/releases/invariant_fusion_v3_sealed_seed20260735/"
             "RELEASE_INTENT.json",
@@ -3826,7 +3854,52 @@ class V4AdmissionHardeningTests(unittest.TestCase):
                     dict,
                 )
 
-    def test_transition_one_recomputes_every_configured_endpoint(self):
+    def test_canonical_validation_evidence_binds_the_frozen_chain(self):
+        evidence = evaluator._read_candidate_json(
+            evaluator.DEFAULT_VALIDATION_EVIDENCE
+        )
+        self.assertEqual(
+            evidence["source_transition_evidence"],
+            evaluator.ordered_source_transition_contract_block(),
+        )
+        evaluator._validated_ordered_source_transitions()
+        contract = Path(evidence["candidate_contract"]["path"]).resolve()
+        self.assertEqual(contract, evaluator.DEFAULT_CANDIDATE_CONTRACT.resolve())
+        self.assertEqual(
+            evidence["candidate_contract"]["sha256"],
+            _sha256(contract),
+        )
+        self.assertEqual(
+            evidence["candidate_contract"]["commit"],
+            evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS[1]["from_commit"],
+        )
+        committed_contract = evaluator._git_blob(
+            evidence["candidate_contract"]["commit"],
+            evaluator.DEFAULT_CANDIDATE_CONTRACT.relative_to(
+                evaluator.REPO
+            ).as_posix(),
+        )
+        self.assertEqual(
+            hashlib.sha256(committed_contract).hexdigest(),
+            evidence["candidate_contract"]["sha256"],
+        )
+        report = Path(evidence["validation"]["report"]).resolve()
+        self.assertEqual(
+            report,
+            evaluator.DEFAULT_STAGED_DIR / "openset_metrics.json",
+        )
+        self.assertEqual(
+            evidence["validation"]["report_sha256"],
+            _sha256(report),
+        )
+        report_payload = evaluator._read_candidate_json(report)
+        for name, digest in report_payload["artifacts"].items():
+            self.assertEqual(
+                evidence["validation_locked_policy_artifacts"][name],
+                digest,
+            )
+
+    def test_each_transition_recomputes_every_configured_endpoint(self):
         digest_fields = (
             "from_sha256",
             "to_sha256",
@@ -3839,22 +3912,26 @@ class V4AdmissionHardeningTests(unittest.TestCase):
             "evidence_commit",
             "to_commit",
         )
-        for field in digest_fields + commit_fields:
-            mutated = copy.deepcopy(
-                evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS
-            )
-            mutated[0][field] = (
-                "0" * 64 if field in digest_fields else "0" * 40
-            )
-            with self.subTest(field=field), mock.patch.object(
-                evaluator,
-                "ORDERED_STAGED_SOURCE_TRANSITIONS",
-                tuple(mutated),
-            ):
-                with self.assertRaises(ValueError):
-                    evaluator._validated_ordered_source_transitions(
-                        required_through_order=1
-                    )
+        for transition_index in range(2):
+            for field in digest_fields + commit_fields:
+                mutated = copy.deepcopy(
+                    evaluator.ORDERED_STAGED_SOURCE_TRANSITIONS
+                )
+                mutated[transition_index][field] = (
+                    "0" * 64 if field in digest_fields else "0" * 40
+                )
+                with self.subTest(
+                    transition=transition_index + 1,
+                    field=field,
+                ), mock.patch.object(
+                    evaluator,
+                    "ORDERED_STAGED_SOURCE_TRANSITIONS",
+                    tuple(mutated),
+                ):
+                    with self.assertRaises(ValueError):
+                        evaluator._validated_ordered_source_transitions(
+                            required_through_order=transition_index + 1
+                        )
 
     def test_deployment_classifier_spy_sees_only_accepted_rows(self):
         candidate = mock.Mock()

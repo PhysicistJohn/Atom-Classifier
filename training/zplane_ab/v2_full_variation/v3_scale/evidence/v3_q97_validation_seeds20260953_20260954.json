@@ -1,0 +1,109 @@
+{
+  "schema": "time-domain-v3-decoupled-validation-evidence-v2",
+  "status": "development_openset_pass",
+  "candidate_id": "v3.4-q97-decoupled-8k-classifier-4k-rejector",
+  "candidate_contract": {
+    "path": "training/zplane_ab/v2_full_variation/v3_scale/evidence/v3_q97_candidate_contract.json",
+    "sha256": "0be5ebf35dea6e2ab160353f4f42e95445e8bb30ea4742a8c0ea0b9b0a001c7d",
+    "committed_before_validation": true,
+    "commit": "58e0737c7df07e83f598ae6a57ec08225cd057c5"
+  },
+  "validation": {
+    "role": "validate",
+    "novelty_seeds_consumed_once": [
+      20260953,
+      20260954
+    ],
+    "report": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_validate_v34_q97_decoupled_rejector4k_classifier8k_budget001_seeds20260953_20260954/openset_metrics.json",
+    "report_sha256": "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7",
+    "gates_are_evidence": true,
+    "all_pass": true,
+    "sealed_release_data_used": 0,
+    "consumed_test_rows_used": 0,
+    "release_seed_20260736_used": false
+  },
+  "validated_rejector": {
+    "fusion_directory_sha256": "0f730e0cc2e0bdab015b08fbf6ad7b53c58851104a01616d660636937b0b82b5",
+    "canonical_prefilter_set_sha256": "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2",
+    "prefilter_bundle_sha256": {
+      "4096": "5ef175f5ddc296ec9ae0ffb8ac6801504fd609d6a852dbd5c4b1bf9a10de0f85",
+      "8192": "e0e972be4d1b7e43929b6c45c69d2dada884b49b39e16555998c375edf744557",
+      "16384": "3d56108fc016d8fb8ff7f4c18f8fc2fa6a1443d5d32d30cd769d52de087384db"
+    }
+  },
+  "validation_locked_policy_artifacts": {
+    "directory": "training/zplane_ab/v2_full_variation/artifacts/invariant_patch/v3_scale/staged_validate_v34_q97_decoupled_rejector4k_classifier8k_budget001_seeds20260953_20260954",
+    "v3_branch_lof_components.npz": "0a66ca267356bdacf239de5512b9406e010526c990dc38c137cac84342a062a6",
+    "v3_open_policy_stage_two.npz": "9378f6eea893174b4f716f4db5ea6ea2b637d64b04a0e7672bb39b2e50600dd8",
+    "v3_staged_composite_policy.npz": "15554c0fec5f7770c3b0c7a01c5250b61b4ce0b45fed9dfdf7e8785bb328d19e",
+    "novelty_rows_used_to_fit_rank_or_threshold": 0
+  },
+  "candidate_contract_clarification": {
+    "recorded_value": "7780fdbb77eb72c67ae5d0ec8073955fa307b786a77a1186e8723402fa56d16c",
+    "canonical_behavioral_hash": "4751ae631f879bc2d987d64082c296d7150b7199fab0f1eeb6de84a0f338b5f2",
+    "changes_candidate_behavior": false
+  },
+  "source_transition_evidence": {
+    "schema": "time-domain-v3-q97-source-transition-contract-v1",
+    "source": "fit_v3_openset_staged.py",
+    "ordered_phases": [
+      "predesign",
+      "postdesign",
+      "postvalidation"
+    ],
+    "transitions": [
+      {
+        "order": 1,
+        "transition_id": "predesign_to_postdesign",
+        "source": "fit_v3_openset_staged.py",
+        "origin": "the q97 design artifact",
+        "from_phase": "predesign",
+        "to_phase": "postdesign",
+        "from_sha256": "4cca22059959ec472278f28594bd54a72bbbab04fcf9a294baa81d31fea59be9",
+        "to_sha256": "c412a6f9d0ea81ca760bceadcfe4eec6ddcbb43dc5174d6bdb6724395a1f17fa",
+        "normalized_ast_sha256": "4618b54c28da283e7ac74f23bbcb43f2d55de6746eb244f80336af8368d09a20",
+        "from_commit": "80298b80e6f56360325457efb49e58d13aa93d61",
+        "evidence_commit": "825cf3eace2443aa18899dc192911c060045b068",
+        "evidence_report_sha256": "bb749aadd5395a3fc21ff9453621ad8fa7a7512f9b3c21c29cee933b09adfb0f",
+        "to_commit": "4306f67c298376b944bc3be58553983174538bce",
+        "full_index_diff_sha256": "9910df1e63ccfb482820ea83f1bec6475069a3dcbc85d134750ebb35fc769fec",
+        "excluded_top_level_assignments": [
+          "SPENT_NOVELTY_SEEDS",
+          "SEED_LEDGER_NOTE"
+        ],
+        "consumed_novelty_seeds": [
+          20260955
+        ],
+        "next_clean_novelty_seed": 20260953
+      },
+      {
+        "order": 2,
+        "transition_id": "validation_to_postvalidation",
+        "source": "fit_v3_openset_staged.py",
+        "origin": "the staged validation artifact",
+        "from_phase": "postdesign",
+        "to_phase": "postvalidation",
+        "from_sha256": "c412a6f9d0ea81ca760bceadcfe4eec6ddcbb43dc5174d6bdb6724395a1f17fa",
+        "to_sha256": "da79f85b68ffd5ab7b4bdba8f78e336af698bbeef9bfabdf766f0eb96f23ad88",
+        "normalized_ast_sha256": "679ada28aadfac0abde474eb9fa5cf152e35bf4478a9c247b17c2873f1be4a60",
+        "from_commit": "58e0737c7df07e83f598ae6a57ec08225cd057c5",
+        "evidence_commit": "b6af6e9274ae3076709a61ec2871a950bf50a605",
+        "evidence_report_sha256": "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7",
+        "to_commit": "4ba2f3cdfa5bb2d94a70ababd149fbe57614f45e",
+        "full_index_diff_sha256": "fe432735ed70040dee37c07d8429d3073a5ab886506dde339c32ca6b189fc526",
+        "excluded_top_level_assignments": [
+          "SPENT_NOVELTY_SEEDS",
+          "FIRST_CLEAN_NOVELTY_SEED",
+          "SEED_LEDGER_NOTE"
+        ],
+        "consumed_novelty_seeds": [
+          20260953,
+          20260954
+        ],
+        "next_clean_novelty_seed": 20260956
+      }
+    ],
+    "ledger_only": true,
+    "candidate_inference_behavior_changed": false
+  }
+}
