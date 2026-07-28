@@ -314,6 +314,28 @@ SPENT_NOVELTY_SEEDS: dict[int, str] = {
         "was 38/1908 = 0.019916142557651992. The seed is consumed and may not "
         "be redrawn"
     ),
+    20260953: (
+        "validated the frozen policy-v4/q97 v3.4 candidate in the one exact "
+        "ordered validation draw: development_openset_pass; all six unchanged "
+        "validation gates passed across seeds 20260953/20260954 and prefix "
+        "lengths [4096, 8192, 16384, 32768]. Known false-unknown was 80/1908 "
+        "= 0.041928721174004195, worst noise AUROC was "
+        "0.9576589797344515, and worst chirp threshold recall was 57/300 = "
+        "0.19. Report sha256 "
+        "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7. "
+        "Validation evidence is consumed and may not be reused"
+    ),
+    20260954: (
+        "validated the frozen policy-v4/q97 v3.4 candidate in the one exact "
+        "ordered validation draw: development_openset_pass; all six unchanged "
+        "validation gates passed across seeds 20260953/20260954 and prefix "
+        "lengths [4096, 8192, 16384, 32768]. Known false-unknown was 80/1908 "
+        "= 0.041928721174004195, worst noise AUROC was "
+        "0.9576589797344515, and worst chirp threshold recall was 57/300 = "
+        "0.19. Report sha256 "
+        "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7. "
+        "Validation evidence is consumed and may not be reused"
+    ),
     20260955: (
         "designed the frozen policy-v4/q97 v3.4 candidate: "
         "design_selection_pass; all six unchanged design gates passed. Known "
@@ -350,10 +372,10 @@ CONSUMED_SEALED_RELEASE_SEEDS: dict[int, str] = {
 }
 RELEASE_SEED_NEVER_SPENT_HERE = 20260736
 
-# Seeds through 20260952 and design seed 20260955 are consumed.  Both design
-# outcomes are frozen and may not be redrawn.  Seeds 20260953/20260954 remain
-# untouched and reserved for the one policy-v4/q97 validation draw.
-FIRST_CLEAN_NOVELTY_SEED = 20260953
+# Seeds through 20260955 are consumed (including the q97 validation pair).
+# Both design outcomes and the passing validation are frozen and may not be
+# redrawn. Seed 20260956 is the first clean development-novelty seed.
+FIRST_CLEAN_NOVELTY_SEED = 20260956
 PROPOSED_DESIGN_NOVELTY_SEED = 20260955
 DEFAULT_VALIDATION_NOVELTY_SEEDS = (20260953, 20260954)
 V34_DESIGN_PREFIX_LENGTHS = (4096, 8192, 16384, 32768)
@@ -371,9 +393,9 @@ SEED_LEDGER_NOTE = (
     "threshold recall. The policy-v4/q97 design consumed seed "
     f"{PROPOSED_DESIGN_NOVELTY_SEED} and passed all six unchanged design "
     "gates; that result is selection, not validation evidence. Validation "
-    f"seeds {list(DEFAULT_VALIDATION_NOVELTY_SEEDS)} remain untouched and "
-    "reserved for their one exact ordered validation draw. Drawing either "
-    "outside that validation would violate evidence rule 4."
+    f"seeds {list(DEFAULT_VALIDATION_NOVELTY_SEEDS)} were consumed exactly "
+    "once by the frozen passing validation draw and may not be reused. "
+    "Drawing either again would violate evidence rule 4."
 )
 
 

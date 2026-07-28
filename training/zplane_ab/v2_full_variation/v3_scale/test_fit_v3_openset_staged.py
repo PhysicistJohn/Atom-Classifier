@@ -57,12 +57,20 @@ KNOWN_LENGTH = 2048
 @contextlib.contextmanager
 def _temporarily_unspent_design_seed():
     """Exercise the pre-draw design branch without falsifying the live ledger."""
+    prevalidation_reserved = {
+        DESIGN_SEED,
+        *subject.DEFAULT_VALIDATION_NOVELTY_SEEDS,
+    }
     ledger = {
         seed: reason
         for seed, reason in subject.SPENT_NOVELTY_SEEDS.items()
-        if seed != DESIGN_SEED
+        if seed not in prevalidation_reserved
     }
-    with mock.patch.dict(subject.SPENT_NOVELTY_SEEDS, ledger, clear=True):
+    with mock.patch.dict(
+        subject.SPENT_NOVELTY_SEEDS, ledger, clear=True
+    ), mock.patch.object(
+        subject, "FIRST_CLEAN_NOVELTY_SEED", min(prevalidation_reserved)
+    ):
         yield
 
 
@@ -381,10 +389,12 @@ class SeedLedgerTests(unittest.TestCase):
                 20260950,
                 20260951,
                 20260952,
+                20260953,
+                20260954,
                 20260955,
             ],
         )
-        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260953)
+        self.assertEqual(subject.FIRST_CLEAN_NOVELTY_SEED, 20260956)
         self.assertEqual(subject.PROPOSED_DESIGN_NOVELTY_SEED, 20260955)
         self.assertIn(20260952, subject.SPENT_NOVELTY_SEEDS)
         self.assertIn(
@@ -412,7 +422,15 @@ class SeedLedgerTests(unittest.TestCase):
             subject.DEFAULT_VALIDATION_NOVELTY_SEEDS, (20260953, 20260954)
         )
         for seed in subject.DEFAULT_VALIDATION_NOVELTY_SEEDS:
-            self.assertNotIn(seed, subject.SPENT_NOVELTY_SEEDS)
+            self.assertIn(seed, subject.SPENT_NOVELTY_SEEDS)
+            self.assertIn(
+                "development_openset_pass",
+                subject.SPENT_NOVELTY_SEEDS[seed],
+            )
+            self.assertIn(
+                "13b5dc55c150dd24c4b057d1537ee715ec632543284e56ea5c5f105e4afe5ac7",
+                subject.SPENT_NOVELTY_SEEDS[seed],
+            )
         self.assertEqual(
             sorted(subject.CONSUMED_SEALED_RELEASE_SEEDS),
             [20260729, 20260731, 20260733, 20260734, 20260735],
@@ -452,6 +470,8 @@ class SeedLedgerTests(unittest.TestCase):
             subject.SPENT_NOVELTY_SEEDS,
             {DESIGN_SEED: "froze the selected design"},
             clear=True,
+        ), mock.patch.object(
+            subject, "FIRST_CLEAN_NOVELTY_SEED", 20260953
         ):
             role, design, seeds = subject.validate_seed_plan(
                 "validate",
@@ -474,6 +494,8 @@ class SeedLedgerTests(unittest.TestCase):
             subject.SPENT_NOVELTY_SEEDS,
             {DESIGN_SEED: "froze the selected design"},
             clear=True,
+        ), mock.patch.object(
+            subject, "FIRST_CLEAN_NOVELTY_SEED", 20260953
         ):
             for seeds in (
                 [subject.DEFAULT_VALIDATION_NOVELTY_SEEDS[0]],
@@ -522,14 +544,14 @@ class SeedLedgerTests(unittest.TestCase):
 
     def test_a_clean_seed_is_accepted(self) -> None:
         self.assertEqual(
-            subject.validate_novelty_seeds([20260953, 20260954, 20260956]),
-            (20260953, 20260954, 20260956),
+            subject.validate_novelty_seeds([20260956, 20260957, 20260958]),
+            (20260956, 20260957, 20260958),
         )
 
     def test_novelty_seed_validation_is_typed_and_respects_clean_boundary(
         self,
     ) -> None:
-        for value in (True, np.bool_(False), 20260953.0, "20260953"):
+        for value in (True, np.bool_(False), 20260956.0, "20260956"):
             with self.assertRaisesRegex(ValueError, "must be integers"):
                 subject.validate_novelty_seeds([value])
         for seed in (1, 20260937):
@@ -552,8 +574,11 @@ class SeedLedgerTests(unittest.TestCase):
                 )
 
     def test_a_default_validation_seed_may_not_be_the_design_seed(self) -> None:
-        with self.assertRaisesRegex(ValueError, "design seed is reserved"):
-            subject.validate_seed_plan("design", VALIDATION_SEED, [VALIDATION_SEED])
+        with _temporarily_unspent_design_seed():
+            with self.assertRaisesRegex(ValueError, "design seed is reserved"):
+                subject.validate_seed_plan(
+                    "design", VALIDATION_SEED, [VALIDATION_SEED]
+                )
 
     def test_design_refuses_the_reserved_validation_seeds(self) -> None:
         with _temporarily_unspent_design_seed():
@@ -610,7 +635,8 @@ class SeedLedgerTests(unittest.TestCase):
         for seed in subject.SPENT_NOVELTY_SEEDS:
             self.assertIn(str(seed), subject.SEED_LEDGER_NOTE)
         self.assertIn("passed all six", subject.SEED_LEDGER_NOTE)
-        self.assertIn("remain untouched", subject.SEED_LEDGER_NOTE)
+        self.assertIn("consumed exactly once", subject.SEED_LEDGER_NOTE)
+        self.assertIn("may not be reused", subject.SEED_LEDGER_NOTE)
         self.assertIn("evidence rule 4", subject.SEED_LEDGER_NOTE)
 
     def test_future_design_and_validation_commands_are_explicit(self) -> None:
