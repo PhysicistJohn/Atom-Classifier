@@ -1,0 +1,261 @@
+{
+  "schema": "atomos.v5.scale-orbit.post-score-supervised-pair-adaptation-intent",
+  "schema_version": 1,
+  "status": "frozen_before_attempt_2_trainer_or_assembler_change_training_or_inference",
+  "authored_at": "2026-07-29T06:39:00-07:00",
+  "lineage": "v5-scale-orbit",
+  "development_only": true,
+  "release_evidence": false,
+  "append_only": true,
+  "adaptation_attempt": 2,
+  "parent_source_commit": "2d6dbd2ba71286233dee660605e095122eb7c26a",
+  "parent_source_commit_subject": "Train v5 with frozen physical-scale consistency",
+  "parent_bindings": {
+    "recovery_protocol_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/recovery_protocol.json",
+    "recovery_protocol_sha256": "cc79496ba398e4ce2fcb6875d8b810bcbc1ae7f89cb75271fdf2c65e6ad2afff",
+    "attempt_1_intent_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_1.json",
+    "attempt_1_intent_sha256": "e3166235ed53835465b3bd7afa6ad03982e31016b4d20c6875879288b3304a90",
+    "attempt_1_miss_report_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_1_miss_report.json",
+    "attempt_1_miss_report_sha256": "1c0e6d94d418e3954a54aa44396ef5cc9d8603eb2895dd69c0a0c458c254bc9d"
+  },
+  "observed_adaptive_evidence": {
+    "source": "attempt_1_miss_report_only",
+    "neither_of_two_reassessed_predeclared_recovery_goals_recovered_by_attempt_1": true,
+    "attempt_1_full_21_gate_status": "not_evaluated",
+    "attempt_1_selected_for_continuation": false,
+    "attempt_1_cosine_auxiliary_reused": false,
+    "attempt_1_sc02_fusion_dev_metrics_sha256": "d23c8717261961dec99a07cc45f0476cdc784fdacaf827742ee1677275186e7b"
+  },
+  "predeclared_change": {
+    "name": "profile_balanced_supervised_scale_pair_public_class_cross_entropy",
+    "replaces_attempt_1_auxiliary": {
+      "removed_distance": "one_minus_cosine_similarity",
+      "removed_reduction": "mean_over_one_pair_per_literal_profile",
+      "cosine_distance_term_in_attempt_2": false,
+      "attempt_1_auxiliary_coexists_with_attempt_2": false
+    },
+    "pair_sampling": {
+      "population_seed": 20264101,
+      "population_source": "current",
+      "population_role": "train",
+      "literal_profile_count": 31,
+      "literal_profiles": [
+        "bluetooth-classic-connected",
+        "bluetooth-le-advertising",
+        "gsm-16qam-higher-symbol-rate-burst",
+        "gsm-32qam-higher-symbol-rate-burst",
+        "gsm-8psk-normal-burst",
+        "gsm-900-loaded-bcch",
+        "gsm-aqpsk-normal-burst",
+        "gsm-normal-burst",
+        "gsm-qpsk-higher-symbol-rate-burst",
+        "lte-band3-fdd-20m",
+        "lte-band38-tdd-10m",
+        "lte-etm1.1",
+        "lte-etm3.1",
+        "lte-etm3.1a",
+        "lte-etm3.1b",
+        "lte-nbiot-guard-isolated-component",
+        "lte-nbiot-inband-isolated-component",
+        "lte-ntm",
+        "nr-fr1-tm1.1",
+        "nr-fr1-tm3.1",
+        "nr-fr1-tm3.1a",
+        "nr-fr1-tm3.1b",
+        "nr-n3-fdd-20m",
+        "nr-n78-tdd-100m",
+        "nr-nbiot-inband-isolated-component",
+        "wifi-hr-dsss-11m",
+        "wifi-ofdm-20m",
+        "wifi6-he-er-su",
+        "wifi6-he-mu",
+        "wifi6-he-su",
+        "wifi6-he-tb"
+      ],
+      "identities_per_profile_addressable": 40,
+      "identity_selection_per_profile_per_episode": 1,
+      "identity_selection": "uniform independently within each literal profile",
+      "physical_scale_factors": [
+        1.0,
+        1.25,
+        1.5,
+        2.0
+      ],
+      "scale_views_per_selected_identity": 2,
+      "scale_selection": "two distinct physical-scale views uniformly without replacement",
+      "pairs_per_episode": 31,
+      "views_per_episode": 62,
+      "same_identity_within_each_pair": true,
+      "same_profile_and_public_class_within_each_pair": true,
+      "literal_profile_public_class_map": {
+        "bluetooth-classic-connected": "bluetooth",
+        "bluetooth-le-advertising": "bluetooth",
+        "gsm-16qam-higher-symbol-rate-burst": "gsm",
+        "gsm-32qam-higher-symbol-rate-burst": "gsm",
+        "gsm-8psk-normal-burst": "gsm",
+        "gsm-900-loaded-bcch": "gsm",
+        "gsm-aqpsk-normal-burst": "gsm",
+        "gsm-normal-burst": "gsm",
+        "gsm-qpsk-higher-symbol-rate-burst": "gsm",
+        "lte-band3-fdd-20m": "ofdm",
+        "lte-band38-tdd-10m": "ofdm",
+        "lte-etm1.1": "ofdm",
+        "lte-etm3.1": "ofdm",
+        "lte-etm3.1a": "ofdm",
+        "lte-etm3.1b": "ofdm",
+        "lte-nbiot-guard-isolated-component": "ofdm",
+        "lte-nbiot-inband-isolated-component": "ofdm",
+        "lte-ntm": "ofdm",
+        "nr-fr1-tm1.1": "ofdm",
+        "nr-fr1-tm3.1": "ofdm",
+        "nr-fr1-tm3.1a": "ofdm",
+        "nr-fr1-tm3.1b": "ofdm",
+        "nr-n3-fdd-20m": "ofdm",
+        "nr-n78-tdd-100m": "ofdm",
+        "nr-nbiot-inband-isolated-component": "ofdm",
+        "wifi-hr-dsss-11m": "dsss",
+        "wifi-ofdm-20m": "ofdm",
+        "wifi6-he-er-su": "ofdm",
+        "wifi6-he-mu": "ofdm",
+        "wifi6-he-su": "ofdm",
+        "wifi6-he-tb": "ofdm"
+      },
+      "profile_class_map_validation": {
+        "map_keys_must_equal_literal_profiles_in_exact_order": true,
+        "map_values_must_equal_training_corpus_public_class_for_every_selected_view": true,
+        "selected_pair_views_must_match_selected_profile": true,
+        "mismatch_fails_before_auxiliary_forward": true
+      }
+    },
+    "randomness": {
+      "episodic_rng": "numpy.default_rng(seed)",
+      "pair_rng": "numpy.default_rng(seed xor 0x5CA1E)",
+      "pair_rng_seed_rule": "seed xor 0x5CA1E",
+      "pair_rng_seed_for_seed20260740": 19983770,
+      "pair_rng_separate_from_episodic_rng": true,
+      "pair_sampling_does_not_advance_episodic_rng": true
+    },
+    "phase_augmentation": {
+      "enabled": true,
+      "applied_after_flattening_all_62_paired_views": true,
+      "draw": "one independent uniform phase in [0, 2*pi) per paired view",
+      "two_views_in_a_pair_share_phase_draw": false,
+      "existing_episodic_phase_augmentation_changed": false
+    },
+    "batch_norm_stat_firewall": {
+      "applies_to": "auxiliary_forward_only",
+      "batch_norm_module_types": [
+        "BatchNorm1d",
+        "BatchNorm2d",
+        "BatchNorm3d",
+        "SyncBatchNorm"
+      ],
+      "auxiliary_forward_uses_batch_norm_eval_mode": true,
+      "running_mean_variance_or_num_batches_tracked_mutated": false,
+      "original_batch_norm_training_modes_restored_after_forward": true,
+      "dropout_or_non_batch_norm_training_mode_changed": false,
+      "gradient_tracking_disabled_for_paired_embeddings": false
+    },
+    "supervised_pair_auxiliary": {
+      "paired_embedding_count": 62,
+      "target_for_each_view": "public class of its selected literal current profile",
+      "target_tensor_construction": "repeat(profile_public_class_indices, 2) in exact literal profile order after flattening each profile's two views contiguously",
+      "public_class_prototypes": {
+        "source": "same current-episode source-mixed episodic support embeddings used by the main episodic cross-entropy",
+        "source_mixing": "inherits the unchanged episodic sampler and exact current_source_share 1/3; prototypes are not current-source-only",
+        "class_order_and_count": "same seven public-class prototypes built for the current episode main episodic cross-entropy",
+        "detached_for_auxiliary": true,
+        "auxiliary_gradient_into_support_embeddings_or_prototype_construction": false,
+        "main_episodic_cross_entropy_prototype_gradient_changed": false,
+        "persistent_enrollment_prototype_bank_used": false,
+        "prototype_fit_population_changed": false
+      },
+      "logits": {
+        "formula": "-squared_euclidean_distance(paired_embedding, detached_current_episode_public_class_prototype) * exp(detach(logit_scale)).clamp(1e-3, 100.0)",
+        "distance": "same squared Euclidean distance as current episodic cross-entropy",
+        "logit_scale_parameter": "detached numeric value of the same learnable current-episode logit_scale used by episodic cross-entropy",
+        "logit_scale_detached_for_auxiliary": true,
+        "auxiliary_gradient_into_logit_scale": false,
+        "main_episodic_cross_entropy_is_only_logit_scale_optimizer_signal": true,
+        "new_temperature_or_margin": false
+      },
+      "cross_entropy": {
+        "label_smoothing": 0.0,
+        "reduction": "mean",
+        "mean_denominator": 62
+      },
+      "auxiliary_coefficient": 0.2,
+      "total_loss": "episodic_cross_entropy + 0.2 * mean_supervised_pair_cross_entropy_over_62_views"
+    }
+  },
+  "inherited_run_contract": {
+    "seed": 20260740,
+    "episodes": 8000,
+    "evaluation_interval": 500,
+    "dropout": 0.35,
+    "weight_decay": 0.0005,
+    "current_source_share": {
+      "numerator": 1,
+      "denominator": 3,
+      "value": 0.3333333333333333
+    },
+    "phase_augmentation": true,
+    "encoders": [
+      "real",
+      "complex"
+    ],
+    "branch_architecture": {
+      "hidden": 96,
+      "embed_dim": 32,
+      "n_features": 12,
+      "patch_length": 64,
+      "patch_count": 16,
+      "patch_dim": 64,
+      "set_pool": "mean_std"
+    },
+    "branch_fusion": {
+      "kind": "centered_invariant_fusion",
+      "weight_real": 0.5,
+      "weight_complex": 0.5,
+      "alpha_real": 0.2,
+      "alpha_complex": 0.2,
+      "eps": 1e-12,
+      "rule": "unit(concat(sqrt(w) * unit(real - 0.2 * real_center), sqrt(1-w) * unit(complex - 0.2 * complex_center)))"
+    }
+  },
+  "no_other_change_contract": {
+    "model_architecture_changed": false,
+    "frontend_or_trusted_geometry_canonicalizer_changed": false,
+    "training_enrollment_or_adaptive_selection_data_changed": false,
+    "seed_role_allocation_changed": false,
+    "episodic_sampler_or_main_cross_entropy_changed": false,
+    "feature_moment_or_center_fit_changed": false,
+    "persistent_prototype_fit_population_grouping_or_procedure_changed": false,
+    "checkpoint_score_order_threshold_or_comparison_changed": false,
+    "development_or_release_gate_name_threshold_or_comparison_changed": false,
+    "branch_fusion_changed": false,
+    "class_or_profile_added_removed_or_remapped": false,
+    "open_set_threshold_or_rank_fit_changed": false
+  },
+  "fitting_firewall": {
+    "supervised_pairs_from_seed20264101_current_train_role_only": true,
+    "seed20264101_enrollment_rows_used_for_supervised_pair_auxiliary": 0,
+    "seed20262904_selection_rows_used_for_any_gradient_or_optimizer_step": 0,
+    "seed20262904_selection_rows_used_for_weight_center_or_feature_moment_fit": 0,
+    "seed20262904_selection_rows_used_for_persistent_prototype_fit": 0,
+    "seed20262904_selection_rows_used_for_open_set_threshold_or_rank_fit": 0,
+    "seed20262904_selection_metrics_may_retain_the_existing_development_checkpoint_and_candidate_selection_role": true,
+    "sealed_rows_used_for_any_fit_checkpoint_or_candidate_selection": 0
+  },
+  "timing_and_validation_boundary": {
+    "attempt_1_adaptive_selection_metrics_observed_before_attempt_2": true,
+    "attempt_2_trainer_source_changed_before_this_intent": false,
+    "attempt_2_assembler_source_changed_before_this_intent": false,
+    "attempt_2_training_started_before_this_intent": false,
+    "attempt_2_inference_started_before_this_intent": false,
+    "attempt_2_may_be_selected_on_seed20262904": true,
+    "attempt_2_is_independent_validation_evidence": false,
+    "candidate_must_be_frozen_before_any_sealed_generation": true,
+    "sealed_seed_generated_or_read": false
+  }
+}

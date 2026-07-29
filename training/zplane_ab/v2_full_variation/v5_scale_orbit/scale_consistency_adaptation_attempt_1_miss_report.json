@@ -1,0 +1,114 @@
+{
+  "schema": "atomos.v5.scale-orbit.adaptation-attempt-miss-report",
+  "schema_version": 1,
+  "status": "adaptation_attempt_1_did_not_recover_two_predeclared_recovery_goals",
+  "authored_at": "2026-07-29T06:37:21-07:00",
+  "lineage": "v5-scale-orbit",
+  "development_only": true,
+  "release_evidence": false,
+  "append_only": true,
+  "adaptation_attempt": 1,
+  "parent_source_commit": "2d6dbd2ba71286233dee660605e095122eb7c26a",
+  "parent_source_commit_subject": "Train v5 with frozen physical-scale consistency",
+  "parent_bindings": {
+    "recovery_protocol_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/recovery_protocol.json",
+    "recovery_protocol_sha256": "cc79496ba398e4ce2fcb6875d8b810bcbc1ae7f89cb75271fdf2c65e6ad2afff",
+    "attempt_1_intent_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_1.json",
+    "attempt_1_intent_sha256": "e3166235ed53835465b3bd7afa6ad03982e31016b4d20c6875879288b3304a90"
+  },
+  "evaluated_candidates": {
+    "baseline": {
+      "description": "frozen pre-adaptation v5 scale-orbit development candidate",
+      "adaptation": "none",
+      "real_branch": {
+        "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-real-seed20260740-e8000-reg/dev_metrics.json",
+        "dev_metrics_sha256": "80c653923dfabdf4d516c499562969a9c402f939e819e9b893106053161acf31"
+      },
+      "complex_branch": {
+        "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-complex-seed20260740-e8000-reg/dev_metrics.json",
+        "dev_metrics_sha256": "a3b15398fa5fe145996eeb4f273e0d566decddb55bc79b622ae3c019f2c23043"
+      },
+      "fusion": {
+        "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-fusion-w0.5/dev_metrics.json",
+        "dev_metrics_sha256": "1c02705081cb4f973e1ea092a0b995501ca9c84e609f09d7931f2337462b28b5"
+      }
+    },
+    "attempt_1_sc02": {
+      "description": "attempt-1 cosine-distance auxiliary with frozen coefficient 0.2",
+      "adaptation": "one_minus_cosine_similarity",
+      "attempt_1_intent_sha256": "e3166235ed53835465b3bd7afa6ad03982e31016b4d20c6875879288b3304a90",
+      "real_branch": {
+        "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-real-seed20260740-e8000-reg-sc02/dev_metrics.json",
+        "dev_metrics_sha256": "16909f12bd6ad193718938f8cbdfefa046bb8b8e8420a4a82b8ae2bf0dc52580"
+      },
+      "complex_branch": {
+        "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-complex-seed20260740-e8000-reg-sc02/dev_metrics.json",
+        "dev_metrics_sha256": "3f9d56fbda775bcabdb1ae11f38231d94352ec69ed7e0a7b965fa3e23aecda5e"
+      },
+      "fusion": {
+        "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-fusion-w0.5-sc02/dev_metrics.json",
+        "dev_metrics_sha256": "d23c8717261961dec99a07cc45f0476cdc784fdacaf827742ee1677275186e7b"
+      }
+    }
+  },
+  "reassessed_attempt_1_predeclared_failed_goals": [
+    {
+      "name": "classifier_development_current_service_pooled_closed_accuracy",
+      "comparison": "greater_than_or_equal",
+      "threshold": 0.95,
+      "fusion_metric_path": "final_evaluation.current.pooled.accuracy",
+      "baseline_observed": 0.940398185483871,
+      "baseline_pass": false,
+      "attempt_1_sc02_observed": 0.9343497983870968,
+      "attempt_1_sc02_pass": false
+    },
+    {
+      "name": "length_scale_outcome_agreement_every_source_profile",
+      "comparison": "greater_than_or_equal",
+      "threshold": 0.95,
+      "fusion_metric_path": "final_evaluation.current.pooled.worst_profile_physical_scale_prediction_agreement_rate",
+      "baseline_observed": 0.875,
+      "baseline_pass": false,
+      "attempt_1_sc02_observed": 0.875,
+      "attempt_1_sc02_pass": false
+    }
+  ],
+  "diagnostic_disclosures": [
+    {
+      "name": "current_worst_profile_scale_recall",
+      "fusion_metric_path": "final_evaluation.current.pooled.worst_profile_scale_recall",
+      "baseline_observed": 0.796875,
+      "attempt_1_sc02_observed": 0.78125,
+      "direction": "decreased",
+      "related_but_not_equivalent_gate_name": "classifier_development_current_service_every_legal_cell_closed_accuracy",
+      "related_gate_threshold": 0.9,
+      "formal_full_gate_result": false,
+      "reason": "This pooled worst-profile-scale diagnostic is not the exact legal observation inventory required by the related gate."
+    }
+  ],
+  "full_gate_assessment": {
+    "full_21_gate_status": "not_evaluated",
+    "reason": "No open-set policy/abstention/exact legal inventory runner was executed for these development artifacts.",
+    "inherited_gate_count": 19,
+    "added_directional_confusion_gate_count": 2,
+    "other_gate_results_assessed": false,
+    "other_gates_claimed_passed": false
+  },
+  "outcome": {
+    "reassessed_predeclared_recovery_goal_count": 2,
+    "attempt_1_recovered_reassessed_predeclared_recovery_goal_count": 0,
+    "neither_of_two_reassessed_predeclared_recovery_goals_recovered_by_attempt_1": true,
+    "attempt_1_selected_for_continuation": false,
+    "attempt_1_is_independent_validation_evidence": false,
+    "attempt_1_is_release_evidence": false,
+    "scientific_conclusion": "Neither of the two preregistered recovery goals was recovered by the frozen cosine-distance auxiliary; the result is retained only as append-only adaptive-development evidence and is not a full 21-gate evaluation."
+  },
+  "fitting_and_validation_boundary": {
+    "seed20262904_role": "adaptive_development_only",
+    "seed20262904_metrics_informed_this_miss_report": true,
+    "seed20262904_rows_used_for_weight_center_feature_moment_prototype_threshold_or_rank_fit": 0,
+    "sealed_validation_seed_generated_or_read": false,
+    "sealed_rows_used_for_any_fit_or_selection": 0,
+    "candidate_bytes_frozen_for_independent_validation": false
+  }
+}
