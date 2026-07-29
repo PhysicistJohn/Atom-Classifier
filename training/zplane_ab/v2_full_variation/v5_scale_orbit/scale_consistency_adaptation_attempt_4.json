@@ -1,0 +1,350 @@
+{
+  "schema": "atomos.v5.scale-orbit.post-score-all-four-hard-view-supervised-pair-adaptation-intent",
+  "schema_version": 1,
+  "status": "frozen_before_attempt_4_trainer_or_assembler_change_training_or_inference",
+  "authored_at": "2026-07-29T08:37:20-07:00",
+  "lineage": "v5-scale-orbit",
+  "development_only": true,
+  "release_evidence": false,
+  "append_only": true,
+  "adaptation_attempt": 4,
+  "parent_source_commit": "20a26849a1f16f6ecbd9a169f2d74289e2dd39e0",
+  "parent_source_commit_subject": "Train v5 with hard-view scale pairs",
+  "parent_source_commit_parent": "64e6799a8bf3d38bbbed62d2ae5006c60f79c936",
+  "parent_bindings": {
+    "recovery_protocol_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/recovery_protocol.json",
+    "recovery_protocol_sha256": "cc79496ba398e4ce2fcb6875d8b810bcbc1ae7f89cb75271fdf2c65e6ad2afff",
+    "seed_registry_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/seed_registry.json",
+    "seed_registry_sha256": "b832e09e8eba264e21d7845f72c0d52f671aa1f9187d55ddce94fb833347e0cd",
+    "attempt_1_intent_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_1.json",
+    "attempt_1_intent_sha256": "e3166235ed53835465b3bd7afa6ad03982e31016b4d20c6875879288b3304a90",
+    "attempt_1_miss_report_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_1_miss_report.json",
+    "attempt_1_miss_report_sha256": "1c0e6d94d418e3954a54aa44396ef5cc9d8603eb2895dd69c0a0c458c254bc9d",
+    "attempt_2_intent_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_2.json",
+    "attempt_2_intent_sha256": "5e0cc7bbd58ebe050bf983f854e154c43595dc804aedee3c1c3849cf5691b0a9",
+    "attempt_2_miss_report_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_2_miss_report.json",
+    "attempt_2_miss_report_sha256": "ccdcbbac1e77ff9886b32a7982c64ffcf19819156ac2c08eaae3a54c3a8fdbee",
+    "attempt_3_intent_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_3.json",
+    "attempt_3_intent_sha256": "8cf6b53875be644a56b970012d332bff6e8a4d0408de83d466deedb74b5d721e",
+    "attempt_3_miss_report_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_3_miss_report.json",
+    "attempt_3_miss_report_sha256": "1401442dfe97f0fbe0967fe6ea926876345304d7f6dcaaf0004a623f2e4c58e0",
+    "openset_novelty_adaptive_amendment_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/openset_novelty_adaptive_amendment.json",
+    "openset_novelty_adaptive_amendment_sha256": "5622458262d51a255fa70f00f1a8baeb150500d32bb9af65db44c641cf4e1154"
+  },
+  "source_ancestry_contract": {
+    "attempt_3_preregistration_commit": "64e6799a8bf3d38bbbed62d2ae5006c60f79c936",
+    "attempt_3_preregistration_commit_subject": "Freeze hard-view scale adaptation",
+    "attempt_3_source_commit": "20a26849a1f16f6ecbd9a169f2d74289e2dd39e0",
+    "attempt_3_source_commit_subject": "Train v5 with hard-view scale pairs",
+    "attempt_3_source_commit_direct_parent": "64e6799a8bf3d38bbbed62d2ae5006c60f79c936",
+    "attempt_3_preregistration_is_ancestor_of_attempt_3_source": true,
+    "attempt_3_source_must_be_ancestor_of_attempt_4_intent_commit": true,
+    "attempt_3_source_trainer_blob_sha256": "3f40a186d1175017653773db350b40cf726bba8358209cbfc949efacfda61101",
+    "attempt_3_source_assembler_blob_sha256": "f61de52cc38bc97612edac950a08d3a50bd988a0192df5a16adbec1a41d476c9"
+  },
+  "observed_adaptive_evidence": {
+    "source": "attempt_3_miss_report_only",
+    "attempt_3_full_21_gate_status": "not_evaluated",
+    "attempt_3_full_27_gate_status": "not_evaluated",
+    "attempt_3_recovered_pooled_accuracy_goal": true,
+    "attempt_3_recovered_every_profile_agreement_goal": false,
+    "attempt_3_cleared_every_0_9_profile_scale_cell": false,
+    "attempt_3_selected_as_final_candidate": false,
+    "attempt_3_retained_as_parent_for_attempt_4": true,
+    "attempt_3_real_dev_metrics_sha256": "d40d5d4857d382427effb6ff2219e8171797f5f035edc5b4c2a886e3003e98b2",
+    "attempt_3_complex_dev_metrics_sha256": "283cb1eede9d59b20c0cdccdfc6f2c49f89d9ae6a0f014b3d34e95cd792fe7bb",
+    "attempt_3_fusion_dev_metrics_sha256": "015728bfbce3b71818979adf9587057e464e045bcf6ac04ce1d7e09564415d4c",
+    "attempt_3_current_pooled_accuracy": 0.9753024193548387,
+    "attempt_3_current_pooled_scale_agreement": 0.9884072580645161,
+    "attempt_3_current_worst_profile_scale_agreement": 0.921875,
+    "attempt_3_current_worst_profile_scale_recall": 0.875,
+    "attempt_3_wifi_hr_dsss_worst_scale_accuracy": 1.0,
+    "attempt_3_worst_directional_wifi_bluetooth_confusion_rate": 0.0,
+    "attempt_3_historical_worst_length_balanced_accuracy": 0.7377274406838357,
+    "remaining_sub_0_9_profile_scale_cell_count": 1,
+    "remaining_sub_0_95_profile_agreement_count": 2
+  },
+  "predeclared_change": {
+    "name": "all_four_scale_views_per_profile_max_supervised_public_class_cross_entropy",
+    "decision_consensus": "unanimous_after_independent_attempt_3_metric_and_contract_review",
+    "only_changed_axis": "supervised_pair_views_per_selected_profile_identity",
+    "attempt_3_two_sampled_views_replaced_by_all_four_ordered_views": true,
+    "attempt_3_identity_population_selection_order_targets_logits_coefficient_and_reduction_family_changed": false,
+    "rationale": {
+      "globally_hard_scale_inclusion_probability_under_attempt_3_two_of_four_sampling": 0.5,
+      "globally_hard_scale_inclusion_probability_under_attempt_4_all_four_views": 1.0,
+      "argmax_gradient_count_per_profile_per_episode_remains_one_when_unique": true,
+      "auxiliary_coefficient_or_across_profile_weight_increased": false,
+      "reason": "All-four exposure makes the globally hardest physical scale eligible every episode without increasing the frozen auxiliary coefficient or adding post-hoc class, profile, margin, consistency, or checkpoint weights."
+    },
+    "identity_sampling_inherited_exactly_from_attempt_3": {
+      "population_seed": 20264101,
+      "population_source": "current",
+      "population_role": "train",
+      "literal_profile_count": 31,
+      "literal_profile_order_source": "scale_consistency_adaptation_attempt_2.json predeclared_change.pair_sampling.literal_profiles",
+      "literal_profile_order_parent_sha256": "5e0cc7bbd58ebe050bf983f854e154c43595dc804aedee3c1c3849cf5691b0a9",
+      "literal_profile_public_class_map_source": "scale_consistency_adaptation_attempt_2.json predeclared_change.pair_sampling.literal_profile_public_class_map",
+      "identities_per_profile_addressable": 40,
+      "identity_selection_per_profile_per_episode": 1,
+      "identity_selection": "uniform independently within each literal profile",
+      "selected_identity_count_per_episode": 31,
+      "same_identity_across_all_four_views_within_profile": true
+    },
+    "legacy_pair_rng_trajectory_preservation": {
+      "pair_rng": "numpy.default_rng(seed xor 0x5CA1E)",
+      "pair_rng_seed_for_seed20260740": 19983770,
+      "per_profile_operation_order": [
+        "draw one identity index uniformly using rng.integers(0, len(entries))",
+        "call rng.choice(4, size=2, replace=false) exactly as attempt 3",
+        "validate that the compatibility draw has shape [2] and distinct indices",
+        "discard both compatibility-draw values without using them to choose emitted views",
+        "emit all four selected-identity view positions in frozen scale-factor order"
+      ],
+      "compatibility_draw_values_are_never_used_for_positions_scales_targets_logits_loss_or_metadata_other_than_audit": true,
+      "compatibility_draw_preserves_attempt_3_pair_rng_call_count_order_and_identity_trajectory": true,
+      "pair_rng_separate_from_episodic_rng": true,
+      "pair_sampling_does_not_advance_episodic_rng": true
+    },
+    "all_four_view_emission": {
+      "physical_scale_factors_in_exact_emission_order": [
+        1.0,
+        1.25,
+        1.5,
+        2.0
+      ],
+      "view_positions_source": "selected SupervisedPairIdentity.view_positions in its exact stored order",
+      "view_count_per_selected_identity": 4,
+      "profile_count": 31,
+      "views_per_episode": 124,
+      "positions_shape": [
+        31,
+        4
+      ],
+      "scale_factors_shape": [
+        31,
+        4
+      ],
+      "profile_contiguous_after_flattening": true,
+      "no_scale_view_is_sampled_dropped_repeated_or_reordered": true
+    },
+    "phase_augmentation": {
+      "enabled": true,
+      "applied_after_flattening_all_124_views": true,
+      "draw": "one independent uniform phase in [0, 2*pi) per emitted view",
+      "independent_phase_draw_count_per_episode": 124,
+      "views_within_one_identity_share_phase_draw": false,
+      "existing_episodic_phase_augmentation_changed": false
+    },
+    "batch_norm_stat_firewall_inherited_exactly_from_attempt_3": {
+      "applies_to": "auxiliary_forward_only",
+      "batch_norm_module_types": [
+        "BatchNorm1d",
+        "BatchNorm2d",
+        "BatchNorm3d",
+        "SyncBatchNorm"
+      ],
+      "auxiliary_forward_uses_batch_norm_eval_mode": true,
+      "running_mean_variance_or_num_batches_tracked_mutated": false,
+      "original_batch_norm_training_modes_restored_after_forward": true,
+      "dropout_or_non_batch_norm_training_mode_changed": false,
+      "dropout_remains_live_during_auxiliary_forward": true,
+      "gradient_tracking_disabled_for_paired_embeddings": false
+    },
+    "supervised_pair_auxiliary": {
+      "paired_embedding_count": 124,
+      "paired_logits_shape": [
+        31,
+        4,
+        7
+      ],
+      "paired_targets_shape": [
+        31,
+        4
+      ],
+      "target_for_each_view": "public class of its selected literal current profile",
+      "target_tensor_construction": "repeat each profile public-class index four times in exact literal profile and emitted scale order",
+      "target_construction_symbolic": "repeat(profile_public_class_indices, 4)",
+      "paired_targets_sha256": "f5e20b198bae039295f76093c16c9b375089f656ddb3dbfafcf2a2981428458f",
+      "public_class_prototypes": {
+        "source": "same current-episode source-mixed episodic support embeddings used by the main episodic cross-entropy",
+        "source_mixing": "inherits the unchanged episodic sampler and exact current_source_share 1/3; prototypes are not current-source-only",
+        "class_order_and_count": "same seven public-class prototypes built for the current episode main episodic cross-entropy",
+        "detached_for_auxiliary": true,
+        "auxiliary_gradient_into_support_embeddings_or_prototype_construction": false,
+        "main_episodic_cross_entropy_prototype_gradient_changed": false,
+        "persistent_enrollment_prototype_bank_used": false,
+        "prototype_fit_population_changed": false
+      },
+      "logits": {
+        "formula": "-squared_euclidean_distance(paired_embedding, detached_current_episode_public_class_prototype) * exp(detach(logit_scale)).clamp(1e-3, 100.0)",
+        "distance": "same squared Euclidean distance as current episodic cross-entropy",
+        "logit_scale_parameter": "detached numeric value of the same learnable current-episode logit_scale used by episodic cross-entropy",
+        "logit_scale_detached_for_auxiliary": true,
+        "auxiliary_gradient_into_logit_scale": false,
+        "main_episodic_cross_entropy_is_only_logit_scale_optimizer_signal": true,
+        "new_temperature_or_margin": false
+      },
+      "cross_entropy": {
+        "label_smoothing": 0.0,
+        "per_view_reduction": "none",
+        "per_view_loss_shape_before_profile_reduction": [
+          31,
+          4
+        ],
+        "within_profile_reduction": "maximum_over_exactly_four_contiguous_scale_view_losses",
+        "within_profile_formula": "hard_ce[p] = torch.amax(ce[p,0:4], dim=view)",
+        "across_profile_reduction": "arithmetic_mean_over_31_literal_profile_hard_losses",
+        "across_profile_mean_denominator": 31,
+        "final_auxiliary_formula": "mean_p(max(CE(logits[p,0], target[p]), CE(logits[p,1], target[p]), CE(logits[p,2], target[p]), CE(logits[p,3], target[p])))",
+        "maximum_is_not_taken_over_profiles_classes_or_batch_episodes": true,
+        "all_four_view_losses_participate_in_forward_before_maximum": true,
+        "unique_argmax_gradient_per_profile_before_coefficient": 0.03225806451612903
+      },
+      "profile_and_class_weighting": {
+        "each_literal_profile_weight_before_auxiliary_coefficient": 0.03225806451612903,
+        "class_balancing_added": false,
+        "hard_profile_mining_across_profiles_added": false,
+        "induced_profile_count_weights": {
+          "bluetooth": {
+            "profile_count": 2,
+            "total_weight": 0.06451612903225806
+          },
+          "dsss": {
+            "profile_count": 1,
+            "total_weight": 0.03225806451612903
+          },
+          "gsm": {
+            "profile_count": 7,
+            "total_weight": 0.22580645161290322
+          },
+          "ofdm": {
+            "profile_count": 21,
+            "total_weight": 0.6774193548387096
+          }
+        }
+      },
+      "auxiliary_coefficient": 0.2,
+      "cosine_distance_term": false,
+      "new_consistency_margin_temperature_or_regularizer": false,
+      "total_loss": "episodic_cross_entropy + 0.2 * mean_over_31_profiles(max_over_all_four_scale_views(supervised_public_class_cross_entropy))"
+    },
+    "targeted_failure_contract": {
+      "remaining_sub_0_9_profile_scale_cell_count": 1,
+      "remaining_sub_0_9_profile_scale_cell": "current:wifi6-he-mu|scale=1",
+      "remaining_cell_recall": 0.875,
+      "remaining_cell_correct_rows": 56,
+      "remaining_cell_rows": 64,
+      "additional_correct_rows_to_next_passing_fraction": 2,
+      "remaining_sub_0_95_profile_agreement_count": 2,
+      "remaining_sub_0_95_profiles": [
+        "current:lte-band3-fdd-20m",
+        "current:wifi6-he-tb"
+      ],
+      "additional_consistent_pairs_to_next_passing_fraction": {
+        "current:lte-band3-fdd-20m": 2,
+        "current:wifi6-he-tb": 1
+      },
+      "pooled_mean_ce_coefficient_increased": false,
+      "class_or_profile_balance_changed": false,
+      "cosine_or_other_consistency_term_added": false
+    }
+  },
+  "inherited_run_contract": {
+    "seed": 20260740,
+    "episodes": 8000,
+    "evaluation_interval": 500,
+    "k_shot": 5,
+    "q_query": 5,
+    "learning_rate": 0.001,
+    "warmup_fraction": 0.03,
+    "label_smoothing": 0.0,
+    "dropout": 0.35,
+    "weight_decay": 0.0005,
+    "current_source_share": {
+      "numerator": 1,
+      "denominator": 3,
+      "value": 0.3333333333333333
+    },
+    "phase_augmentation": true,
+    "encoders": [
+      "real",
+      "complex"
+    ],
+    "branch_architecture": {
+      "hidden": 96,
+      "embed_dim": 32,
+      "n_features": 12,
+      "patch_length": 64,
+      "patch_count": 16,
+      "patch_dim": 64,
+      "set_pool": "mean_std"
+    },
+    "branch_fusion": {
+      "kind": "centered_invariant_fusion",
+      "weight_real": 0.5,
+      "weight_complex": 0.5,
+      "alpha_real": 0.2,
+      "alpha_complex": 0.2,
+      "eps": 1e-12,
+      "rule": "unit(concat(sqrt(w) * unit(real - 0.2 * real_center), sqrt(1-w) * unit(complex - 0.2 * complex_center)))"
+    },
+    "checkpoint_score_contract": "lexicographic(min(historical_worst_length_balanced_accuracy,current_worst_scale_present_class_balanced_accuracy,current_worst_profile_scale_recall,current_physical_scale_prediction_agreement_rate,current_wifi_hr_dsss_worst_scale_accuracy,one_minus_current_worst_directional_dsss_bluetooth_confusion_rate),current_worst_scale_present_class_balanced_accuracy,current_wifi_hr_dsss_worst_scale_accuracy,current_worst_profile_scale_recall,current_physical_scale_prediction_agreement_rate,one_minus_current_worst_directional_dsss_bluetooth_confusion_rate,current_pooled_profile_balanced_accuracy,current_pooled_accuracy,combined_pooled_balanced_accuracy,historical_worst_length_balanced_accuracy)"
+  },
+  "future_implementation_metadata_contract": {
+    "branch_run_configuration_schema": "v5-scale-orbit-development-training-v4",
+    "fusion_run_configuration_schema": "v5-scale-orbit-development-fusion-v4",
+    "attempt_3_training_v3_branch_metadata_must_be_rejected": true,
+    "attempt_3_fusion_v3_metadata_must_be_rejected": true,
+    "source_snapshots_must_bind_attempt_3_miss_report_and_attempt_4_intent": true
+  },
+  "no_other_change_contract": {
+    "model_architecture_changed": false,
+    "frontend_or_trusted_geometry_canonicalizer_changed": false,
+    "training_enrollment_or_adaptive_selection_data_changed": false,
+    "seed_role_allocation_changed": false,
+    "identity_population_profile_order_or_identity_sampling_changed": false,
+    "pair_rng_seed_call_order_or_identity_trajectory_changed": false,
+    "pair_target_public_class_or_logit_construction_changed": false,
+    "episodic_sampler_or_main_cross_entropy_changed": false,
+    "supervised_pair_auxiliary_coefficient_changed": false,
+    "feature_moment_or_center_fit_changed": false,
+    "persistent_prototype_fit_population_grouping_or_procedure_changed": false,
+    "checkpoint_score_order_threshold_or_comparison_changed": false,
+    "historical_checkpoint_priority_changed": false,
+    "development_or_release_gate_name_threshold_or_comparison_changed": false,
+    "branch_fusion_changed": false,
+    "class_or_profile_added_removed_or_remapped": false,
+    "open_set_threshold_or_rank_fit_changed": false,
+    "novelty_generation_scoring_or_gate_contract_changed": false
+  },
+  "fitting_firewall": {
+    "supervised_views_from_seed20264101_current_train_role_only": true,
+    "seed20264101_enrollment_rows_used_for_supervised_auxiliary": 0,
+    "seed20262904_selection_rows_used_for_any_gradient_or_optimizer_step": 0,
+    "seed20262904_selection_rows_used_for_weight_center_or_feature_moment_fit": 0,
+    "seed20262904_selection_rows_used_for_persistent_prototype_fit": 0,
+    "seed20262904_selection_rows_used_for_open_set_threshold_or_rank_fit": 0,
+    "seed20262904_selection_metrics_may_retain_the_existing_development_checkpoint_and_candidate_selection_role": true,
+    "sealed_rows_used_for_any_fit_checkpoint_or_candidate_selection": 0
+  },
+  "full_gate_boundary": {
+    "attempt_3_known_21_gate_status": "not_evaluated",
+    "attempt_3_known_plus_novelty_27_gate_status": "not_evaluated",
+    "attempt_4_may_not_inherit_or_claim_any_formal_gate_pass_from_classifier_diagnostics": true,
+    "attempt_4_requires_a_new_exact_21_known_gate_run": true,
+    "attempt_4_requires_a_new_exact_27_known_plus_novelty_gate_run": true,
+    "candidate_must_be_frozen_before_any_sealed_generation": true
+  },
+  "timing_and_validation_boundary": {
+    "attempt_3_adaptive_selection_metrics_observed_before_attempt_4": true,
+    "attempt_3_miss_report_frozen_before_attempt_4_source_change": true,
+    "attempt_4_trainer_source_changed_before_this_intent": false,
+    "attempt_4_assembler_source_changed_before_this_intent": false,
+    "attempt_4_training_started_before_this_intent": false,
+    "attempt_4_inference_started_before_this_intent": false,
+    "attempt_4_may_be_selected_on_seed20262904": true,
+    "attempt_4_is_independent_validation_evidence": false,
+    "sealed_seed_generated_or_read": false
+  }
+}
