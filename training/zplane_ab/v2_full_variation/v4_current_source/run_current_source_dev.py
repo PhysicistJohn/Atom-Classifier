@@ -1,0 +1,1785 @@
+"""Train an isolated v4 invariant-patch branch on historical plus current I/Q.
+
+This development runner reuses the frozen v3 FFT-free preprocessing and
+InvariantPatchCNN implementations.  Historical row membership comes only from
+``invariant_patch_data.load``; the already-consumed historical test half is
+neither loaded nor addressable.  A caller-supplied current corpus contributes
+independent train, enrollment, and selection rows.
+
+Checkpoint selection is predeclared and lexicographic:
+
+    (
+      min(historical worst-length balanced accuracy,
+          current worst-length present-class balanced accuracy),
+      combined pooled balanced accuracy,
+      historical worst-length balanced accuracy,
+      current worst-length all-public-class balanced accuracy,
+    )
+
+Do not change or tune that order after observing a run.
+"""
+from __future__ import annotations
+
+import argparse
+import copy
+from fractions import Fraction
+import hashlib
+import json
+import math
+import os
+import platform
+from pathlib import Path
+import sys
+import time
+from typing import Any, Mapping, Sequence
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+
+HERE = Path(__file__).resolve().parent
+V2 = HERE.parent
+ZPLANE = V2.parent
+TRAINING = ZPLANE.parent
+for path in (TRAINING, ZPLANE, V2, HERE):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+import current_source_data as corpus_data  # noqa: E402
+import run_invariant_cnn_dev as v3_runner  # noqa: E402
+import time_domain_invariant_patch_preprocess as td_preprocess  # noqa: E402
+from invariant_patch_cnn import InvariantPatchCNN, InvariantPatchConfig  # noqa: E402
+from train import embed_all, sq_dist  # noqa: E402
+
+
+HISTORICAL_CORPUS = TRAINING / "artifacts" / "signallab-corpus"
+CHECKPOINT_SCORE_CONTRACT = (
+    "lexicographic(min(historical_worst_length_balanced_accuracy,"
+    "current_worst_length_present_class_balanced_accuracy),"
+    "combined_pooled_balanced_accuracy,"
+    "historical_worst_length_balanced_accuracy,"
+    "current_worst_length_balanced_accuracy)"
+)
+SAMPLER_CONTRACT = (
+    "numpy.default_rng(seed); for each public class allocate k_shot+q_query "
+    "distinct base identities; current_source_share=1/2 preserves randomized "
+    "balanced round-robin over nonempty sources; any other exact rational "
+    "share uses deterministic cumulative apportionment across eligible "
+    "(episode,class) units and randomized slot order, spilling only when a "
+    "source exhausts; within each chosen source allocate by randomized "
+    "balanced round-robin over nonempty profiles; then select one uniform "
+    "eligible runtime-prefix view from each selected base identity"
+)
+
+
+def _source_share_fraction(value: Any) -> Fraction:
+    if isinstance(value, bool):
+        raise ValueError("current_source_share must be an exact fraction")
+    try:
+        share = value if isinstance(value, Fraction) else Fraction(str(value))
+    except (ValueError, ZeroDivisionError) as exc:
+        raise ValueError(
+            "current_source_share must be a decimal or fraction"
+        ) from exc
+    if share <= 0 or share >= 1:
+        raise ValueError("current_source_share must lie strictly between 0 and 1")
+    return share
+
+
+def _parse_source_share(value: str) -> Fraction:
+    return _source_share_fraction(value)
+
+
+def _executed_source_paths() -> dict[str, Path]:
+    """Return every local Python source executed by the v4 branch runner."""
+    return {
+        "v4/run_current_source_dev.py": Path(__file__).resolve(),
+        "v4/current_source_data.py": Path(corpus_data.__file__).resolve(),
+        "v2/run_invariant_cnn_dev.py": Path(v3_runner.__file__).resolve(),
+        "v3/time_domain_invariant_patch_preprocess.py":
+            TRAINING / "time_domain_invariant_patch_preprocess.py",
+        "v3/time_domain_geometry.py": TRAINING / "time_domain_geometry.py",
+        "v3/invariant_patch_preprocess.py":
+            TRAINING / "invariant_patch_preprocess.py",
+        "v3/invariant_patch_cnn.py": V2 / "invariant_patch_cnn.py",
+        "v3/invariant_patch_data.py": V2 / "invariant_patch_data.py",
+        "training/train.py": TRAINING / "train.py",
+    }
+
+
+def _source_hashes() -> dict[str, str]:
+    return {
+        name: corpus_data.sha256_file(path)
+        for name, path in sorted(_executed_source_paths().items())
+    }
+
+
+def _assert_source_snapshot_unchanged(
+    expected: Mapping[str, str],
+    observed: Mapping[str, str],
+    *,
+    operation: str,
+) -> None:
+    if dict(expected) == dict(observed):
+        return
+    changed = sorted(
+        key
+        for key in set(expected) | set(observed)
+        if expected.get(key) != observed.get(key)
+    )
+    raise RuntimeError(
+        f"executed source changed during {operation}: {', '.join(changed)}"
+    )
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return _jsonable(value.tolist())
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        value = float(value)
+    if isinstance(value, Fraction):
+        return {
+            "numerator": int(value.numerator),
+            "denominator": int(value.denominator),
+            "value": float(value),
+        }
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, torch.device):
+        return str(value)
+    return value
+
+
+def _write_json(path: Path, payload: Any) -> None:
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(
+            _jsonable(payload),
+            handle,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        handle.write("\n")
+    os.replace(temporary, path)
+
+
+def checkpoint_score(
+    *,
+    historical_balanced: float,
+    current_present_class_balanced: float,
+    combined_balanced: float,
+    current_balanced: float,
+) -> tuple[float, float, float, float]:
+    """Return the immutable v4 tuple from pre-aggregated worst/pooled terms."""
+    values = (
+        historical_balanced,
+        current_present_class_balanced,
+        combined_balanced,
+        current_balanced,
+    )
+    if any(not np.isfinite(float(value)) for value in values):
+        raise ValueError("checkpoint metrics must be finite")
+    return (
+        min(float(historical_balanced), float(current_present_class_balanced)),
+        float(combined_balanced),
+        float(historical_balanced),
+        float(current_balanced),
+    )
+
+
+def _preprocess(
+    corpus: corpus_data.RawCorpus,
+    row: corpus_data.RowRef,
+    length: int,
+    *,
+    patch_length: int,
+    patch_count: int,
+    target_frac: float,
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    try:
+        packed, features, context = td_preprocess.preprocess(
+            corpus.prefix(row, length),
+            patch_length=patch_length,
+            patch_count=patch_count,
+            target_frac=target_frac,
+        )
+    except Exception as exc:
+        raise ValueError(
+            f"FFT-free preprocessing failed for {row.identity} "
+            f"at prefix {length}"
+        ) from exc
+    if context.get("uses_frequency_transform") is not False:
+        raise AssertionError("v4 admitted a frequency-transform frontend")
+    return (
+        np.asarray(packed, dtype=np.float32),
+        np.asarray(features, dtype=np.float32),
+        context,
+    )
+
+
+def _geometry_summary(contexts: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    if not contexts:
+        return {"count": 0}
+    bandwidth = np.asarray(
+        [float(context["bw"]) for context in contexts],
+        dtype=np.float64,
+    )
+    center = np.asarray(
+        [float(context["center"]) for context in contexts],
+        dtype=np.float64,
+    )
+    return {
+        "count": len(contexts),
+        "bandwidth_median": float(np.median(bandwidth)),
+        "bandwidth_min": float(np.min(bandwidth)),
+        "bandwidth_max": float(np.max(bandwidth)),
+        "center_median": float(np.median(center)),
+        "all_fft_free": all(
+            context.get("uses_frequency_transform") is False
+            for context in contexts
+        ),
+    }
+
+
+def _stack(values: list[np.ndarray], name: str) -> np.ndarray:
+    if not values:
+        raise ValueError(f"cannot construct empty {name}")
+    result = np.stack(values)
+    if not np.isfinite(result).all():
+        raise ValueError(f"{name} contains a non-finite value")
+    return result
+
+
+def _build_sampling_hierarchy(
+    labels: np.ndarray,
+    sources: Sequence[str],
+    profiles: Sequence[str],
+    n_classes: int,
+) -> tuple[dict[str, dict[str, np.ndarray]], ...]:
+    """Partition each base identity by public class, source, then profile."""
+    truth = np.asarray(labels, dtype=np.int64)
+    source_array = np.asarray(sources, dtype=object)
+    profile_array = np.asarray(profiles, dtype=object)
+    if (
+        truth.ndim != 1
+        or source_array.shape != truth.shape
+        or profile_array.shape != truth.shape
+    ):
+        raise ValueError("sampling hierarchy inputs have inconsistent shapes")
+    if n_classes <= 1 or np.any(truth < 0) or np.any(truth >= n_classes):
+        raise ValueError("sampling hierarchy has invalid public-class labels")
+    hierarchy: list[dict[str, dict[str, np.ndarray]]] = []
+    for class_index in range(n_classes):
+        class_groups: dict[str, dict[str, np.ndarray]] = {}
+        class_mask = truth == class_index
+        for source in sorted(str(value) for value in np.unique(
+            source_array[class_mask]
+        )):
+            source_mask = class_mask & (source_array == source)
+            profile_groups: dict[str, np.ndarray] = {}
+            for profile in sorted(str(value) for value in np.unique(
+                profile_array[source_mask]
+            )):
+                positions = np.where(
+                    source_mask & (profile_array == profile)
+                )[0].astype(np.int64, copy=False)
+                if len(positions) == 0:
+                    raise AssertionError("empty source/profile sampling group")
+                profile_groups[profile] = positions
+            class_groups[source] = profile_groups
+        if not class_groups:
+            raise ValueError(
+                f"sampling hierarchy has no bases for class {class_index}"
+            )
+        hierarchy.append(class_groups)
+    flattened = [
+        int(base)
+        for class_groups in hierarchy
+        for profile_groups in class_groups.values()
+        for positions in profile_groups.values()
+        for base in positions
+    ]
+    if sorted(flattened) != list(range(len(truth))):
+        raise AssertionError(
+            "class/source/profile hierarchy does not partition base identities"
+        )
+    return tuple(hierarchy)
+
+
+def _prepare_data(
+    historical: corpus_data.RawCorpus,
+    current: corpus_data.RawCorpus,
+    *,
+    classes: Sequence[str],
+    patch_length: int,
+    patch_count: int,
+    target_frac: float,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Preprocess merged training and all eligible evaluation populations."""
+    corpora = {"historical": historical, "current": current}
+    n_classes = len(classes)
+    if n_classes <= 1:
+        raise ValueError("at least two public classes are required")
+    for source_name, corpus in corpora.items():
+        enrolled_profiles = {
+            row.profile_id for row in corpus.rows_by_role["enrollment"]
+        }
+        required_profiles = {
+            row.profile_id
+            for role in corpus_data.ROLES
+            for row in corpus.rows_by_role[role]
+        }
+        missing_profiles = sorted(required_profiles - enrolled_profiles)
+        if missing_profiles:
+            raise ValueError(
+                f"{source_name} enrollment has no row for profiles "
+                f"{missing_profiles}; every source/profile mode needs its own "
+                "prototype centroid"
+            )
+
+    train_rows = (
+        list(historical.rows_by_role["train"])
+        + list(current.rows_by_role["train"])
+    )
+    train_x: list[np.ndarray] = []
+    train_f_raw: list[np.ndarray] = []
+    train_contexts: list[dict[str, Any]] = []
+    base_view_positions: list[np.ndarray] = []
+    base_labels: list[int] = []
+    base_sources: list[str] = []
+    base_profiles: list[str] = []
+    excluded_zero_prefix: dict[str, dict[str, int]] = {
+        source: {class_name: 0 for class_name in classes}
+        for source in corpora
+    }
+    excluded_evaluation_zero_prefix = {
+        source: {
+            role: {class_name: 0 for class_name in classes}
+            for role in ("enrollment", "selection")
+        }
+        for source in corpora
+    }
+    training_view_counts = {
+        source: {str(length): 0 for length in corpus_data.RUNTIME_INPUT_LENGTHS}
+        for source in corpora
+    }
+    admitted_base_identities: list[str] = []
+    # One manifest can carry several stored variants of the same physical base
+    # acquisition (for example phase/length materializations sharing a
+    # baseRowId).  They are views of one episode-sampling unit, not independent
+    # support/query evidence.  Group them before constructing class pools.
+    training_groups: dict[str, list[corpus_data.RowRef]] = {}
+    for row in train_rows:
+        training_groups.setdefault(row.identity, []).append(row)
+    repeated_identity_groups = {
+        identity: len(rows)
+        for identity, rows in training_groups.items()
+        if len(rows) > 1
+    }
+    for identity, group_rows in sorted(training_groups.items()):
+        first = group_rows[0]
+        if any(
+            row.label != first.label
+            or row.class_name != first.class_name
+            or row.source != first.source
+            or row.profile_id != first.profile_id
+            for row in group_rows
+        ):
+            raise ValueError(
+                f"training identity {identity!r} crosses class, source, or profile"
+            )
+        positions: list[int] = []
+        for row in group_rows:
+            corpus = corpora[row.source]
+            minimum = corpus.prefix(
+                row, corpus_data.MINIMUM_INPUT_LENGTH
+            )
+            if float(np.max(np.abs(minimum))) == 0.0:
+                excluded_zero_prefix[row.source][row.class_name] += 1
+                continue
+            for length in corpus_data.training_view_lengths(
+                row.valid_sample_count
+            ):
+                packed, features, context = _preprocess(
+                    corpus,
+                    row,
+                    length,
+                    patch_length=patch_length,
+                    patch_count=patch_count,
+                    target_frac=target_frac,
+                )
+                positions.append(len(train_x))
+                train_x.append(packed)
+                train_f_raw.append(features)
+                train_contexts.append(context)
+                training_view_counts[row.source][str(length)] += 1
+        if not positions:
+            continue
+        base_view_positions.append(np.asarray(positions, dtype=np.int64))
+        base_labels.append(first.label)
+        base_sources.append(first.source)
+        base_profiles.append(first.profile_id)
+        admitted_base_identities.append(identity)
+
+    xtr = _stack(train_x, "merged training patches")
+    raw_ftr = _stack(train_f_raw, "merged training features")
+    base_labels_array = np.asarray(base_labels, dtype=np.int64)
+    base_by_class = [
+        np.where(base_labels_array == class_index)[0].astype(
+            np.int64, copy=False
+        )
+        for class_index in range(n_classes)
+    ]
+    if any(len(rows) == 0 for rows in base_by_class):
+        missing = [
+            classes[index]
+            for index, rows in enumerate(base_by_class)
+            if len(rows) == 0
+        ]
+        raise ValueError(f"merged training is missing classes {missing}")
+    if len(base_sources) != len(base_profiles):
+        raise AssertionError("base source/profile vectors lost alignment")
+    sampling_hierarchy = _build_sampling_hierarchy(
+        base_labels_array,
+        base_sources,
+        base_profiles,
+        n_classes,
+    )
+    source_profile_pairs = list(zip(base_sources, base_profiles))
+
+    feature_mean = (
+        raw_ftr.astype(np.float64).mean(axis=0).astype(np.float32)
+    )
+    feature_std = (
+        raw_ftr.astype(np.float64).std(axis=0) + 1e-6
+    ).astype(np.float32)
+
+    def prepare_role_views(
+        source_name: str,
+        role: str,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        corpus = corpora[source_name]
+        rows = corpus.rows_by_role[role]
+        buckets: dict[int, dict[str, list[Any]]] = {}
+        all_contexts: list[dict[str, Any]] = []
+        for row in rows:
+            minimum = corpus.prefix(
+                row, corpus_data.MINIMUM_INPUT_LENGTH
+            )
+            if float(np.max(np.abs(minimum))) == 0.0:
+                excluded_evaluation_zero_prefix[source_name][role][
+                    row.class_name
+                ] += 1
+                if source_name == "current":
+                    raise ValueError(
+                        f"{source_name} {role} row {row.identity} has an "
+                        f"all-zero eligible prefix of "
+                        f"{corpus_data.MINIMUM_INPUT_LENGTH} samples; the "
+                        "current corpus generator must guarantee occupied "
+                        "evaluation starts"
+                    )
+                # The legacy historical corpus legitimately contains idle TDD
+                # and pre-burst starts.  An exact-zero minimum prefix is
+                # no-signal/open-set evidence, not a modulation-class example.
+                # Match the established v3 common-minimum-prefix eligibility
+                # rule by omitting the complete row from every paired length.
+                continue
+            for length in corpus_data.training_view_lengths(
+                row.valid_sample_count
+            ):
+                packed, features, context = _preprocess(
+                    corpus,
+                    row,
+                    length,
+                    patch_length=patch_length,
+                    patch_count=patch_count,
+                    target_frac=target_frac,
+                )
+                bucket = buckets.setdefault(
+                    length,
+                    {"x": [], "f_raw": [], "y": [], "rows": []},
+                )
+                bucket["x"].append(packed)
+                bucket["f_raw"].append(features)
+                bucket["y"].append(row.label)
+                bucket["rows"].append(row)
+                all_contexts.append(context)
+        prepared_by_length: dict[int, dict[str, Any]] = {}
+        for length, bucket in sorted(buckets.items()):
+            packed_array = _stack(
+                bucket["x"],
+                f"{source_name} {role} {length} patches",
+            )
+            raw_feature_array = _stack(
+                bucket["f_raw"],
+                f"{source_name} {role} {length} features",
+            )
+            prepared_by_length[length] = {
+                "x": packed_array,
+                "f": (
+                    (raw_feature_array - feature_mean) / feature_std
+                ).astype(np.float32),
+                "y": np.asarray(bucket["y"], dtype=np.int64),
+                "rows": list(bucket["rows"]),
+            }
+        if not prepared_by_length:
+            raise ValueError(f"{source_name} {role} has no eligible views")
+        pooled = {
+            key: np.concatenate(
+                [prepared_by_length[length][key]
+                 for length in sorted(prepared_by_length)],
+                axis=0,
+            )
+            for key in ("x", "f", "y")
+        }
+        pooled["rows"] = [
+            row
+            for length in sorted(prepared_by_length)
+            for row in prepared_by_length[length]["rows"]
+        ]
+        return {
+            "by_length": prepared_by_length,
+            "pooled": pooled,
+        }, all_contexts
+
+    h_en, h_en_contexts = prepare_role_views(
+        "historical", "enrollment"
+    )
+    c_en, c_en_contexts = prepare_role_views(
+        "current", "enrollment"
+    )
+    h_selection, h_sel_contexts = prepare_role_views(
+        "historical", "selection"
+    )
+    c_selection, c_sel_contexts = prepare_role_views(
+        "current", "selection"
+    )
+    xen = np.concatenate(
+        (h_en["pooled"]["x"], c_en["pooled"]["x"]), axis=0
+    )
+    fen = np.concatenate(
+        (h_en["pooled"]["f"], c_en["pooled"]["f"]), axis=0
+    )
+    yen = np.concatenate(
+        (h_en["pooled"]["y"], c_en["pooled"]["y"]), axis=0
+    )
+    enrollment_rows = (
+        h_en["pooled"]["rows"] + c_en["pooled"]["rows"]
+    )
+    if any(np.sum(yen == class_index) == 0 for class_index in range(n_classes)):
+        raise ValueError("combined enrollment does not cover every public class")
+
+    ftr = ((raw_ftr - feature_mean) / feature_std).astype(np.float32)
+    data = {
+        "classes": list(classes),
+        "n_classes": n_classes,
+        "xtr": xtr,
+        "ftr": ftr,
+        "base_view_positions": tuple(base_view_positions),
+        "base_labels": base_labels_array,
+        "base_by_class": base_by_class,
+        "base_sampling_hierarchy": sampling_hierarchy,
+        "xen": xen,
+        "fen": fen,
+        "yen": yen,
+        "enrollment_sources": np.asarray(
+            [row.source for row in enrollment_rows],
+            dtype=object,
+        ),
+        "enrollment_profiles": np.asarray(
+            [row.profile_id for row in enrollment_rows],
+            dtype=object,
+        ),
+        "enrollment_lengths": np.asarray(
+            [
+                length
+                for population in (h_en, c_en)
+                for length in sorted(population["by_length"])
+                for _row in population["by_length"][length]["rows"]
+            ],
+            dtype=np.int64,
+        ),
+        "historical_selection": h_selection,
+        "current_selection": c_selection,
+        "fmean": feature_mean,
+        "fstd": feature_std,
+    }
+    audit = {
+        "frontend": td_preprocess.preprocess_metadata(),
+        "runtime_bucket_policy": {
+            "training_prefixes": list(corpus_data.RUNTIME_INPUT_LENGTHS),
+            "episode_rule": (
+                SAMPLER_CONTRACT
+            ),
+            "evaluation_rule": (
+                "enrollment and selection expand every eligible live-runtime "
+                "bucket; metrics report pooled and per-length populations; "
+                "12,160 staged samples contribute 4,096 and 8,192 prefixes"
+            ),
+            "checkpoint_length_rule": (
+                "historical and current checkpoint-domain terms use their "
+                "worst per-length balanced accuracy"
+            ),
+            "views_never_exceed_valid_sample_count": True,
+        },
+        "training": {
+            "stored_rows_before_zero_filter": len(train_rows),
+            "independent_base_identity_groups_before_zero_filter":
+                len(training_groups),
+            "independent_base_identity_groups_admitted":
+                len(base_view_positions),
+            "views": len(xtr),
+            "base_rows_by_class": {
+                class_name: int(len(base_by_class[index]))
+                for index, class_name in enumerate(classes)
+            },
+            "base_rows_by_source": {
+                source: int(sum(value == source for value in base_sources))
+                for source in corpora
+            },
+            "base_rows_by_source_profile": {
+                f"{source}:{profile}": int(
+                    sum(
+                        row_source == source and row_profile == profile
+                        for row_source, row_profile in source_profile_pairs
+                    )
+                )
+                for source, profile in sorted(
+                    set(source_profile_pairs)
+                )
+            },
+            "hierarchical_sampler_groups": {
+                classes[class_index]: {
+                    source: {
+                        profile: int(len(positions))
+                        for profile, positions in sorted(
+                            profile_groups.items()
+                        )
+                    }
+                    for source, profile_groups in sorted(
+                        sampling_hierarchy[class_index].items()
+                    )
+                }
+                for class_index in range(n_classes)
+            },
+            "hierarchical_sampler_contract": SAMPLER_CONTRACT,
+            "views_by_source_and_length": training_view_counts,
+            "excluded_all_zero_4096_prefix_by_source_and_class":
+                excluded_zero_prefix,
+            "evaluation_all_zero_4096_prefix_policy": {
+                "rule": (
+                    "historical enrollment/selection rows with an exact-zero "
+                    "4096-sample prefix are omitted from every paired runtime "
+                    "length; current rows fail closed"
+                ),
+                "excluded_by_source_role_class":
+                    excluded_evaluation_zero_prefix,
+            },
+            "admitted_base_identity_sha256": corpus_data.sha256_json(
+                sorted(admitted_base_identities)
+            ),
+            "repeated_identity_group_audit": {
+                "group_count": len(repeated_identity_groups),
+                "stored_rows_in_groups": int(
+                    sum(repeated_identity_groups.values())
+                ),
+                "maximum_stored_rows_per_identity": int(
+                    max(repeated_identity_groups.values(), default=1)
+                ),
+                "group_sizes_sha256": corpus_data.sha256_json(
+                    repeated_identity_groups
+                ),
+                "episode_independence_rule": (
+                    "all stored rows sharing one base identity contribute "
+                    "candidate views to exactly one sampling unit; support and "
+                    "query sample distinct identity-group indices"
+                ),
+            },
+        },
+        "evaluation": {
+            "combined_enrollment": len(yen),
+            "historical_enrollment_views":
+                len(h_en["pooled"]["y"]),
+            "current_enrollment_views": len(c_en["pooled"]["y"]),
+            "historical_enrollment_base_rows":
+                len(historical.rows_by_role["enrollment"]),
+            "current_enrollment_base_rows":
+                len(current.rows_by_role["enrollment"]),
+            "historical_selection_views":
+                len(h_selection["pooled"]["y"]),
+            "current_selection_views":
+                len(c_selection["pooled"]["y"]),
+            "historical_selection_base_rows":
+                len(historical.rows_by_role["selection"]),
+            "current_selection_base_rows":
+                len(current.rows_by_role["selection"]),
+            "enrollment_views_by_source_length": {
+                source: {
+                    str(length): len(population["by_length"][length]["y"])
+                    for length in sorted(population["by_length"])
+                }
+                for source, population in (
+                    ("historical", h_en),
+                    ("current", c_en),
+                )
+            },
+            "selection_views_by_source_length": {
+                source: {
+                    str(length): len(population["by_length"][length]["y"])
+                    for length in sorted(population["by_length"])
+                }
+                for source, population in (
+                    ("historical", h_selection),
+                    ("current", c_selection),
+                )
+            },
+            "current_selection_present_classes": [
+                classes[int(index)]
+                for index in np.unique(c_selection["pooled"]["y"])
+            ],
+            "combined_enrollment_profile_groups": sorted(
+                {
+                    f"{row.source}:{row.profile_id}"
+                    for row in enrollment_rows
+                }
+            ),
+            "historical_selection_profile_groups": sorted(
+                {
+                    f"{row.source}:{row.profile_id}"
+                    for row in h_selection["pooled"]["rows"]
+                }
+            ),
+            "current_selection_profile_groups": sorted(
+                {
+                    f"{row.source}:{row.profile_id}"
+                    for row in c_selection["pooled"]["rows"]
+                }
+            ),
+        },
+        "geometry": {
+            "training_views": _geometry_summary(train_contexts),
+            "historical_enrollment": _geometry_summary(h_en_contexts),
+            "current_enrollment": _geometry_summary(c_en_contexts),
+            "historical_selection": _geometry_summary(h_sel_contexts),
+            "current_selection": _geometry_summary(c_sel_contexts),
+        },
+        "feature_moments_fit": (
+            "all admitted historical+current training views only"
+        ),
+    }
+    return data, audit
+
+
+def _classification_report(
+    prediction: np.ndarray,
+    labels: np.ndarray,
+    classes: Sequence[str],
+    rows: Sequence[corpus_data.RowRef] | None = None,
+) -> dict[str, Any]:
+    predicted = np.asarray(prediction, dtype=np.int64)
+    truth = np.asarray(labels, dtype=np.int64)
+    if predicted.shape != truth.shape or truth.ndim != 1 or len(truth) == 0:
+        raise ValueError("classification report requires nonempty paired vectors")
+    recalls: list[float | None] = []
+    per_class: dict[str, dict[str, Any]] = {}
+    for class_index, class_name in enumerate(classes):
+        mask = truth == class_index
+        count = int(np.sum(mask))
+        recall = (
+            float(np.mean(predicted[mask] == class_index))
+            if count > 0
+            else None
+        )
+        recalls.append(recall)
+        per_class[class_name] = {"count": count, "recall": recall}
+    present = [value for value in recalls if value is not None]
+    if not present:
+        raise AssertionError("nonempty labels produced no present class")
+    report = {
+        "count": len(truth),
+        "accuracy": float(np.mean(predicted == truth)),
+        # The all-public-class score assigns zero recall to a class absent from
+        # this particular population.  The present-class score is the one used
+        # in the worst-domain checkpoint floor for a subset current corpus.
+        "balanced_accuracy": float(
+            np.mean([0.0 if value is None else value for value in recalls])
+        ),
+        "present_class_balanced_accuracy": float(np.mean(present)),
+        "present_class_count": len(present),
+        "per_class": per_class,
+    }
+    if rows is None:
+        return report
+    if len(rows) != len(truth):
+        raise ValueError("profile report rows do not align with labels")
+    profile_groups: dict[str, list[int]] = {}
+    profile_metadata: dict[str, tuple[str, str, int]] = {}
+    for index, row in enumerate(rows):
+        if int(truth[index]) != row.label:
+            raise ValueError("profile report row label disagrees with truth")
+        key = f"{row.source}:{row.profile_id}"
+        expected = (row.source, row.class_name, row.label)
+        previous = profile_metadata.get(key)
+        if previous is not None and previous != expected:
+            raise ValueError(f"profile report group {key!r} crosses classes")
+        profile_metadata[key] = expected
+        profile_groups.setdefault(key, []).append(index)
+    per_profile: dict[str, dict[str, Any]] = {}
+    profile_recalls: list[float] = []
+    for key, positions_list in sorted(profile_groups.items()):
+        positions = np.asarray(positions_list, dtype=np.int64)
+        source, class_name, label = profile_metadata[key]
+        recall = float(np.mean(predicted[positions] == label))
+        profile_recalls.append(recall)
+        per_profile[key] = {
+            "source": source,
+            "profile": key.split(":", 1)[1],
+            "public_class": class_name,
+            "count": len(positions),
+            "recall": recall,
+        }
+    worst = min(profile_recalls)
+    report.update(
+        {
+            "profile_count": len(per_profile),
+            "profile_balanced_accuracy": float(np.mean(profile_recalls)),
+            "worst_profile_recall": worst,
+            "worst_profiles": [
+                key
+                for key, value in per_profile.items()
+                if float(value["recall"]) == worst
+            ],
+            "per_profile": per_profile,
+        }
+    )
+    return report
+
+
+def _profile_prototype_bank(
+    embeddings: np.ndarray,
+    labels: np.ndarray,
+    sources: Sequence[str],
+    profiles: Sequence[str],
+    lengths: Sequence[int],
+    classes: Sequence[str],
+) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]]]:
+    """Build one centroid per (source, profile), mapped to a public class."""
+    value = np.asarray(embeddings, dtype=np.float32)
+    truth = np.asarray(labels, dtype=np.int64)
+    source_array = np.asarray(sources, dtype=object)
+    profile_array = np.asarray(profiles, dtype=object)
+    length_array = np.asarray(lengths, dtype=np.int64)
+    if (
+        value.ndim != 2
+        or truth.shape != (len(value),)
+        or source_array.shape != truth.shape
+        or profile_array.shape != truth.shape
+        or length_array.shape != truth.shape
+    ):
+        raise ValueError("profile prototype inputs have inconsistent shapes")
+    keys = sorted(
+        {
+            (str(source_array[index]), str(profile_array[index]))
+            for index in range(len(value))
+        }
+    )
+    prototypes: list[np.ndarray] = []
+    prototype_labels: list[int] = []
+    metadata: list[dict[str, Any]] = []
+    for source, profile in keys:
+        mask = (source_array == source) & (profile_array == profile)
+        group_labels = np.unique(truth[mask])
+        if len(group_labels) != 1:
+            raise ValueError(
+                f"enrollment profile group {source}:{profile} crosses "
+                "public classes"
+            )
+        label = int(group_labels[0])
+        if label < 0 or label >= len(classes):
+            raise ValueError("enrollment profile group has an invalid class")
+        prototypes.append(value[mask].mean(axis=0))
+        prototype_labels.append(label)
+        metadata.append(
+            {
+                "source": source,
+                "profile": profile,
+                "public_class": classes[label],
+                "enrollment_views": int(np.sum(mask)),
+                "eligible_lengths": sorted(
+                    int(length) for length in np.unique(length_array[mask])
+                ),
+            }
+        )
+    bank = np.stack(prototypes).astype(np.float32)
+    bank_labels = np.asarray(prototype_labels, dtype=np.int64)
+    missing = [
+        classes[class_index]
+        for class_index in range(len(classes))
+        if not np.any(bank_labels == class_index)
+    ]
+    if missing:
+        raise ValueError(
+            f"profile prototype bank is missing public classes {missing}"
+        )
+    return bank, bank_labels, metadata
+
+
+def _predict_from_profile_bank(
+    embeddings: np.ndarray,
+    prototypes: np.ndarray,
+    prototype_labels: np.ndarray,
+    n_classes: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Predict a public class by its nearest source/profile centroid."""
+    value = np.asarray(embeddings, dtype=np.float32)
+    bank = np.asarray(prototypes, dtype=np.float32)
+    labels = np.asarray(prototype_labels, dtype=np.int64)
+    if value.ndim != 2 or bank.ndim != 2 or value.shape[1] != bank.shape[1]:
+        raise ValueError("embedding/prototype dimensions disagree")
+    if labels.shape != (len(bank),):
+        raise ValueError("prototype labels disagree with prototype rows")
+    prototype_distance = (
+        (value[:, None, :] - bank[None, :, :]) ** 2
+    ).sum(axis=-1)
+    class_distance = np.empty((len(value), n_classes), dtype=np.float32)
+    for class_index in range(n_classes):
+        mask = labels == class_index
+        if not np.any(mask):
+            raise ValueError(
+                f"profile bank has no prototype for class {class_index}"
+            )
+        class_distance[:, class_index] = prototype_distance[:, mask].min(
+            axis=1
+        )
+    return class_distance.argmin(axis=1), class_distance
+
+
+def _evaluate(
+    net: InvariantPatchCNN,
+    data: Mapping[str, Any],
+    device: torch.device,
+) -> tuple[dict[str, Any], np.ndarray]:
+    enrollment = embed_all(
+        net, data["xen"], data["fen"], device
+    )
+    prototypes, prototype_labels, prototype_metadata = _profile_prototype_bank(
+        enrollment,
+        np.asarray(data["yen"], dtype=np.int64),
+        data["enrollment_sources"],
+        data["enrollment_profiles"],
+        data["enrollment_lengths"],
+        data["classes"],
+    )
+
+    def evaluate_source(
+        population: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[int, np.ndarray], dict[int, np.ndarray]]:
+        reports: dict[str, Any] = {}
+        predictions: dict[int, np.ndarray] = {}
+        labels_by_length: dict[int, np.ndarray] = {}
+        for length, bucket in sorted(population["by_length"].items()):
+            embeddings = embed_all(
+                net, bucket["x"], bucket["f"], device
+            )
+            prediction, _ = _predict_from_profile_bank(
+                embeddings,
+                prototypes,
+                prototype_labels,
+                int(data["n_classes"]),
+            )
+            labels = np.asarray(bucket["y"], dtype=np.int64)
+            predictions[int(length)] = prediction
+            labels_by_length[int(length)] = labels
+            reports[str(length)] = _classification_report(
+                prediction,
+                labels,
+                data["classes"],
+                bucket["rows"],
+            )
+        pooled_prediction = np.concatenate(
+            [predictions[length] for length in sorted(predictions)]
+        )
+        pooled_labels = np.concatenate(
+            [labels_by_length[length] for length in sorted(labels_by_length)]
+        )
+        balanced = [
+            float(report["balanced_accuracy"])
+            for report in reports.values()
+        ]
+        present_balanced = [
+            float(report["present_class_balanced_accuracy"])
+            for report in reports.values()
+        ]
+        return {
+            "pooled": _classification_report(
+                pooled_prediction,
+                pooled_labels,
+                data["classes"],
+                population["pooled"]["rows"],
+            ),
+            "per_length": reports,
+            "worst_length_balanced_accuracy": min(balanced),
+            "worst_length_present_class_balanced_accuracy":
+                min(present_balanced),
+            "worst_balanced_lengths": [
+                int(length)
+                for length, report in reports.items()
+                if float(report["balanced_accuracy"]) == min(balanced)
+            ],
+            "worst_present_class_balanced_lengths": [
+                int(length)
+                for length, report in reports.items()
+                if float(report["present_class_balanced_accuracy"])
+                == min(present_balanced)
+            ],
+            "worst_profile_recall_across_lengths": min(
+                float(report["worst_profile_recall"])
+                for report in reports.values()
+            ),
+            "worst_profile_length_cells": [
+                {
+                    "length": int(length),
+                    "profile": profile,
+                    "recall": float(report["worst_profile_recall"]),
+                }
+                for length, report in reports.items()
+                for profile in report["worst_profiles"]
+                if float(report["worst_profile_recall"])
+                == min(
+                    float(candidate["worst_profile_recall"])
+                    for candidate in reports.values()
+                )
+            ],
+        }, predictions, labels_by_length
+
+    historical, historical_prediction, historical_labels = evaluate_source(
+        data["historical_selection"]
+    )
+    current, current_prediction, current_labels = evaluate_source(
+        data["current_selection"]
+    )
+    combined_prediction_by_length: dict[int, np.ndarray] = {}
+    combined_labels_by_length: dict[int, np.ndarray] = {}
+    combined_per_length: dict[str, Any] = {}
+    combined_rows_by_length: dict[int, list[corpus_data.RowRef]] = {}
+    all_lengths = sorted(
+        set(historical_prediction) | set(current_prediction)
+    )
+    for length in all_lengths:
+        predictions = [
+            population[length]
+            for population in (
+                historical_prediction,
+                current_prediction,
+            )
+            if length in population
+        ]
+        labels = [
+            population[length]
+            for population in (historical_labels, current_labels)
+            if length in population
+        ]
+        combined_prediction_by_length[length] = np.concatenate(predictions)
+        combined_labels_by_length[length] = np.concatenate(labels)
+        combined_rows_by_length[length] = [
+            row
+            for population in (
+                data["historical_selection"],
+                data["current_selection"],
+            )
+            if length in population["by_length"]
+            for row in population["by_length"][length]["rows"]
+        ]
+        combined_per_length[str(length)] = _classification_report(
+            combined_prediction_by_length[length],
+            combined_labels_by_length[length],
+            data["classes"],
+            combined_rows_by_length[length],
+        )
+    combined_pooled_prediction = np.concatenate(
+        [
+            combined_prediction_by_length[length]
+            for length in all_lengths
+        ]
+    )
+    combined_pooled_labels = np.concatenate(
+        [combined_labels_by_length[length] for length in all_lengths]
+    )
+    combined_pooled_rows = [
+        row
+        for length in all_lengths
+        for row in combined_rows_by_length[length]
+    ]
+    combined_balanced = [
+        float(report["balanced_accuracy"])
+        for report in combined_per_length.values()
+    ]
+    combined = {
+        "pooled": _classification_report(
+            combined_pooled_prediction,
+            combined_pooled_labels,
+            data["classes"],
+            combined_pooled_rows,
+        ),
+        "per_length": combined_per_length,
+        "worst_length_balanced_accuracy": min(combined_balanced),
+        "worst_balanced_lengths": [
+            int(length)
+            for length, report in combined_per_length.items()
+            if float(report["balanced_accuracy"]) == min(combined_balanced)
+        ],
+        "worst_profile_recall_across_lengths": min(
+            float(report["worst_profile_recall"])
+            for report in combined_per_length.values()
+        ),
+        "worst_profile_length_cells": [
+            {
+                "length": int(length),
+                "profile": profile,
+                "recall": float(report["worst_profile_recall"]),
+            }
+            for length, report in combined_per_length.items()
+            for profile in report["worst_profiles"]
+            if float(report["worst_profile_recall"])
+            == min(
+                float(candidate["worst_profile_recall"])
+                for candidate in combined_per_length.values()
+            )
+        ],
+    }
+    score = checkpoint_score(
+        historical_balanced=historical[
+            "worst_length_balanced_accuracy"
+        ],
+        current_present_class_balanced=current[
+            "worst_length_present_class_balanced_accuracy"
+        ],
+        combined_balanced=combined["pooled"]["balanced_accuracy"],
+        current_balanced=current["worst_length_balanced_accuracy"],
+    )
+    return {
+        "historical": historical,
+        "current": current,
+        "combined": combined,
+        "prototype_bank": {
+            "decision_rule": (
+                "minimum squared distance across source/profile centroids "
+                "mapped to each public class"
+            ),
+            "enrollment_view_rule": (
+                "each source/profile centroid pools every eligible "
+                "4,096/8,192/16,384 prefix view"
+            ),
+            "groups": prototype_metadata,
+            "prototype_public_class_indices": prototype_labels.tolist(),
+        },
+        "checkpoint_score": list(score),
+        "checkpoint_score_contract": CHECKPOINT_SCORE_CONTRACT,
+    }, prototypes
+
+
+def _select_hierarchical_bases(
+    hierarchy: Sequence[Mapping[str, Mapping[str, np.ndarray]]],
+    rng: np.random.Generator,
+    *,
+    per_class: int,
+    current_source_share: Any = Fraction(1, 2),
+    allocation_round: int = 0,
+) -> list[np.ndarray]:
+    """Select balanced, distinct base identities for every public class."""
+    if per_class <= 0:
+        raise ValueError("per_class must be positive")
+    share = _source_share_fraction(current_source_share)
+    if (
+        isinstance(allocation_round, bool)
+        or not isinstance(allocation_round, (int, np.integer))
+        or int(allocation_round) < 0
+    ):
+        raise ValueError("allocation_round must be a non-negative integer")
+    allocation_round = int(allocation_round)
+    all_declared: list[int] = []
+    for class_groups in hierarchy:
+        for profile_groups in class_groups.values():
+            for positions in profile_groups.values():
+                values = np.asarray(positions, dtype=np.int64)
+                if values.ndim != 1:
+                    raise ValueError(
+                        "sampling hierarchy base groups must be vectors"
+                    )
+                all_declared.extend(int(value) for value in values)
+    if len(set(all_declared)) != len(all_declared):
+        raise ValueError(
+            "a base identity occurs in more than one sampling hierarchy group"
+        )
+    invalid_sources = sorted(
+        {
+            source
+            for class_groups in hierarchy
+            for source in class_groups
+            if source not in {"historical", "current"}
+        }
+    )
+    if invalid_sources:
+        raise ValueError(
+            f"sampling hierarchy has unsupported sources {invalid_sources}"
+        )
+    share_eligible_classes = [
+        class_index
+        for class_index, class_groups in enumerate(hierarchy)
+        if {"historical", "current"}.issubset(class_groups)
+    ]
+    eligible_rank = {
+        class_index: rank
+        for rank, class_index in enumerate(share_eligible_classes)
+    }
+
+    selected_by_class: list[np.ndarray] = []
+    for class_index, class_groups in enumerate(hierarchy):
+        remaining: dict[tuple[str, str], list[int]] = {}
+        for source, profile_groups in sorted(class_groups.items()):
+            for profile, positions in sorted(profile_groups.items()):
+                candidates = np.asarray(positions, dtype=np.int64)
+                remaining[(source, profile)] = [
+                    int(value) for value in rng.permutation(candidates)
+                ]
+        available_count = sum(len(values) for values in remaining.values())
+        if available_count < per_class:
+            raise ValueError(
+                f"class {class_index} needs {per_class} distinct base "
+                f"identities but only {available_count} are available"
+            )
+
+        source_usage = {source: 0 for source in class_groups}
+        profile_usage = {
+            (source, profile): 0
+            for source, profile_groups in class_groups.items()
+            for profile in profile_groups
+        }
+        selected: list[int] = []
+        source_plan: list[str] | None = None
+        if (
+            share != Fraction(1, 2)
+            and class_index in eligible_rank
+        ):
+            unit_index = (
+                allocation_round * len(share_eligible_classes)
+                + eligible_rank[class_index]
+            )
+            numerator_per_unit = per_class * share.numerator
+            current_slots = (
+                ((unit_index + 1) * numerator_per_unit)
+                // share.denominator
+                - (unit_index * numerator_per_unit)
+                // share.denominator
+            )
+            if current_slots < 0 or current_slots > per_class:
+                raise AssertionError("source-share apportionment is invalid")
+            source_plan = [
+                "current"
+            ] * current_slots + [
+                "historical"
+            ] * (per_class - current_slots)
+            source_plan = [
+                str(value)
+                for value in rng.permutation(np.asarray(source_plan, dtype=object))
+            ]
+
+        for slot in range(per_class):
+            available_sources = sorted(
+                source
+                for source, profile_groups in class_groups.items()
+                if any(
+                    remaining[(source, profile)]
+                    for profile in profile_groups
+                )
+            )
+            if not available_sources:
+                raise AssertionError("source allocator exhausted early")
+            if source_plan is not None and source_plan[slot] in available_sources:
+                source = source_plan[slot]
+            else:
+                # This is the legacy 1/2 rule and the deterministic spill rule
+                # when a requested source lacks enough distinct identities.
+                minimum_source_usage = min(
+                    source_usage[source] for source in available_sources
+                )
+                tied_sources = [
+                    source
+                    for source in available_sources
+                    if source_usage[source] == minimum_source_usage
+                ]
+                source = tied_sources[
+                    int(rng.integers(0, len(tied_sources)))
+                ]
+
+            available_profiles = sorted(
+                profile
+                for profile in class_groups[source]
+                if remaining[(source, profile)]
+            )
+            minimum_profile_usage = min(
+                profile_usage[(source, profile)]
+                for profile in available_profiles
+            )
+            tied_profiles = [
+                profile
+                for profile in available_profiles
+                if profile_usage[(source, profile)]
+                == minimum_profile_usage
+            ]
+            profile = tied_profiles[
+                int(rng.integers(0, len(tied_profiles)))
+            ]
+            selected.append(remaining[(source, profile)].pop())
+            source_usage[source] += 1
+            profile_usage[(source, profile)] += 1
+
+        if len(set(selected)) != per_class:
+            raise AssertionError(
+                "hierarchical sampler reused a base identity"
+            )
+        selected_by_class.append(np.asarray(selected, dtype=np.int64))
+    return selected_by_class
+
+
+def _sample_episode(
+    base_sampling_hierarchy: Sequence[
+        Mapping[str, Mapping[str, np.ndarray]]
+    ],
+    base_view_positions: Sequence[np.ndarray],
+    rng: np.random.Generator,
+    *,
+    k_shot: int,
+    q_query: int,
+    current_source_share: Any = Fraction(1, 2),
+    allocation_round: int = 0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    per_class = k_shot + q_query
+    if k_shot <= 0 or q_query <= 0:
+        raise ValueError("k_shot and q_query must be positive")
+    selected_bases = _select_hierarchical_bases(
+        base_sampling_hierarchy,
+        rng,
+        per_class=per_class,
+        current_source_share=current_source_share,
+        allocation_round=allocation_round,
+    )
+    selected_views = [
+        np.asarray(
+            [
+                rng.choice(base_view_positions[int(base)])
+                for base in class_bases
+            ],
+            dtype=np.int64,
+        )
+        for class_bases in selected_bases
+    ]
+    support = np.concatenate(
+        [views[:k_shot] for views in selected_views]
+    )
+    query = np.concatenate(
+        [views[k_shot:] for views in selected_views]
+    )
+    support_labels = np.repeat(
+        np.arange(len(base_sampling_hierarchy), dtype=np.int64), k_shot
+    )
+    query_labels = np.repeat(
+        np.arange(len(base_sampling_hierarchy), dtype=np.int64), q_query
+    )
+    return support, query, support_labels, query_labels
+
+
+def _train(
+    net: InvariantPatchCNN,
+    data: dict[str, Any],
+    device: torch.device,
+    *,
+    episodes: int,
+    eval_every: int,
+    seed: int,
+    k_shot: int,
+    q_query: int,
+    lr: float,
+    weight_decay: float,
+    warmup_frac: float,
+    label_smoothing: float,
+    phase_augmentation: bool,
+    current_source_share: Any,
+) -> tuple[InvariantPatchCNN, dict[str, Any]]:
+    if episodes <= 0 or eval_every <= 0:
+        raise ValueError("episodes and eval_every must be positive")
+    if not 0.0 <= warmup_frac < 1.0:
+        raise ValueError("warmup_frac must lie in [0, 1)")
+    source_share = _source_share_fraction(current_source_share)
+    rng = np.random.default_rng(seed)
+    net = net.to(device)
+    log_scale = torch.nn.Parameter(
+        torch.tensor(math.log(10.0), dtype=torch.float32, device=device)
+    )
+    optimizer = torch.optim.AdamW(
+        [
+            {"params": list(net.parameters()), "weight_decay": weight_decay},
+            {"params": [log_scale], "weight_decay": 0.0},
+        ],
+        lr=lr,
+    )
+    warmup = max(1, int(episodes * warmup_frac))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=max(episodes - warmup, 1)
+    )
+    best_score = (-1.0, -1.0, -1.0, -1.0)
+    best_state: tuple[dict[str, torch.Tensor], float, int] | None = None
+    history: dict[str, Any] = {
+        "loss": [],
+        "evaluation": [],
+        "checkpoint_score_contract": CHECKPOINT_SCORE_CONTRACT,
+    }
+    running_loss = 0.0
+    started = time.perf_counter()
+    for episode in range(episodes):
+        net.train()
+        if episode < warmup:
+            for group in optimizer.param_groups:
+                group["lr"] = lr * (episode + 1) / warmup
+        support, query, support_labels, query_labels = _sample_episode(
+            data["base_sampling_hierarchy"],
+            data["base_view_positions"],
+            rng,
+            k_shot=k_shot,
+            q_query=q_query,
+            current_source_share=source_share,
+            allocation_round=episode,
+        )
+        positions = np.concatenate((support, query))
+        x = torch.from_numpy(np.asarray(data["xtr"])[positions]).to(device)
+        features = torch.from_numpy(
+            np.asarray(data["ftr"])[positions]
+        ).to(device)
+        if phase_augmentation:
+            x = v3_runner._phase_augment(x)
+        embeddings = net(x, features)
+        support_embeddings = embeddings[: len(support)]
+        query_embeddings = embeddings[len(support) :]
+        support_labels_t = torch.from_numpy(support_labels).to(device)
+        prototypes = torch.stack(
+            [
+                support_embeddings[support_labels_t == class_index].mean(0)
+                for class_index in range(data["n_classes"])
+            ]
+        )
+        logits = (
+            -sq_dist(query_embeddings, prototypes)
+            * log_scale.exp().clamp(1e-3, 100.0)
+        )
+        loss = F.cross_entropy(
+            logits,
+            torch.from_numpy(query_labels).to(device),
+            label_smoothing=label_smoothing,
+        )
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        if episode >= warmup:
+            scheduler.step()
+        running_loss += float(loss.detach().cpu())
+
+        log_every = max(1, min(100, episodes))
+        if (episode + 1) % log_every == 0:
+            elapsed = time.perf_counter() - started
+            eta_minutes = (
+                elapsed / (episode + 1) * (episodes - episode - 1) / 60.0
+            )
+            mean_loss = running_loss / log_every
+            running_loss = 0.0
+            history["loss"].append(
+                {"episode": episode + 1, "value": mean_loss}
+            )
+            print(
+                f"[v4/{net.cfg.encoder}] ep {episode + 1}/{episodes} "
+                f"loss={mean_loss:.4f} eta={eta_minutes:.1f}m",
+                flush=True,
+            )
+
+        if (episode + 1) % eval_every == 0 or episode + 1 == episodes:
+            reports, _ = _evaluate(net, data, device)
+            score = tuple(float(value) for value in reports["checkpoint_score"])
+            improved = score > best_score
+            if improved:
+                best_score = score
+                best_state = (
+                    copy.deepcopy(net.state_dict()),
+                    float(log_scale.detach().cpu()),
+                    episode + 1,
+                )
+            history["evaluation"].append(
+                {
+                    "episode": episode + 1,
+                    **reports,
+                    "selected_as_best": improved,
+                }
+            )
+            print(
+                f"[v4/{net.cfg.encoder}] eval ep={episode + 1} "
+                f"hist-worst="
+                f"{reports['historical']['worst_length_balanced_accuracy']:.4f} "
+                f"current-present-worst="
+                f"{reports['current']['worst_length_present_class_balanced_accuracy']:.4f} "
+                f"combined-pooled="
+                f"{reports['combined']['pooled']['balanced_accuracy']:.4f} "
+                f"score={score}{' <- best' if improved else ''}",
+                flush=True,
+            )
+
+    if best_state is None:
+        raise RuntimeError("training completed without an evaluated checkpoint")
+    net.load_state_dict(best_state[0], strict=True)
+    history.update(
+        {
+            "episodes": episodes,
+            "best_episode": best_state[2],
+            "best_checkpoint_score": list(best_score),
+            "final_logit_scale": float(math.exp(best_state[1])),
+            "wall_clock_s": time.perf_counter() - started,
+            "sampler_contract": SAMPLER_CONTRACT,
+            "current_source_share": {
+                "numerator": source_share.numerator,
+                "denominator": source_share.denominator,
+                "value": float(source_share),
+            },
+        }
+    )
+    return net.eval(), history
+
+
+def _run_configuration(
+    args: argparse.Namespace,
+    *,
+    device: torch.device,
+) -> dict[str, Any]:
+    return {
+        "schema": "v4-current-source-development-training-v1",
+        "arguments": {
+            key: _jsonable(value)
+            for key, value in sorted(vars(args).items())
+            if key != "output_dir"
+        },
+        "checkpoint_selection": {
+            "contract": CHECKPOINT_SCORE_CONTRACT,
+            "comparison": "strict Python tuple lexicographic greater-than",
+            "predeclared": True,
+            "tunable": False,
+        },
+        "optimizer": {
+            "name": "AdamW",
+            "learning_rate": float(args.lr),
+            "network_weight_decay": float(args.weight_decay),
+            "logit_scale_weight_decay": 0.0,
+        },
+        "scheduler": {
+            "name": "linear warmup then cosine annealing",
+            "warmup_fraction": float(args.warmup_frac),
+        },
+        "randomness": {
+            "seed": int(args.seed),
+            "phase_augmentation": bool(args.phase_augmentation),
+        },
+        "software": {
+            "python": platform.python_version(),
+            "numpy": np.__version__,
+            "torch": torch.__version__,
+            "requested_device": args.device,
+            "resolved_device": str(device),
+        },
+    }
+
+
+def run(args: argparse.Namespace) -> dict[str, Any]:
+    started = time.perf_counter()
+    source_hashes_at_start = _source_hashes()
+    output = Path(args.output_dir).expanduser().resolve()
+    lowered = {part.lower() for part in output.parts}
+    if "releases" in lowered or any("sealed" in part for part in lowered):
+        raise ValueError("v4 development trainer refuses release/sealed outputs")
+    if output.exists() and any(output.iterdir()):
+        raise FileExistsError(f"output directory is not empty: {output}")
+    historical_directory = Path(args.historical_corpus).expanduser().resolve()
+    current_directory = Path(args.current_corpus).expanduser().resolve()
+    if historical_directory == current_directory:
+        raise ValueError("current corpus must be separate from historical corpus")
+    output.mkdir(parents=True, exist_ok=True)
+
+    historical, historical_contract = corpus_data.load_historical_exposed(
+        historical_directory,
+        patch_length=args.patch_length,
+        patch_count=args.patch_count,
+        target_frac=args.target_frac,
+        seed=args.seed,
+    )
+    classes = list(historical_contract["classes"])
+    current = corpus_data.load_current_corpus(
+        current_directory,
+        class_index={name: index for index, name in enumerate(classes)},
+    )
+    data, preprocessing_audit = _prepare_data(
+        historical,
+        current,
+        classes=classes,
+        patch_length=args.patch_length,
+        patch_count=args.patch_count,
+        target_frac=args.target_frac,
+    )
+    if historical.audit.get("consumed_test_rows_exposed") != 0:
+        raise AssertionError("consumed historical test rows reached v4")
+
+    device = v3_runner.resolve_device(args.device)
+    v3_runner.seed_everything(args.seed)
+    configuration = InvariantPatchConfig(
+        patch_length=args.patch_length,
+        patch_count=args.patch_count,
+        encoder=args.encoder,
+        patch_dim=args.patch_dim,
+        hidden=args.hidden,
+        set_pool=args.set_pool,
+        dropout=args.dropout,
+    )
+    net = InvariantPatchCNN(configuration)
+    net, training = _train(
+        net,
+        data,
+        device,
+        episodes=args.episodes,
+        eval_every=args.eval_every,
+        seed=args.seed,
+        k_shot=args.k_shot,
+        q_query=args.q_query,
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        warmup_frac=args.warmup_frac,
+        label_smoothing=args.label_smoothing,
+        phase_augmentation=args.phase_augmentation,
+        current_source_share=args.current_source_share,
+    )
+    final_evaluation, combined_prototypes = _evaluate(net, data, device)
+
+    state_path = output / f"{args.encoder}_state_dict.pt"
+    prototypes_path = output / "combined_prototypes.npy"
+    prototype_contract_path = output / "combined_prototype_bank.json"
+    moments_path = output / "feature_moments.npz"
+    torch.save(net.state_dict(), state_path)
+    np.save(prototypes_path, combined_prototypes)
+    _write_json(
+        prototype_contract_path,
+        final_evaluation["prototype_bank"],
+    )
+    np.savez(
+        moments_path,
+        mean=np.asarray(data["fmean"], dtype=np.float32),
+        std=np.asarray(data["fstd"], dtype=np.float32),
+    )
+
+    _assert_source_snapshot_unchanged(
+        source_hashes_at_start,
+        _source_hashes(),
+        operation="v4 branch training",
+    )
+    result = {
+        "status": "complete",
+        "development_only": True,
+        "release_evidence": False,
+        "consumed_historical_test_rows_used": 0,
+        "encoder": args.encoder,
+        "architecture": net.config(),
+        "parameter_count": int(sum(parameter.numel() for parameter in net.parameters())),
+        "run_configuration": _run_configuration(args, device=device),
+        "training": training,
+        "final_evaluation": final_evaluation,
+        "data_audit": {
+            "historical": historical.audit,
+            "current": current.audit,
+            "preprocessing": preprocessing_audit,
+            "historical_contract": historical_contract,
+            "consumed_test_rows_exposed": 0,
+        },
+        "artifacts": {
+            "state_dict": state_path.name,
+            "state_dict_sha256": corpus_data.sha256_file(state_path),
+            "combined_prototypes": prototypes_path.name,
+            "combined_prototypes_sha256":
+                corpus_data.sha256_file(prototypes_path),
+            "combined_prototype_bank": prototype_contract_path.name,
+            "combined_prototype_bank_sha256":
+                corpus_data.sha256_file(prototype_contract_path),
+            "feature_moments": moments_path.name,
+            "feature_moments_sha256": corpus_data.sha256_file(moments_path),
+        },
+        "source_sha256": source_hashes_at_start,
+        "device": str(device),
+        "wall_clock_s": time.perf_counter() - started,
+    }
+    metrics_path = output / "dev_metrics.json"
+    _write_json(metrics_path, result)
+    print(f"[v4] wrote {output}", flush=True)
+    return result
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--current-corpus", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument(
+        "--historical-corpus",
+        default=str(HISTORICAL_CORPUS),
+    )
+    parser.add_argument(
+        "--device", choices=("auto", "cpu", "mps"), default="auto"
+    )
+    parser.add_argument("--seed", type=int, default=20260728)
+    parser.add_argument(
+        "--encoder", choices=("real", "complex"), default="real"
+    )
+    parser.add_argument("--episodes", type=int, default=4_000)
+    parser.add_argument("--eval-every", type=int, default=250)
+    parser.add_argument("--k-shot", type=int, default=5)
+    parser.add_argument("--q-query", type=int, default=5)
+    parser.add_argument("--patch-length", type=int, default=64)
+    parser.add_argument("--patch-count", type=int, default=16)
+    parser.add_argument("--target-frac", type=float, default=0.5)
+    parser.add_argument("--patch-dim", type=int, default=64)
+    parser.add_argument("--hidden", type=int, default=96)
+    parser.add_argument(
+        "--set-pool", choices=("mean", "mean_std"), default="mean_std"
+    )
+    parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--weight-decay", type=float, default=2e-4)
+    parser.add_argument("--warmup-frac", type=float, default=0.03)
+    parser.add_argument("--label-smoothing", type=float, default=0.0)
+    parser.add_argument(
+        "--current-source-share",
+        type=_parse_source_share,
+        default=Fraction(1, 2),
+        help=(
+            "Exact current-source share for classes present in both sources "
+            "(accepts decimals or fractions such as 1/3; default: 1/2)"
+        ),
+    )
+    parser.add_argument(
+        "--phase-augmentation",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    return parser
+
+
+if __name__ == "__main__":
+    run(build_parser().parse_args())
