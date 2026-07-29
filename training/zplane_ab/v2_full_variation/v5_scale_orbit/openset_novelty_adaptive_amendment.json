@@ -1,0 +1,527 @@
+{
+  "schema": "atomos.v5.scale-orbit.openset-novelty-adaptive-amendment",
+  "schema_version": 1,
+  "status": "append_only_outcome_blind_before_any_v5_adaptive_novelty_generation_or_scoring",
+  "authored_at": "2026-07-29T07:12:56-07:00",
+  "lineage": "v5-scale-orbit",
+  "development_only": true,
+  "release_evidence": false,
+  "append_only": true,
+  "mutates_parent_protocol_registry_or_attempt_2_intent": false,
+  "delegated_authorization": {
+    "owner_authorization_basis": "The owner accepted the proposed adaptive v5 novelty and full-gate freeze in-thread with: Sounds perfect.",
+    "delegated_implementation_basis": "After attempt-2 source commit e14a7f2160e6792a07a77619be7281c55c8c0704, the root agent delegated implementation of only this append-only development intent, its validator, and tests.",
+    "authorized_now": [
+      "write this append-only development-only intent",
+      "write its static validator and mutation tests",
+      "run static and unit validation that opens no corpus"
+    ],
+    "not_authorized_by_this_amendment": [
+      "modify a calibrator, novelty generator, scorer, or full-gate evaluator",
+      "open or generate an adaptive or sealed novelty corpus",
+      "load a known corpus",
+      "run model inference",
+      "claim release or independent validation evidence"
+    ]
+  },
+  "parent_bindings": {
+    "recovery_protocol": {
+      "relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/recovery_protocol.json",
+      "sha256": "cc79496ba398e4ce2fcb6875d8b810bcbc1ae7f89cb75271fdf2c65e6ad2afff"
+    },
+    "seed_registry": {
+      "relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/seed_registry.json",
+      "sha256": "b832e09e8eba264e21d7845f72c0d52f671aa1f9187d55ddce94fb833347e0cd"
+    },
+    "attempt_2_intent": {
+      "relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_2.json",
+      "sha256": "5e0cc7bbd58ebe050bf983f854e154c43595dc804aedee3c1c3849cf5691b0a9"
+    },
+    "attempt_2_source": {
+      "commit": "e14a7f2160e6792a07a77619be7281c55c8c0704",
+      "commit_subject": "Train v5 with supervised scale pairs"
+    },
+    "seed20262904_identity_firewall_acceptance": {
+      "relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/seed20262904_identity_firewall_acceptance.json",
+      "sha256": "9da7e5b08bb6d5f15e80e920660315d43efe859b4db160d7e40f7b673c741d9b"
+    },
+    "trusted_current_geometry_canonicalizer_python": {
+      "relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/trusted_geometry_canonicalizer.py",
+      "sha256": "38f0cc8e4a6f866050392c923299d6c3b393e5964bbc6cb25c7fa131873062c5"
+    },
+    "trusted_current_geometry_canonicalizer_typescript": {
+      "relative_path": "src/embedding/trusted-current-geometry-canonicalizer-v5.ts",
+      "sha256": "cbaedce76fc07c844097880e8d64f4223b68a0e92633b18d065034f0861d109a"
+    }
+  },
+  "timing_and_source_boundary": {
+    "attempt_2_source_commit_bound_here": true,
+    "amendment_commit_existed_at_authorship": false,
+    "later_committed_lineage_must_prove_attempt_2_source_commit_is_an_ancestor": true,
+    "adaptive_v5_novelty_generation_started_before_this_amendment": false,
+    "adaptive_v5_novelty_scoring_started_before_this_amendment": false,
+    "sealed_novelty_generation_or_read_started_before_this_amendment": false,
+    "v5_novelty_generator_source_sha256_frozen_here": false,
+    "v5_novelty_scorer_source_sha256_frozen_here": false,
+    "v5_full_gate_source_sha256_frozen_here": false,
+    "reason_sources_are_not_frozen_here": "Those v5 sources do not yet exist in their final reviewed form; inventing or predeclaring their hashes would be false provenance.",
+    "later_immutable_pre_generation_source_freeze_must_bind_exact_sha256_for": [
+      "final v5 novelty generator source",
+      "every transitively executed novelty-generation helper",
+      "generator command and configuration",
+      "generator runtime versions numeric dtypes and RNG implementation",
+      "this intent and its validator"
+    ],
+    "later_candidate_execution_manifest_before_each_adaptive_score_must_bind_exact_sha256_for": [
+      "pre-generation source freeze",
+      "final v5 novelty generator source",
+      "final v5 novelty scorer source",
+      "final v5 full-gate evaluator source",
+      "final open-set calibrator and threshold-rank fitter source",
+      "every transitively executed scoring fitting and gate helper",
+      "this intent and its validator",
+      "selected classifier open-set policy and stage-one coefficient bytes",
+      "exact known-fit inventory manifests and content digests",
+      "produced open-set threshold and rank bytes",
+      "exact route-specific known-reference score-vector bytes",
+      "preprocessing and runtime export",
+      "generated adaptive novelty provenance and immutable digest manifest",
+      "device batch size runtime versions numeric dtypes executed command and configuration"
+    ],
+    "later_result_manifest_contract": {
+      "binds_candidate_execution_manifest_sha256": true,
+      "binds_novelty_digest_manifest_sha256": true,
+      "binds_exact_21600_per_row_final_score_and_reject_outputs_or_canonical_content_hashes": true,
+      "binds_all_72_cell_metrics_row_counts_and_keys": true,
+      "binds_exact_known_and_novelty_coverage_inventories": true,
+      "binds_all_21_known_gate_rows_and_all_6_aggregated_novelty_gate_rows": true,
+      "binds_exact_27_gate_name_inventory": true,
+      "binds_overall_all_pass": true
+    },
+    "generation_before_pre_generation_source_freeze_forbidden": true,
+    "scoring_before_candidate_execution_manifest_forbidden": true
+  },
+  "parent_development_rationale_only": {
+    "not_v5_evidence": true,
+    "not_release_evidence": true,
+    "not_independent_validation_evidence": true,
+    "may_not_supply_v5_gate_values": true,
+    "v4_generator_mechanics_source": {
+      "relative_path": "training/zplane_ab/v2_full_variation/v4_current_source/calibrate_current_source_openset.py",
+      "sha256": "06aa949defe59bb38eeb70f6d5fe8b00a56ac41893a3b73300ac3120d2c75215",
+      "role": "parent rationale for the frozen normative mechanics below, not the final v5 generator source binding"
+    },
+    "v4_design_report_seed20263001": {
+      "relative_path": ".artifacts/v4-openset-schema5-final-independent-design-seed20263001/design-evaluation.json",
+      "sha256": "c0e64ef2bdb7a8b43297af9a2c3d6dcfa775055dfae2e860d8b073d5794493c0",
+      "role": "disclosed parent development rationale only"
+    },
+    "v4_confirmation_report_seed20263004": {
+      "relative_path": ".artifacts/v4-current-source-lineage-share13-openset-confirmation-seed20263004-final/design-evaluation.json",
+      "sha256": "fcdc78ee55ee3ecfad2f61ae74c5ecd44f80fddb573cd3ee88f0433ca38192fe",
+      "role": "disclosed parent development rationale only"
+    },
+    "threshold_choice": "Retain the pre-existing conservative per-family floors AUROC 0.80 and unknown recall 0.10 without observing any v5 adaptive novelty outcome."
+  },
+  "adaptive_novelty_inventory": {
+    "seed_registry_allocation": "adaptive_novelty_development",
+    "seeds": [
+      20263005,
+      20263006,
+      20263007,
+      20263008
+    ],
+    "statistical_role": "adaptive_development_only",
+    "adaptive_reuse_allowed": true,
+    "independent_evidence_eligible": false,
+    "all_four_seeds_consumed_and_reported_jointly": true,
+    "seed_cherry_pick_or_omission_allowed": false,
+    "families": [
+      "no_signal",
+      "noise",
+      "chirp"
+    ],
+    "rows_per_family_per_seed": 300,
+    "generated_once_at_maximum_length": 16384,
+    "dtype": "complex64",
+    "observation_lengths": [
+      4096,
+      8192,
+      16384
+    ],
+    "shorter_observation_rule": "exact leading causal raw prefix of the same generated N16384 row",
+    "longest_rows_total": 3600,
+    "routes": [
+      "historical",
+      "current"
+    ],
+    "exact_cell_key_fields": [
+      "seed",
+      "prototype_source_route",
+      "observation_length",
+      "novelty_family"
+    ],
+    "exact_cell_count": 72,
+    "rows_per_cell": 300,
+    "exact_route_score_count": 21600,
+    "first_generation_digest_manifest": {
+      "required_before_scoring": true,
+      "immutable_after_first_generation": true,
+      "binds_pre_generation_source_freeze_sha256": true,
+      "binds_each_family_seed_longest_complex64_sha256": true,
+      "binds_each_family_seed_length_prefix_complex64_sha256": true,
+      "binds_final_generator_source_and_runtime_environment": true,
+      "deterministic_regeneration_allowed_only_when_every_digest_matches": true
+    },
+    "no_signal_disclosure": {
+      "all_rows_are_exact_complex64_zeros": true,
+      "rows_repeat_within_and_across_seeds": true,
+      "seed_independent_draws_claimed": false,
+      "repetition_does_not_reduce_required_seed_cell_coverage": true
+    }
+  },
+  "normative_generator_mechanics": {
+    "uses_frequency_transform": false,
+    "rng": "numpy.random.default_rng",
+    "family_seed_derivation": {
+      "message_utf8": "atomos-v4-openset:{base_seed}:{family}",
+      "digest": "SHA-256",
+      "derived_seed": "first 8 digest bytes interpreted as little-endian unsigned integer"
+    },
+    "no_signal": {
+      "generator": "exact complex64 zeros",
+      "rng_draws_per_row": 0
+    },
+    "noise": {
+      "generator": "direct time-domain complex AR(1)",
+      "innovations": "(standard_normal + 1j * standard_normal) / sqrt(2)",
+      "rho": "uniform [0.0, 0.97)",
+      "carrier_radians": "uniform [-pi, pi)",
+      "coefficient": "rho * exp(1j * carrier)",
+      "innovation_scale": "sqrt(max(1 - rho^2, 1e-12))",
+      "initial_value": "first innovation",
+      "amplitude_multiplier": "10 ** uniform(-2.0, 2.0)",
+      "global_phase_multiplier": "exp(1j * uniform(-pi, pi))",
+      "output_dtype": "complex64"
+    },
+    "chirp": {
+      "generator": "direct time-domain linear-FM exponential",
+      "normalized_time": "sample_index / max(length - 1, 1)",
+      "start_cycles_per_sample": "uniform [-0.42, 0.42)",
+      "sweep_magnitude": "uniform [0.08, 0.80)",
+      "sweep_sign": "negative iff rng.random() < 0.5",
+      "phase": "2*pi*(start*sample_index + 0.5*sweep*sample_index*normalized_time)",
+      "envelope_rate": "integers(1, 7)",
+      "envelope_phase": "uniform [-pi, pi)",
+      "envelope": "0.65 + 0.35*cos(2*pi*envelope_rate*normalized_time + envelope_phase)",
+      "amplitude_multiplier": "10 ** uniform(-2.0, 2.0)",
+      "global_phase_multiplier": "exp(1j * uniform(-pi, pi))",
+      "output_dtype": "complex64"
+    },
+    "implementation_obligation": "The later reviewed v5 generator must implement these mechanics exactly and receive its own source hash; the v4 source hash above remains rationale only."
+  },
+  "route_geometry": {
+    "current": {
+      "sample_rate_hz": 16000000,
+      "native_sample_rate_hz": 8000000,
+      "sample_rate_ratio": 2.0,
+      "trusted_geometry": true,
+      "class_independent": true,
+      "profile_independent": true,
+      "selected_profile_or_class_used": false,
+      "canonicalizer_applied_before_every_feature_or_score": true,
+      "canonicalizer_consumed_input_samples": 4096,
+      "canonicalizer_output_samples": 4096,
+      "effective_runtime_input_length_for_every_observation_length": 4096,
+      "tail_after_first_4096_ignored": true,
+      "uses_frequency_transform": false
+    },
+    "historical": {
+      "sample_rate_hz": null,
+      "native_sample_rate_hz": null,
+      "trusted_geometry_available": false,
+      "canonicalizer_applied": false,
+      "input_rule": "raw causal prefix at the declared observation length",
+      "effective_runtime_input_length_by_observation_length": {
+        "4096": 4096,
+        "8192": 8192,
+        "16384": 16384
+      },
+      "uses_frequency_transform": false
+    },
+    "geometry_frozen_before_adaptive_novelty_generation_or_scoring": true
+  },
+  "known_inventory_and_score_references": {
+    "adaptive_known_corpus": {
+      "eval_seed": 20262904,
+      "directory": "training/artifacts/signallab-current-scale-dev-v5-seed20262904-r64-identity-firewalled",
+      "statistical_role": "adaptive_development_selection_only",
+      "manifest": "scale_eval.json",
+      "manifest_sha256": "7a345bc109e46661427c2f81b46125fb48a00048e9b2b7da77505dc49135d998",
+      "raw": "scale_eval.f32",
+      "raw_sha256": "53d4ab20faf031ed2aacd3017d55ada1622d7c51f85b200aa490f3d3854dc928",
+      "stored_row_count": 7936,
+      "profile_count": 31,
+      "literal_profiles": [
+        "bluetooth-classic-connected",
+        "bluetooth-le-advertising",
+        "gsm-16qam-higher-symbol-rate-burst",
+        "gsm-32qam-higher-symbol-rate-burst",
+        "gsm-8psk-normal-burst",
+        "gsm-900-loaded-bcch",
+        "gsm-aqpsk-normal-burst",
+        "gsm-normal-burst",
+        "gsm-qpsk-higher-symbol-rate-burst",
+        "lte-band3-fdd-20m",
+        "lte-band38-tdd-10m",
+        "lte-etm1.1",
+        "lte-etm3.1",
+        "lte-etm3.1a",
+        "lte-etm3.1b",
+        "lte-nbiot-guard-isolated-component",
+        "lte-nbiot-inband-isolated-component",
+        "lte-ntm",
+        "nr-fr1-tm1.1",
+        "nr-fr1-tm3.1",
+        "nr-fr1-tm3.1a",
+        "nr-fr1-tm3.1b",
+        "nr-n3-fdd-20m",
+        "nr-n78-tdd-100m",
+        "nr-nbiot-inband-isolated-component",
+        "wifi-hr-dsss-11m",
+        "wifi-ofdm-20m",
+        "wifi6-he-er-su",
+        "wifi6-he-mu",
+        "wifi6-he-su",
+        "wifi6-he-tb"
+      ],
+      "identities_per_profile": 64,
+      "physical_scale_factors": [
+        1.0,
+        1.25,
+        1.5,
+        2.0
+      ],
+      "observation_lengths": [
+        4096,
+        8192,
+        16384
+      ],
+      "views_per_identity": 12,
+      "exact_scored_observation_count": 23808,
+      "exact_profile_length_scale_cell_count": 372,
+      "rows_per_profile_length_scale_cell": 64,
+      "exact_coverage_required": true
+    },
+    "current_route_known_reference": {
+      "population": "all seed20262904 current selection final scores pooled across every legal observation-length and physical-scale view",
+      "effective_runtime_input_length": 4096,
+      "expected_score_count": 23808,
+      "fitting_use": false,
+      "later_candidate_manifest_must_bind_exact_score_vector_sha256": true
+    },
+    "historical_route_known_reference": {
+      "population": "fixed historical development-selection final-score vectors",
+      "separate_vector_by_effective_runtime_input_length": [
+        4096,
+        8192,
+        16384
+      ],
+      "repeated_development_reference_not_independent_evidence": true,
+      "fitting_use": false,
+      "later_candidate_manifest_must_bind_each_exact_score_vector_sha256": true
+    },
+    "fitting_firewall": {
+      "seed20262904_rows_used_for_gradient_or_optimizer_step": 0,
+      "seed20262904_rows_used_for_weight_center_or_feature_moment_fit": 0,
+      "seed20262904_rows_used_for_persistent_prototype_fit": 0,
+      "seed20262904_rows_used_for_open_set_threshold_or_rank_fit": 0,
+      "adaptive_novelty_rows_used_for_any_fit_threshold_or_rank": 0,
+      "adaptive_novelty_outcomes_may_be_used_for_adaptive_development_candidate_selection": true,
+      "adaptive_candidate_rescoring_must_reuse_the_same_immutable_generated_bytes": true,
+      "sealed_rows_used_for_any_fit_or_adaptive_selection": 0
+    }
+  },
+  "fixed_stage_one_inheritance": {
+    "source_v4_policy_relative_path": ".artifacts/v4-openset-schema5-final-independent-design-seed20263001/time-domain-profile-bank-openset-v4.json",
+    "source_v4_policy_sha256": "57f3262bb6c10785a766ef6834b88fc2c8daaeae3ef9d1c9e747658c8bfc3bea",
+    "coefficient_artifact_set_sha256": "de2909bad49a4af49433f09616fa74e05eb7fa9fe4cd7a3aabc01139f78af74d",
+    "parameter_sha256_by_length": {
+      "4096": "2eef1881dc47284d5cfe1acb95a859cd10b5dfd073468a44165649e5d4220481",
+      "8192": "8b80ea17c57d9af2f8da5bbbf372e15baca6cf0a955bbf34af783a7261e194ce",
+      "16384": "bfe8dd877582d232c9957d2c11ef48c5f07ef5721eb1acd3c168c44c455430be"
+    },
+    "inherited_component": "stage-one coefficients only",
+    "source_v4_policy_sha256_must_be_enforced_exactly_by_full_gate": true,
+    "validator_must_derive_and_match_every_parameter_and_set_sha256_from_bound_policy_bytes": true,
+    "v4_classifier_reused": false,
+    "v4_prototype_bank_reused": false,
+    "v4_thresholds_or_ranks_reused": false,
+    "v4_gate_results_or_validation_claims_reused": false
+  },
+  "known_only_open_set_fit_contract": {
+    "known_false_unknown_composite_budget": 0.03,
+    "budget_population": "training or enrollment known rows only",
+    "thresholds_and_ranks_frozen_before_adaptive_novelty_scoring": true,
+    "adaptive_known_selection_rows_used_for_threshold_or_rank_fit": 0,
+    "adaptive_novelty_rows_used_for_threshold_or_rank_fit": 0,
+    "sealed_rows_used_for_threshold_or_rank_fit": 0,
+    "later_candidate_manifest_must_bind_exact_known_fit_inventory_and_content_digests": true,
+    "later_candidate_manifest_must_bind_fitter_source_and_all_executed_helpers": true,
+    "later_candidate_manifest_must_bind_produced_threshold_and_rank_bytes": true
+  },
+  "execution_contract": {
+    "device": "cpu",
+    "embedding_batch_size": 256,
+    "automatic_device_selection_allowed": false,
+    "different_device_or_batch_size_allowed": false,
+    "same_device_and_batch_required_for_later_sealed_novelty": true,
+    "runtime_versions_and_numeric_dtypes_must_be_bound_in_later_candidate_manifest": true
+  },
+  "novelty_gate_contract": {
+    "cell_metric_definitions": {
+      "auroc": "AUROC of that cell's novelty final scores as positive examples versus the exact route-specific known-reference final scores",
+      "unknown_recall": "rejected novelty rows divided by 300"
+    },
+    "aggregation": {
+      "scope_per_family": "minimum across all 4 adaptive seeds, both prototype-source routes, and all 3 observation lengths",
+      "cell_count_per_family": 24,
+      "method": "minimum_worst_cell",
+      "averaging_across_seeds_routes_lengths_or_families_allowed": false,
+      "pooled_overall_auroc_may_substitute_for_family_gate": false,
+      "missing_or_nonfinite_cell_fails": true
+    },
+    "gates": [
+      {
+        "name": "no_signal_auroc_worst_cell",
+        "metric": "auroc",
+        "family": "no_signal",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.8
+      },
+      {
+        "name": "no_signal_unknown_recall_worst_cell",
+        "metric": "unknown_recall",
+        "family": "no_signal",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.1
+      },
+      {
+        "name": "noise_auroc_worst_cell",
+        "metric": "auroc",
+        "family": "noise",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.8
+      },
+      {
+        "name": "noise_unknown_recall_worst_cell",
+        "metric": "unknown_recall",
+        "family": "noise",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.1
+      },
+      {
+        "name": "chirp_auroc_worst_cell",
+        "metric": "auroc",
+        "family": "chirp",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.8
+      },
+      {
+        "name": "chirp_unknown_recall_worst_cell",
+        "metric": "unknown_recall",
+        "family": "chirp",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.1
+      }
+    ],
+    "exact_gate_count": 6,
+    "exact_equality_passes": true,
+    "threshold_or_aggregation_adaptation_after_v5_outcome_forbidden": true
+  },
+  "known_gate_contract": {
+    "definitions_inherited_unchanged_from_bound_recovery_protocol": true,
+    "inherited_gate_count": 19,
+    "added_directional_confusion_gate_count": 2,
+    "exact_known_gate_count": 21,
+    "all_known_gates_required": true,
+    "exact_gate_names": [
+      "causal_prefix_outcome_agreement_across_observation_lengths",
+      "causal_prefix_outcome_agreement_every_source_profile",
+      "classifier_development_current_service_every_legal_cell_closed_accuracy",
+      "classifier_development_current_service_pooled_closed_accuracy",
+      "classifier_development_current_service_pooled_profile_balanced_accuracy",
+      "classifier_development_current_service_wifi_hr_dsss_worst_legal_cell_accuracy",
+      "classifier_development_current_service_worst_cell_present_class_balanced_accuracy",
+      "classifier_development_current_service_worst_profile_legal_cell_closed_accuracy",
+      "classifier_development_current_service_worst_profile_pooled_closed_accuracy",
+      "exact_eligible_pair_and_observation_coverage",
+      "exact_profile_length_scale_key_and_count_coverage",
+      "known_abstention_damage_given_closed_head_correct_pooled",
+      "known_abstention_damage_given_closed_head_correct_worst_observation_length",
+      "known_abstention_damage_given_closed_head_correct_worst_supported_source_profile_cell",
+      "known_abstention_damage_given_closed_head_correct_worst_supported_true_class_cell",
+      "length_scale_outcome_agreement_every_source_profile",
+      "length_scale_outcome_agreement_pooled",
+      "physical_scale_outcome_agreement_every_observation_length",
+      "physical_scale_outcome_agreement_pooled",
+      "wifi_hr_dsss_to_bluetooth_worst_legal_cell_confusion_rate",
+      "bluetooth_to_dsss_worst_legal_cell_confusion_rate"
+    ]
+  },
+  "full_gate_contract": {
+    "exact_known_gate_count": 21,
+    "exact_novelty_gate_count": 6,
+    "exact_total_gate_count": 27,
+    "exact_known_inventory_coverage_required": true,
+    "exact_novelty_inventory_coverage_required": true,
+    "unexpected_duplicate_or_missing_gate_name_fails": true,
+    "all_pass_rule": "true iff the exact 21 known gates and exact 6 novelty gates are present and every one of all 27 gates passes",
+    "known_21_only_may_report_full_pass": false,
+    "novelty_6_only_may_report_full_pass": false,
+    "development_only": true,
+    "release_evidence": false
+  },
+  "unused_adaptive_scale_reserve": {
+    "seeds": [
+      20262905,
+      20262906,
+      20262907,
+      20262908
+    ],
+    "state_under_this_amendment": "allocated_unspent_and_untouched",
+    "use_requires_prior_owner_authorized_append_only_amendment": true
+  },
+  "sealed_novelty_boundary": {
+    "seeds": [
+      20263002,
+      20263003
+    ],
+    "state_under_this_amendment": "sealed_unspent",
+    "this_amendment_authorizes_generation_read_or_scoring": false,
+    "candidate_freeze_required_before_generation": true,
+    "joint_claim_ledger_required_before_either_seed_generation_or_read": true,
+    "later_sealed_contract_is_separate_and_must_copy_unchanged": [
+      "families and 300-row inventory",
+      "maximum-length generation and causal-prefix rule",
+      "generator mechanics and bound final source and runtime hashes",
+      "historical and current geometry",
+      "route-specific metric and routing mechanics, explicitly excluding known-reference populations",
+      "AUROC 0.80 and unknown-recall 0.10 thresholds",
+      "worst-cell aggregation with no averaging",
+      "CPU device and embedding batch size 256"
+    ],
+    "later_candidate_freeze_must_bind": [
+      "selected classifier bytes",
+      "open-set policy and stage-one coefficient bytes",
+      "preprocessing and runtime export bytes",
+      "generator scorer full-gate calibrator threshold-rank fitter and every executed helper source bytes",
+      "separately owner-authorized sealed known-reference population and exact score-vector bytes",
+      "device batch size runtime versions and numeric dtypes",
+      "this adaptive amendment and passing adaptive gate artifact"
+    ],
+    "both_seeds_scored_jointly_once": true,
+    "redraw_rescore_or_adaptation_after_sealed_outcome_allowed": false,
+    "known_reference_population_for_sealed_stage_requires_separate_owner_authorized_freeze": true
+  }
+}
