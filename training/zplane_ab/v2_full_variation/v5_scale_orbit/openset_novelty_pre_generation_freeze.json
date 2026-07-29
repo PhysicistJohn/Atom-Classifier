@@ -1,0 +1,160 @@
+{
+  "append_only": true,
+  "authorization": {
+    "adaptive_novelty_scoring_started_before_freeze": false,
+    "final_generator_source_reviewed": true,
+    "generation_started_before_freeze": false,
+    "owner_authorized_first_adaptive_generation": true,
+    "sealed_novelty_generated_read_or_scored": false
+  },
+  "command_configuration": {
+    "device": "cpu",
+    "embedding_batch_size": 256,
+    "entrypoint_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/generate_openset_novelty_adaptive.py",
+    "generation_has_no_device_or_batch_parameter": true,
+    "no_seed_family_row_count_length_or_dtype_override": true,
+    "output_directory_relative_path": "training/artifacts/signallab-v5-adaptive-novelty-seeds20263005-08-r300-n16384",
+    "pre_generation_freeze_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/openset_novelty_pre_generation_freeze.json"
+  },
+  "development_only": true,
+  "first_generation_manifest_contract": {
+    "binds_each_family_seed_length_prefix_complex64_sha256": true,
+    "binds_each_family_seed_longest_complex64_sha256": true,
+    "binds_final_generator_source_and_runtime_environment": true,
+    "binds_pre_generation_source_freeze_sha256": true,
+    "deterministic_regeneration_allowed_only_when_every_digest_matches": true,
+    "filename": "novelty-digest-manifest.json",
+    "immutable_after_first_generation": true,
+    "required_before_scoring": true
+  },
+  "generator_source": {
+    "commit": "35440690d17c9cc75484c462ea737981cdc77092",
+    "commit_subject": "Add fail-closed v5 novelty generator",
+    "relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/generate_openset_novelty_adaptive.py",
+    "sha256": "9c547a06497669beca3421196d24ede3160286e40c5d5d51b356f456ba75f93a"
+  },
+  "inventory": {
+    "all_four_seeds_consumed_and_reported_jointly": true,
+    "canonical_byte_order": "little_endian_complex64_interleaved_real_imag",
+    "dtype": "complex64",
+    "exact_cell_count": 72,
+    "exact_cell_key_fields": [
+      "seed",
+      "prototype_source_route",
+      "observation_length",
+      "novelty_family"
+    ],
+    "exact_route_score_count": 21600,
+    "families": [
+      "no_signal",
+      "noise",
+      "chirp"
+    ],
+    "family_seed_derivation": {
+      "derived_seed": "first 8 digest bytes interpreted as little-endian unsigned integer",
+      "digest": "SHA-256",
+      "message_utf8": "atomos-v4-openset:{base_seed}:{family}"
+    },
+    "generated_once_at_maximum_length": 16384,
+    "longest_rows_total": 3600,
+    "observation_lengths": [
+      4096,
+      8192,
+      16384
+    ],
+    "rng": "numpy.random.default_rng",
+    "rng_bit_generator": "PCG64",
+    "routes": [
+      "historical",
+      "current"
+    ],
+    "rows_per_cell": 300,
+    "rows_per_family_per_seed": 300,
+    "seed_cherry_pick_or_omission_allowed": false,
+    "seed_registry_allocation": "adaptive_novelty_development",
+    "seeds": [
+      20263005,
+      20263006,
+      20263007,
+      20263008
+    ],
+    "shorter_observation_rule": "exact leading causal raw prefix of the same generated N16384 row",
+    "uses_frequency_transform": false
+  },
+  "lineage": "v5-scale-orbit",
+  "mechanics": {
+    "chirp": {
+      "amplitude_multiplier": "10 ** uniform(-2.0, 2.0)",
+      "envelope": "0.65 + 0.35*cos(2*pi*envelope_rate*normalized_time + envelope_phase)",
+      "envelope_phase": "uniform [-pi, pi)",
+      "envelope_rate": "integers(1, 7)",
+      "generator": "direct time-domain linear-FM exponential",
+      "global_phase_multiplier": "exp(1j * uniform(-pi, pi))",
+      "normalized_time": "sample_index / max(length - 1, 1)",
+      "output_dtype": "complex64",
+      "phase": "2*pi*(start*sample_index + 0.5*sweep*sample_index*normalized_time)",
+      "start_cycles_per_sample": "uniform [-0.42, 0.42)",
+      "sweep_magnitude": "uniform [0.08, 0.80)",
+      "sweep_sign": "negative iff rng.random() < 0.5"
+    },
+    "no_signal": {
+      "generator": "exact complex64 zeros",
+      "rng_draws_per_row": 0
+    },
+    "noise": {
+      "amplitude_multiplier": "10 ** uniform(-2.0, 2.0)",
+      "carrier_radians": "uniform [-pi, pi)",
+      "coefficient": "rho * exp(1j * carrier)",
+      "generator": "direct time-domain complex AR(1)",
+      "global_phase_multiplier": "exp(1j * uniform(-pi, pi))",
+      "initial_value": "first innovation",
+      "innovation_scale": "sqrt(max(1 - rho^2, 1e-12))",
+      "innovations": "(standard_normal + 1j * standard_normal) / sqrt(2)",
+      "output_dtype": "complex64",
+      "rho": "uniform [0.0, 0.97)"
+    }
+  },
+  "parent_bindings": {
+    "adaptive_novelty_amendment": {
+      "relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/openset_novelty_adaptive_amendment.json",
+      "sha256": "5622458262d51a255fa70f00f1a8baeb150500d32bb9af65db44c641cf4e1154"
+    },
+    "adaptive_novelty_amendment_validator": {
+      "relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/validate_openset_novelty_adaptive_amendment.py",
+      "sha256": "4be0c364df83a55ea5e49314667a49b9deea91aadab58164651d67dfbc930850"
+    },
+    "attempt_2_source": {
+      "commit": "e14a7f2160e6792a07a77619be7281c55c8c0704",
+      "commit_subject": "Train v5 with supervised scale pairs"
+    }
+  },
+  "release_evidence": false,
+  "runtime": {
+    "numeric_contract": {
+      "chirp_intermediate_complex_dtype": "complex128",
+      "chirp_intermediate_real_dtype": "float64",
+      "digest_and_file_dtype": "little-endian complex64",
+      "noise_recurrence_dtype": "complex128",
+      "output_dtype": "complex64",
+      "rng_draw_dtype": "float64"
+    },
+    "numpy_complex128_itemsize": 16,
+    "numpy_complex64_itemsize": 8,
+    "numpy_default_rng": "numpy.random.default_rng",
+    "numpy_default_rng_bit_generator": "PCG64",
+    "numpy_float64_itemsize": 8,
+    "numpy_version": "2.0.2",
+    "platform_machine": "arm64",
+    "platform_release": "25.5.0",
+    "platform_system": "Darwin",
+    "python_executable": "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+    "python_executable_sha256": "271143990bc83af0fb2404a255038f5faafb96df1584ed7f085e5018c0f33ffb",
+    "python_implementation": "CPython",
+    "python_version": "3.9.6",
+    "system_byteorder": "little"
+  },
+  "schema": "atomos.v5.scale-orbit.novelty-pre-generation-source-freeze",
+  "schema_version": 1,
+  "status": "committed_outcome_blind_before_first_adaptive_novelty_generation",
+  "transitively_executed_project_generation_helpers": []
+}
