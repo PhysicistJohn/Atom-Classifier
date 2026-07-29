@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import argparse
 import copy
+from contextlib import contextmanager
+from dataclasses import dataclass
 from fractions import Fraction
 import hashlib
 import json
@@ -82,6 +84,70 @@ SAMPLER_CONTRACT = (
     "balanced round-robin over nonempty profiles; then select one uniform "
     "eligible runtime-prefix view from each selected base identity"
 )
+SCALE_CONSISTENCY_ADAPTATION_PATH = (
+    HERE / "scale_consistency_adaptation_attempt_1.json"
+)
+SCALE_CONSISTENCY_ADAPTATION_SHA256 = (
+    "e3166235ed53835465b3bd7afa6ad03982e31016b4d20c6875879288b3304a90"
+)
+SCALE_CONSISTENCY_WEIGHT = 0.2
+SCALE_CONSISTENCY_PAIR_RNG_XOR = 0x5CA1E
+SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT = 31
+SCALE_CONSISTENCY_PROFILES = (
+    "bluetooth-classic-connected",
+    "bluetooth-le-advertising",
+    "gsm-16qam-higher-symbol-rate-burst",
+    "gsm-32qam-higher-symbol-rate-burst",
+    "gsm-8psk-normal-burst",
+    "gsm-900-loaded-bcch",
+    "gsm-aqpsk-normal-burst",
+    "gsm-normal-burst",
+    "gsm-qpsk-higher-symbol-rate-burst",
+    "lte-band3-fdd-20m",
+    "lte-band38-tdd-10m",
+    "lte-etm1.1",
+    "lte-etm3.1",
+    "lte-etm3.1a",
+    "lte-etm3.1b",
+    "lte-nbiot-guard-isolated-component",
+    "lte-nbiot-inband-isolated-component",
+    "lte-ntm",
+    "nr-fr1-tm1.1",
+    "nr-fr1-tm3.1",
+    "nr-fr1-tm3.1a",
+    "nr-fr1-tm3.1b",
+    "nr-n3-fdd-20m",
+    "nr-n78-tdd-100m",
+    "nr-nbiot-inband-isolated-component",
+    "wifi-hr-dsss-11m",
+    "wifi-ofdm-20m",
+    "wifi6-he-er-su",
+    "wifi6-he-mu",
+    "wifi6-he-su",
+    "wifi6-he-tb",
+)
+SCALE_CONSISTENCY_PAIR_CONTRACT = (
+    "each episode independently selects one seed20264101 current train "
+    "identity uniformly within each of the literal 31 current profiles, then "
+    "selects two distinct physical-scale views uniformly without replacement"
+)
+SCALE_CONSISTENCY_LOSS_CONTRACT = (
+    "episodic_cross_entropy_plus_0.2_times_mean_cosine_distance_between_two_"
+    "distinct_physical_scale_views_of_the_same_current_training_identity"
+)
+
+
+@dataclass(frozen=True)
+class ScaleConsistencyIdentity:
+    """One train-only physical identity and its exact scale-view positions."""
+
+    identity: str
+    source: str
+    role: str
+    population_seed: int
+    profile_id: str
+    scale_factors: tuple[float, ...]
+    view_positions: tuple[int, ...]
 
 
 def _source_share_fraction(value: Any) -> Fraction:
@@ -102,6 +168,133 @@ def _parse_source_share(value: str) -> Fraction:
     return _source_share_fraction(value)
 
 
+def _validate_scale_consistency_adaptation_source() -> dict[str, Any]:
+    """Fail closed unless the exact pre-training adaptation intent is bound."""
+    observed = corpus_data.sha256_file(SCALE_CONSISTENCY_ADAPTATION_PATH)
+    if observed != SCALE_CONSISTENCY_ADAPTATION_SHA256:
+        raise RuntimeError(
+            "scale-consistency adaptation intent SHA-256 changed: "
+            f"{observed}"
+        )
+    try:
+        document = json.loads(
+            SCALE_CONSISTENCY_ADAPTATION_PATH.read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "scale-consistency adaptation intent is unreadable"
+        ) from exc
+    expected = {
+        "status": "frozen_before_scale_consistency_source_change_or_training",
+        "development_only": True,
+        "release_evidence": False,
+        "adaptation_attempt": 1,
+    }
+    for field, value in expected.items():
+        if document.get(field) != value:
+            raise RuntimeError(
+                "scale-consistency adaptation intent changed field "
+                f"{field!r}"
+            )
+    change = document.get("predeclared_change")
+    firewall = document.get("fitting_firewall")
+    if (
+        not isinstance(change, dict)
+        or change.get("scale_consistency_weight")
+        != SCALE_CONSISTENCY_WEIGHT
+        or change.get("pair_rng")
+        != (
+            "separate numpy.default_rng(seed xor 0x5CA1E) so episodic "
+            "support/query sampling remains unchanged"
+        )
+        or not isinstance(firewall, dict)
+        or firewall.get(
+            "scale_consistency_pairs_from_seed20264101_train_role_only"
+        )
+        is not True
+        or firewall.get(
+            "seed20264101_enrollment_rows_used_for_scale_consistency"
+        )
+        != 0
+        or firewall.get("seed20262904_selection_rows_used_for_weight_fit") != 0
+        or firewall.get(
+            "seed20262904_selection_rows_used_for_prototype_fit"
+        )
+        != 0
+        or firewall.get(
+            "seed20262904_selection_rows_used_for_open_set_threshold_or_rank_fit"
+        )
+        != 0
+        or firewall.get("sealed_rows_used_for_any_fit_or_selection") != 0
+    ):
+        raise RuntimeError(
+            "scale-consistency adaptation intent no longer matches the "
+            "implemented loss or fitting firewall"
+        )
+    return {
+        "path": str(SCALE_CONSISTENCY_ADAPTATION_PATH),
+        "sha256": observed,
+        "status": document["status"],
+        "adaptation_attempt": int(document["adaptation_attempt"]),
+    }
+
+
+def _validate_scale_consistency_weight(value: Any) -> float:
+    if isinstance(value, bool):
+        raise ValueError("scale_consistency_weight must be the frozen 0.2")
+    try:
+        weight = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "scale_consistency_weight must be the frozen 0.2"
+        ) from exc
+    if not math.isfinite(weight) or weight != SCALE_CONSISTENCY_WEIGHT:
+        raise ValueError(
+            "scale_consistency_weight must equal the preregistered 0.2"
+        )
+    return weight
+
+
+def _validate_adaptation_run_configuration(args: argparse.Namespace) -> None:
+    """Reject any run that would no longer be frozen adaptation attempt 1."""
+    _validate_scale_consistency_weight(args.scale_consistency_weight)
+    expected = {
+        "seed": 20_260_740,
+        "episodes": 8_000,
+        "eval_every": 500,
+        "k_shot": 5,
+        "q_query": 5,
+        "patch_length": 64,
+        "patch_count": 16,
+        "target_frac": 0.5,
+        "patch_dim": 64,
+        "hidden": 96,
+        "set_pool": "mean_std",
+        "dropout": 0.35,
+        "lr": 1e-3,
+        "weight_decay": 5e-4,
+        "warmup_frac": 0.03,
+        "label_smoothing": 0.0,
+        "phase_augmentation": True,
+    }
+    changed = [
+        name
+        for name, value in expected.items()
+        if getattr(args, name, None) != value
+    ]
+    if changed:
+        raise ValueError(
+            "adaptation attempt 1 configuration differs from the frozen "
+            f"baseline for: {', '.join(changed)}"
+        )
+    if _source_share_fraction(args.current_source_share) != Fraction(1, 3):
+        raise ValueError(
+            "adaptation attempt 1 requires current_source_share=1/3"
+        )
+    if getattr(args, "encoder", None) not in {"real", "complex"}:
+        raise ValueError("adaptation attempt 1 encoder must be real or complex")
+
+
 def _executed_source_paths() -> dict[str, Path]:
     """Return every local Python source executed by the v5 branch runner."""
     return {
@@ -115,6 +308,8 @@ def _executed_source_paths() -> dict[str, Path]:
             scale_orbit_data.SCALE_ORBIT_IDENTITY_REJECTION_PATH.resolve(),
         "v5/seed20262904_identity_firewall_acceptance.json":
             scale_orbit_data.SCALE_ORBIT_IDENTITY_ACCEPTANCE_PATH.resolve(),
+        "v5/scale_consistency_adaptation_attempt_1.json":
+            SCALE_CONSISTENCY_ADAPTATION_PATH.resolve(),
         "v4/current_source_data.py": Path(corpus_data.__file__).resolve(),
         "v4/evaluate_current_scale.py":
             Path(scale_orbit_data.scale_data.__file__).resolve(),
@@ -126,6 +321,13 @@ def _executed_source_paths() -> dict[str, Path]:
             TRAINING / "invariant_patch_preprocess.py",
         "v3/invariant_patch_cnn.py": V2 / "invariant_patch_cnn.py",
         "v3/invariant_patch_data.py": V2 / "invariant_patch_data.py",
+        "v2/complex_multiscale_backbone.py":
+            V2 / "complex_multiscale_backbone.py",
+        "v2/unet_transfer.py": V2 / "unet_transfer.py",
+        "v2/vit_backbone.py": V2 / "vit_backbone.py",
+        "v2/multitask_autoencoder.py": V2 / "multitask_autoencoder.py",
+        "training/model.py": TRAINING / "model.py",
+        "training/preprocess.py": TRAINING / "preprocess.py",
         "training/train.py": TRAINING / "train.py",
     }
 
@@ -337,6 +539,316 @@ def _stack(values: list[np.ndarray], name: str) -> np.ndarray:
     return result
 
 
+def _validate_scale_consistency_pool(
+    pool: Mapping[str, Sequence[ScaleConsistencyIdentity]],
+    *,
+    training_view_count: int,
+) -> dict[str, Any]:
+    """Validate the exact train-only population addressable by the new loss."""
+    if (
+        len(SCALE_CONSISTENCY_PROFILES)
+        != SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT
+        or len(set(SCALE_CONSISTENCY_PROFILES))
+        != SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT
+        or tuple(corpus_data.CURRENT_PROFILES) != SCALE_CONSISTENCY_PROFILES
+    ):
+        raise RuntimeError(
+            "the literal scale-consistency profile contract changed"
+        )
+    if (
+        isinstance(training_view_count, bool)
+        or not isinstance(training_view_count, (int, np.integer))
+        or int(training_view_count) <= 0
+    ):
+        raise ValueError("training_view_count must be a positive integer")
+    if set(pool) != set(SCALE_CONSISTENCY_PROFILES):
+        missing = sorted(set(SCALE_CONSISTENCY_PROFILES) - set(pool))
+        extra = sorted(set(pool) - set(SCALE_CONSISTENCY_PROFILES))
+        raise ValueError(
+            "scale-consistency pool must contain exactly the literal 31 "
+            f"profiles; missing={missing}, extra={extra}"
+        )
+
+    expected_scales = tuple(
+        float(value) for value in scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS
+    )
+    expected_per_profile = int(
+        scale_orbit_data.SCALE_ORBIT_TRAINING_SPLIT_COUNTS["train"]
+    )
+    identities: list[str] = []
+    positions: list[int] = []
+    per_profile: dict[str, int] = {}
+    for profile in SCALE_CONSISTENCY_PROFILES:
+        entries = tuple(pool[profile])
+        if len(entries) != expected_per_profile:
+            raise ValueError(
+                f"scale-consistency profile {profile!r} must expose exactly "
+                f"{expected_per_profile} seed20264101 train identities"
+            )
+        per_profile[profile] = len(entries)
+        for entry in entries:
+            if not isinstance(entry, ScaleConsistencyIdentity):
+                raise TypeError(
+                    "scale-consistency pool entries must be "
+                    "ScaleConsistencyIdentity values"
+                )
+            if (
+                entry.source != "current"
+                or entry.role != "train"
+                or entry.population_seed
+                != scale_orbit_data.SCALE_ORBIT_TRAINING_SEED
+                or entry.profile_id != profile
+            ):
+                raise ValueError(
+                    f"scale-consistency identity {entry.identity!r} is not a "
+                    "seed20264101 current train identity in its profile"
+                )
+            if (
+                tuple(float(value) for value in entry.scale_factors)
+                != expected_scales
+                or len(entry.view_positions) != len(expected_scales)
+                or len(set(entry.view_positions)) != len(expected_scales)
+            ):
+                raise ValueError(
+                    f"scale-consistency identity {entry.identity!r} lacks "
+                    "the exact four distinct physical-scale views"
+                )
+            if any(
+                isinstance(position, bool)
+                or not isinstance(position, (int, np.integer))
+                or int(position) < 0
+                or int(position) >= int(training_view_count)
+                for position in entry.view_positions
+            ):
+                raise ValueError(
+                    f"scale-consistency identity {entry.identity!r} has an "
+                    "out-of-range training view"
+                )
+            identities.append(entry.identity)
+            positions.extend(int(value) for value in entry.view_positions)
+    if len(set(identities)) != len(identities):
+        raise ValueError(
+            "a scale-consistency training identity occurs in multiple profiles"
+        )
+    if len(set(positions)) != len(positions):
+        raise ValueError(
+            "a scale-consistency training view occurs in multiple identities"
+        )
+    expected_identity_count = (
+        SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT * expected_per_profile
+    )
+    if len(identities) != expected_identity_count:
+        raise AssertionError("scale-consistency identity count changed")
+    return {
+        "contract": SCALE_CONSISTENCY_PAIR_CONTRACT,
+        "loss_contract": SCALE_CONSISTENCY_LOSS_CONTRACT,
+        "source": "current",
+        "population_seed": scale_orbit_data.SCALE_ORBIT_TRAINING_SEED,
+        "role": "train",
+        "literal_profile_count": SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
+        "literal_profiles": list(SCALE_CONSISTENCY_PROFILES),
+        "identities_per_profile": per_profile,
+        "identity_count": len(identities),
+        "scale_views_per_identity": len(expected_scales),
+        "physical_scale_factors": list(expected_scales),
+        "addressable_training_scale_views": len(positions),
+        "merged_training_view_count": int(training_view_count),
+        "identity_sha256": corpus_data.sha256_json(sorted(identities)),
+        "pair_rng": (
+            "separate numpy.default_rng(seed xor 0x5CA1E); episodic RNG "
+            "state is never passed to scale-pair sampling"
+        ),
+        "pairs_per_episode": SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
+        "fitting_firewall": {
+            "seed20264101_train_identities_addressable": len(identities),
+            "seed20264101_enrollment_rows_addressable": 0,
+            "seed20262904_selection_rows_addressable": 0,
+            "sealed_rows_addressable": 0,
+        },
+    }
+
+
+def _sample_scale_consistency_pairs(
+    pool: Mapping[str, Sequence[ScaleConsistencyIdentity]],
+    rng: np.random.Generator,
+) -> dict[str, Any]:
+    """Sample one identity and two distinct scales for every frozen profile."""
+    if not isinstance(rng, np.random.Generator):
+        raise TypeError("scale-consistency pair RNG must be numpy.Generator")
+    pair_positions: list[tuple[int, int]] = []
+    identities: list[str] = []
+    selected_scales: list[tuple[float, float]] = []
+    for profile in SCALE_CONSISTENCY_PROFILES:
+        entries = tuple(pool.get(profile, ()))
+        if not entries:
+            raise ValueError(
+                f"scale-consistency profile {profile!r} has no identities"
+            )
+        entry = entries[int(rng.integers(0, len(entries)))]
+        if (
+            entry.source != "current"
+            or entry.role != "train"
+            or entry.population_seed
+            != scale_orbit_data.SCALE_ORBIT_TRAINING_SEED
+            or entry.profile_id != profile
+        ):
+            raise ValueError(
+                "scale-consistency sampler encountered a non-training entry"
+            )
+        scale_indices = np.asarray(
+            rng.choice(len(entry.scale_factors), size=2, replace=False),
+            dtype=np.int64,
+        )
+        if (
+            scale_indices.shape != (2,)
+            or int(scale_indices[0]) == int(scale_indices[1])
+        ):
+            raise AssertionError(
+                "scale-consistency sampler reused one physical scale"
+            )
+        pair_positions.append(
+            (
+                int(entry.view_positions[int(scale_indices[0])]),
+                int(entry.view_positions[int(scale_indices[1])]),
+            )
+        )
+        selected_scales.append(
+            (
+                float(entry.scale_factors[int(scale_indices[0])]),
+                float(entry.scale_factors[int(scale_indices[1])]),
+            )
+        )
+        identities.append(entry.identity)
+    positions_array = np.asarray(pair_positions, dtype=np.int64)
+    scales_array = np.asarray(selected_scales, dtype=np.float64)
+    if (
+        positions_array.shape
+        != (SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT, 2)
+        or scales_array.shape
+        != (SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT, 2)
+        or np.any(positions_array[:, 0] == positions_array[:, 1])
+        or np.any(scales_array[:, 0] == scales_array[:, 1])
+    ):
+        raise AssertionError("scale-consistency pair batch changed shape")
+    return {
+        "positions": positions_array,
+        "profiles": SCALE_CONSISTENCY_PROFILES,
+        "identities": tuple(identities),
+        "scale_factors": scales_array,
+    }
+
+
+def _mean_paired_cosine_distance(
+    embeddings: torch.Tensor,
+) -> torch.Tensor:
+    """Mean `1 - cosine` over a [profile, two scales, embedding] tensor."""
+    if (
+        embeddings.ndim != 3
+        or embeddings.shape[0] != SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT
+        or embeddings.shape[1] != 2
+        or embeddings.shape[2] <= 0
+        or not torch.isfinite(embeddings).all()
+    ):
+        raise ValueError(
+            "paired embeddings must be finite [31,2,embedding_dim]"
+        )
+    distance = 1.0 - F.cosine_similarity(
+        embeddings[:, 0],
+        embeddings[:, 1],
+        dim=-1,
+        eps=1e-8,
+    )
+    if not torch.isfinite(distance).all():
+        raise ValueError("paired cosine distance is non-finite")
+    return distance.mean()
+
+
+def _combine_adaptation_losses(
+    cross_entropy: torch.Tensor,
+    scale_consistency: torch.Tensor,
+    *,
+    weight: Any,
+) -> torch.Tensor:
+    frozen_weight = _validate_scale_consistency_weight(weight)
+    if (
+        cross_entropy.ndim != 0
+        or scale_consistency.ndim != 0
+        or not torch.isfinite(cross_entropy)
+        or not torch.isfinite(scale_consistency)
+    ):
+        raise ValueError("adaptation loss components must be finite scalars")
+    return cross_entropy + frozen_weight * scale_consistency
+
+
+@contextmanager
+def _auxiliary_batch_norm_eval(net: torch.nn.Module):
+    """Prevent the auxiliary forward from mutating BatchNorm running state."""
+    batch_norm_types = (
+        torch.nn.BatchNorm1d,
+        torch.nn.BatchNorm2d,
+        torch.nn.BatchNorm3d,
+        torch.nn.SyncBatchNorm,
+    )
+    batch_norm_modules = [
+        module
+        for module in net.modules()
+        if isinstance(module, batch_norm_types)
+    ]
+    original_modes = [
+        bool(module.training) for module in batch_norm_modules
+    ]
+    try:
+        for module in batch_norm_modules:
+            module.train(False)
+        yield
+    finally:
+        for module, training in zip(batch_norm_modules, original_modes):
+            module.train(training)
+
+
+def _scale_consistency_loss_for_pairs(
+    net: InvariantPatchCNN,
+    data: Mapping[str, Any],
+    pair_positions: np.ndarray,
+    device: torch.device,
+    *,
+    phase_augmentation: bool,
+) -> torch.Tensor:
+    """Embed both views of all 31 pairs and return their mean cosine distance."""
+    positions = np.asarray(pair_positions, dtype=np.int64)
+    if positions.shape != (SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT, 2):
+        raise ValueError("scale-consistency positions must have shape [31,2]")
+    if np.any(positions[:, 0] == positions[:, 1]):
+        raise ValueError("scale-consistency pairs must use distinct views")
+    if (
+        np.any(positions < 0)
+        or np.any(positions >= len(data["xtr"]))
+        or len(data["xtr"]) != len(data["ftr"])
+    ):
+        raise ValueError(
+            "scale-consistency pair position is outside aligned training views"
+        )
+    if phase_augmentation is not True:
+        raise ValueError(
+            "phase augmentation must remain enabled for both paired views"
+        )
+    flattened = positions.reshape(-1)
+    pair_x = torch.from_numpy(
+        np.asarray(data["xtr"])[flattened]
+    ).to(device)
+    pair_features = torch.from_numpy(
+        np.asarray(data["ftr"])[flattened]
+    ).to(device)
+    pair_x = v3_runner._phase_augment(pair_x)
+    with _auxiliary_batch_norm_eval(net):
+        paired_embeddings = net(pair_x, pair_features).reshape(
+            SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
+            2,
+            -1,
+        )
+    return _mean_paired_cosine_distance(paired_embeddings)
+
+
 def _build_sampling_hierarchy(
     labels: np.ndarray,
     sources: Sequence[str],
@@ -451,6 +963,11 @@ def _prepare_data(
         for source in corpora
     }
     admitted_base_identities: list[str] = []
+    scale_consistency_pool_mutable: dict[
+        str, list[ScaleConsistencyIdentity]
+    ] = {
+        profile: [] for profile in SCALE_CONSISTENCY_PROFILES
+    }
     # One manifest can carry several stored variants of the same physical base
     # acquisition (for example phase/length materializations sharing a
     # baseRowId).  They are views of one episode-sampling unit, not independent
@@ -476,6 +993,9 @@ def _prepare_data(
                 f"training identity {identity!r} crosses class, source, or profile"
             )
         positions: list[int] = []
+        current_scale_views: list[
+            tuple[scale_orbit_data.ScaleOrbitRowRef, int]
+        ] = []
         for row in group_rows:
             corpus = corpora[row.source]
             minimum = corpus.prefix(
@@ -493,13 +1013,97 @@ def _prepare_data(
                     patch_count=patch_count,
                     target_frac=target_frac,
                 )
-                positions.append(len(train_x))
+                view_position = len(train_x)
+                positions.append(view_position)
                 train_x.append(packed)
                 train_f_raw.append(features)
                 train_contexts.append(context)
                 training_view_counts[row.source][str(length)] += 1
+                if isinstance(row, scale_orbit_data.ScaleOrbitRowRef):
+                    current_scale_views.append((row, view_position))
         if not positions:
             continue
+        if first.source == "current":
+            if not all(
+                isinstance(row, scale_orbit_data.ScaleOrbitRowRef)
+                for row in group_rows
+            ):
+                raise ValueError(
+                    f"current identity {identity!r} mixes row implementations"
+                )
+            scale_rows = [
+                row for row in group_rows
+                if isinstance(row, scale_orbit_data.ScaleOrbitRowRef)
+            ]
+            if (
+                len(scale_rows)
+                != len(scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS)
+                or len(current_scale_views) != len(scale_rows)
+            ):
+                raise ValueError(
+                    f"current train identity {identity!r} lacks one admitted "
+                    "view at every physical scale"
+                )
+            profiles = {row.profile_id for row in scale_rows}
+            pair_ids = {row.pair_id for row in scale_rows}
+            realizations = {row.realization_index for row in scale_rows}
+            if (
+                len(profiles) != 1
+                or len(pair_ids) != 1
+                or len(realizations) != 1
+                or any(
+                    row.source != "current"
+                    or row.role != "train"
+                    or row.population_seed
+                    != scale_orbit_data.SCALE_ORBIT_TRAINING_SEED
+                    or row.identity != identity
+                    for row in scale_rows
+                )
+            ):
+                raise ValueError(
+                    f"current scale-consistency identity {identity!r} crosses "
+                    "source, role, seed, profile, pair, or realization"
+                )
+            profile = next(iter(profiles))
+            if profile not in scale_consistency_pool_mutable:
+                raise ValueError(
+                    f"current train identity {identity!r} has unregistered "
+                    f"profile {profile!r}"
+                )
+            position_by_scale: dict[float, int] = {}
+            for row, view_position in current_scale_views:
+                scale = float(row.physical_scale_factor)
+                if scale in position_by_scale:
+                    raise ValueError(
+                        f"current train identity {identity!r} repeats scale "
+                        f"{scale:g}"
+                    )
+                position_by_scale[scale] = int(view_position)
+            expected_scales = tuple(
+                float(value)
+                for value in scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS
+            )
+            if tuple(sorted(position_by_scale)) != tuple(
+                sorted(expected_scales)
+            ):
+                raise ValueError(
+                    f"current train identity {identity!r} lacks the exact "
+                    "physical-scale orbit"
+                )
+            scale_consistency_pool_mutable[profile].append(
+                ScaleConsistencyIdentity(
+                    identity=identity,
+                    source="current",
+                    role="train",
+                    population_seed=
+                        scale_orbit_data.SCALE_ORBIT_TRAINING_SEED,
+                    profile_id=profile,
+                    scale_factors=expected_scales,
+                    view_positions=tuple(
+                        position_by_scale[scale] for scale in expected_scales
+                    ),
+                )
+            )
         base_view_positions.append(np.asarray(positions, dtype=np.int64))
         base_labels.append(first.label)
         base_sources.append(first.source)
@@ -508,6 +1112,19 @@ def _prepare_data(
 
     xtr = _stack(train_x, "merged training patches")
     raw_ftr = _stack(train_f_raw, "merged training features")
+    scale_consistency_pool = {
+        profile: tuple(
+            sorted(
+                entries,
+                key=lambda entry: entry.identity,
+            )
+        )
+        for profile, entries in scale_consistency_pool_mutable.items()
+    }
+    scale_consistency_audit = _validate_scale_consistency_pool(
+        scale_consistency_pool,
+        training_view_count=len(xtr),
+    )
     base_labels_array = np.asarray(base_labels, dtype=np.int64)
     base_by_class = [
         np.where(base_labels_array == class_index)[0].astype(
@@ -662,6 +1279,7 @@ def _prepare_data(
         "base_labels": base_labels_array,
         "base_by_class": base_by_class,
         "base_sampling_hierarchy": sampling_hierarchy,
+        "scale_consistency_pool": scale_consistency_pool,
         "xen": xen,
         "fen": fen,
         "yen": yen,
@@ -750,6 +1368,7 @@ def _prepare_data(
                 for class_index in range(n_classes)
             },
             "hierarchical_sampler_contract": SAMPLER_CONTRACT,
+            "scale_consistency_pair_pool": scale_consistency_audit,
             "views_by_source_and_length": training_view_counts,
             "excluded_all_zero_4096_prefix_by_source_and_class":
                 excluded_zero_prefix,
@@ -1739,13 +2358,34 @@ def _train(
     label_smoothing: float,
     phase_augmentation: bool,
     current_source_share: Any,
+    scale_consistency_weight: Any,
 ) -> tuple[InvariantPatchCNN, dict[str, Any]]:
     if episodes <= 0 or eval_every <= 0:
         raise ValueError("episodes and eval_every must be positive")
     if not 0.0 <= warmup_frac < 1.0:
         raise ValueError("warmup_frac must lie in [0, 1)")
+    if (
+        isinstance(seed, bool)
+        or not isinstance(seed, (int, np.integer))
+        or int(seed) < 0
+    ):
+        raise ValueError("seed must be a non-negative integer")
+    if phase_augmentation is not True:
+        raise ValueError(
+            "scale-consistency adaptation requires the existing phase "
+            "augmentation for episodic and paired views"
+        )
+    consistency_weight = _validate_scale_consistency_weight(
+        scale_consistency_weight
+    )
+    consistency_pool_audit = _validate_scale_consistency_pool(
+        data["scale_consistency_pool"],
+        training_view_count=len(data["xtr"]),
+    )
     source_share = _source_share_fraction(current_source_share)
     rng = np.random.default_rng(seed)
+    pair_rng_seed = int(seed) ^ SCALE_CONSISTENCY_PAIR_RNG_XOR
+    pair_rng = np.random.default_rng(pair_rng_seed)
     net = net.to(device)
     log_scale = torch.nn.Parameter(
         torch.tensor(math.log(10.0), dtype=torch.float32, device=device)
@@ -1767,8 +2407,22 @@ def _train(
         "loss": [],
         "evaluation": [],
         "checkpoint_score_contract": CHECKPOINT_SCORE_CONTRACT,
+        "scale_consistency": {
+            "loss_contract": SCALE_CONSISTENCY_LOSS_CONTRACT,
+            "pair_sampling_contract": SCALE_CONSISTENCY_PAIR_CONTRACT,
+            "weight": consistency_weight,
+            "distance": "one_minus_cosine_similarity",
+            "reduction": "mean_over_one_pair_per_literal_profile",
+            "pair_rng_seed": pair_rng_seed,
+            "pair_rng_seed_rule": "seed xor 0x5CA1E",
+            "pair_rng_separate_from_episodic_rng": True,
+            "phase_augmentation_applied_to_both_paired_views": True,
+            "pool": consistency_pool_audit,
+        },
     }
     running_loss = 0.0
+    running_cross_entropy = 0.0
+    running_scale_consistency = 0.0
     started = time.perf_counter()
     for episode in range(episodes):
         net.train()
@@ -1805,10 +2459,28 @@ def _train(
             -sq_dist(query_embeddings, prototypes)
             * log_scale.exp().clamp(1e-3, 100.0)
         )
-        loss = F.cross_entropy(
+        cross_entropy = F.cross_entropy(
             logits,
             torch.from_numpy(query_labels).to(device),
             label_smoothing=label_smoothing,
+        )
+        paired = _sample_scale_consistency_pairs(
+            data["scale_consistency_pool"],
+            pair_rng,
+        )
+        # The preregistered attempt keeps the existing independent per-example
+        # phase augmentation enabled for both views in every selected pair.
+        scale_consistency = _scale_consistency_loss_for_pairs(
+            net,
+            data,
+            np.asarray(paired["positions"], dtype=np.int64),
+            device,
+            phase_augmentation=phase_augmentation,
+        )
+        loss = _combine_adaptation_losses(
+            cross_entropy,
+            scale_consistency,
+            weight=consistency_weight,
         )
         optimizer.zero_grad()
         loss.backward()
@@ -1816,6 +2488,10 @@ def _train(
         if episode >= warmup:
             scheduler.step()
         running_loss += float(loss.detach().cpu())
+        running_cross_entropy += float(cross_entropy.detach().cpu())
+        running_scale_consistency += float(
+            scale_consistency.detach().cpu()
+        )
 
         log_every = max(1, min(100, episodes))
         if (episode + 1) % log_every == 0:
@@ -1824,13 +2500,30 @@ def _train(
                 elapsed / (episode + 1) * (episodes - episode - 1) / 60.0
             )
             mean_loss = running_loss / log_every
+            mean_cross_entropy = running_cross_entropy / log_every
+            mean_scale_consistency = (
+                running_scale_consistency / log_every
+            )
             running_loss = 0.0
+            running_cross_entropy = 0.0
+            running_scale_consistency = 0.0
             history["loss"].append(
-                {"episode": episode + 1, "value": mean_loss}
+                {
+                    "episode": episode + 1,
+                    "value": mean_loss,
+                    "cross_entropy": mean_cross_entropy,
+                    "scale_consistency_cosine_distance":
+                        mean_scale_consistency,
+                    "weighted_scale_consistency": (
+                        consistency_weight * mean_scale_consistency
+                    ),
+                }
             )
             print(
                 f"[v5/{net.cfg.encoder}] ep {episode + 1}/{episodes} "
-                f"loss={mean_loss:.4f} eta={eta_minutes:.1f}m",
+                f"loss={mean_loss:.4f} ce={mean_cross_entropy:.4f} "
+                f"scale-consistency={mean_scale_consistency:.4f} "
+                f"eta={eta_minutes:.1f}m",
                 flush=True,
             )
 
@@ -1893,6 +2586,7 @@ def _run_configuration(
     args: argparse.Namespace,
     *,
     device: torch.device,
+    adaptation_binding: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
         "schema": "v5-scale-orbit-development-training-v1",
@@ -1907,6 +2601,25 @@ def _run_configuration(
             "predeclared": True,
             "tunable": False,
         },
+        "adaptation": {
+            **dict(adaptation_binding),
+            "loss_contract": SCALE_CONSISTENCY_LOSS_CONTRACT,
+            "pair_sampling_contract": SCALE_CONSISTENCY_PAIR_CONTRACT,
+            "scale_consistency_weight": float(
+                args.scale_consistency_weight
+            ),
+            "distance": "one_minus_cosine_similarity",
+            "pairs_per_episode":
+                SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
+            "phase_augmentation_applied_to_both_paired_views": True,
+            "fitting_firewall": {
+                "pair_source": "seed20264101 current train role only",
+                "seed20264101_enrollment_rows_used_for_scale_consistency": 0,
+                "seed20262904_selection_rows_used_for_weight_fit": 0,
+                "seed20262904_selection_rows_used_for_prototype_fit": 0,
+                "sealed_rows_used_for_any_fit_or_selection": 0,
+            },
+        },
         "optimizer": {
             "name": "AdamW",
             "learning_rate": float(args.lr),
@@ -1920,6 +2633,13 @@ def _run_configuration(
         "randomness": {
             "seed": int(args.seed),
             "phase_augmentation": bool(args.phase_augmentation),
+            "episodic_rng": "numpy.default_rng(seed)",
+            "scale_consistency_pair_rng": {
+                "kind": "numpy.default_rng",
+                "seed": int(args.seed) ^ SCALE_CONSISTENCY_PAIR_RNG_XOR,
+                "seed_rule": "seed xor 0x5CA1E",
+                "separate_from_episodic_rng": True,
+            },
         },
         "software": {
             "python": platform.python_version(),
@@ -1933,7 +2653,19 @@ def _run_configuration(
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     started = time.perf_counter()
+    adaptation_binding = _validate_scale_consistency_adaptation_source()
+    _validate_adaptation_run_configuration(args)
     source_hashes_at_start = _source_hashes()
+    if (
+        source_hashes_at_start.get(
+            "v5/scale_consistency_adaptation_attempt_1.json"
+        )
+        != SCALE_CONSISTENCY_ADAPTATION_SHA256
+    ):
+        raise RuntimeError(
+            "executed source snapshot omitted or changed the exact "
+            "scale-consistency adaptation intent"
+        )
     output = Path(args.output_dir).expanduser().resolve()
     lowered = {part.lower() for part in output.parts}
     if "releases" in lowered or any("sealed" in part for part in lowered):
@@ -2008,6 +2740,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         label_smoothing=args.label_smoothing,
         phase_augmentation=args.phase_augmentation,
         current_source_share=args.current_source_share,
+        scale_consistency_weight=args.scale_consistency_weight,
     )
     final_evaluation, combined_prototypes = _evaluate(net, data, device)
 
@@ -2040,7 +2773,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "encoder": args.encoder,
         "architecture": net.config(),
         "parameter_count": int(sum(parameter.numel() for parameter in net.parameters())),
-        "run_configuration": _run_configuration(args, device=device),
+        "run_configuration": _run_configuration(
+            args,
+            device=device,
+            adaptation_binding=adaptation_binding,
+        ),
         "training": training,
         "final_evaluation": final_evaluation,
         "data_audit": {
@@ -2084,12 +2821,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--device", choices=("auto", "cpu", "mps"), default="auto"
     )
-    parser.add_argument("--seed", type=int, default=20260728)
+    parser.add_argument("--seed", type=int, default=20260740)
     parser.add_argument(
         "--encoder", choices=("real", "complex"), default="real"
     )
-    parser.add_argument("--episodes", type=int, default=4_000)
-    parser.add_argument("--eval-every", type=int, default=250)
+    parser.add_argument("--episodes", type=int, default=8_000)
+    parser.add_argument("--eval-every", type=int, default=500)
     parser.add_argument("--k-shot", type=int, default=5)
     parser.add_argument("--q-query", type=int, default=5)
     parser.add_argument("--patch-length", type=int, default=64)
@@ -2100,18 +2837,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--set-pool", choices=("mean", "mean_std"), default="mean_std"
     )
-    parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument("--dropout", type=float, default=0.35)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--weight-decay", type=float, default=2e-4)
+    parser.add_argument("--weight-decay", type=float, default=5e-4)
     parser.add_argument("--warmup-frac", type=float, default=0.03)
     parser.add_argument("--label-smoothing", type=float, default=0.0)
     parser.add_argument(
         "--current-source-share",
         type=_parse_source_share,
-        default=Fraction(1, 2),
+        default=Fraction(1, 3),
         help=(
             "Exact current-source share for classes present in both sources "
-            "(accepts decimals or fractions such as 1/3; default: 1/2)"
+            "(adaptation attempt 1 is frozen at 1/3)"
+        ),
+    )
+    parser.add_argument(
+        "--scale-consistency-weight",
+        type=float,
+        required=True,
+        help=(
+            "Required explicit adaptation loss weight; attempt 1 is frozen "
+            "at exactly 0.2"
         ),
     )
     parser.add_argument(

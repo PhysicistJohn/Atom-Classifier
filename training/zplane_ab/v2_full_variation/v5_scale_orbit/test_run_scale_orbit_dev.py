@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import sys
 import unittest
+from unittest import mock
 
 import numpy as np
+import torch
 
 
 HERE = Path(__file__).resolve().parent
@@ -17,6 +20,39 @@ import scale_orbit_data  # noqa: E402
 
 CLASSES = ("am", "bluetooth", "cw", "dsss", "fm", "gsm", "ofdm")
 SCALES = (1.0, 1.25, 1.5, 2.0)
+
+
+def _scale_consistency_pool() -> tuple[
+    dict[str, tuple[runner.ScaleConsistencyIdentity, ...]],
+    int,
+]:
+    pool: dict[str, tuple[runner.ScaleConsistencyIdentity, ...]] = {}
+    position = 0
+    for profile in runner.SCALE_CONSISTENCY_PROFILES:
+        entries: list[runner.ScaleConsistencyIdentity] = []
+        for realization in range(
+            scale_orbit_data.SCALE_ORBIT_TRAINING_SPLIT_COUNTS["train"]
+        ):
+            positions = tuple(range(position, position + len(SCALES)))
+            position += len(SCALES)
+            entries.append(
+                runner.ScaleConsistencyIdentity(
+                    identity=(
+                        "scale-orbit:"
+                        f"{scale_orbit_data.SCALE_ORBIT_TRAINING_SEED}:"
+                        f"{profile}:{realization}"
+                    ),
+                    source="current",
+                    role="train",
+                    population_seed=
+                        scale_orbit_data.SCALE_ORBIT_TRAINING_SEED,
+                    profile_id=profile,
+                    scale_factors=SCALES,
+                    view_positions=positions,
+                )
+            )
+        pool[profile] = tuple(entries)
+    return pool, position
 
 
 def _rows() -> tuple[list[scale_orbit_data.ScaleOrbitRowRef], np.ndarray]:
@@ -60,7 +96,9 @@ def _rows() -> tuple[list[scale_orbit_data.ScaleOrbitRowRef], np.ndarray]:
 
 
 class ScaleOrbitRunnerTests(unittest.TestCase):
-    def test_executed_source_paths_bind_identity_acceptance(self) -> None:
+    def test_executed_source_paths_bind_identity_acceptance_and_adaptation(
+        self,
+    ) -> None:
         paths = runner._executed_source_paths()
         self.assertEqual(
             paths["v5/seed20262904_identity_firewall_acceptance.json"],
@@ -70,6 +108,372 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
             paths["v4/evaluate_current_scale.py"],
             Path(scale_orbit_data.scale_data.__file__).resolve(),
         )
+        self.assertEqual(
+            paths["v5/scale_consistency_adaptation_attempt_1.json"],
+            runner.SCALE_CONSISTENCY_ADAPTATION_PATH.resolve(),
+        )
+        expected_source_keys = {
+            "v5/run_scale_orbit_dev.py",
+            "v5/scale_orbit_data.py",
+            "v5/trusted_geometry_canonicalizer.py",
+            "v5/identity_firewall_amendment.json",
+            "v5/seed20262904_identity_rejection.json",
+            "v5/seed20262904_identity_firewall_acceptance.json",
+            "v5/scale_consistency_adaptation_attempt_1.json",
+            "v4/current_source_data.py",
+            "v4/evaluate_current_scale.py",
+            "v2/run_invariant_cnn_dev.py",
+            "v3/time_domain_invariant_patch_preprocess.py",
+            "v3/time_domain_geometry.py",
+            "v3/invariant_patch_preprocess.py",
+            "v3/invariant_patch_cnn.py",
+            "v3/invariant_patch_data.py",
+            "v2/complex_multiscale_backbone.py",
+            "v2/unet_transfer.py",
+            "v2/vit_backbone.py",
+            "v2/multitask_autoencoder.py",
+            "training/model.py",
+            "training/preprocess.py",
+            "training/train.py",
+        }
+        self.assertEqual(set(paths), expected_source_keys)
+        expected_dependency_paths = {
+            "v2/complex_multiscale_backbone.py":
+                runner.V2 / "complex_multiscale_backbone.py",
+            "v2/unet_transfer.py": runner.V2 / "unet_transfer.py",
+            "v2/vit_backbone.py": runner.V2 / "vit_backbone.py",
+            "v2/multitask_autoencoder.py":
+                runner.V2 / "multitask_autoencoder.py",
+            "training/model.py": runner.TRAINING / "model.py",
+            "training/preprocess.py": runner.TRAINING / "preprocess.py",
+        }
+        for key, expected_path in expected_dependency_paths.items():
+            self.assertEqual(paths[key], expected_path.resolve())
+        binding = runner._validate_scale_consistency_adaptation_source()
+        self.assertEqual(
+            binding["sha256"],
+            runner.SCALE_CONSISTENCY_ADAPTATION_SHA256,
+        )
+        self.assertEqual(
+            runner._source_hashes()[
+                "v5/scale_consistency_adaptation_attempt_1.json"
+            ],
+            runner.SCALE_CONSISTENCY_ADAPTATION_SHA256,
+        )
+
+    def test_scale_consistency_pool_is_exact_train_only_population(self):
+        pool, training_view_count = _scale_consistency_pool()
+        audit = runner._validate_scale_consistency_pool(
+            pool,
+            training_view_count=training_view_count,
+        )
+        self.assertEqual(audit["literal_profile_count"], 31)
+        self.assertEqual(audit["identity_count"], 31 * 40)
+        self.assertEqual(
+            audit["addressable_training_scale_views"],
+            31 * 40 * 4,
+        )
+        self.assertEqual(
+            audit["fitting_firewall"],
+            {
+                "seed20264101_train_identities_addressable": 31 * 40,
+                "seed20264101_enrollment_rows_addressable": 0,
+                "seed20262904_selection_rows_addressable": 0,
+                "sealed_rows_addressable": 0,
+            },
+        )
+
+        bad_pool = dict(pool)
+        first_profile = runner.SCALE_CONSISTENCY_PROFILES[0]
+        bad_entries = list(bad_pool[first_profile])
+        bad_entries[0] = replace(bad_entries[0], role="enrollment")
+        bad_pool[first_profile] = tuple(bad_entries)
+        with self.assertRaisesRegex(ValueError, "not a seed20264101"):
+            runner._validate_scale_consistency_pool(
+                bad_pool,
+                training_view_count=training_view_count,
+            )
+
+        bad_pool = dict(pool)
+        bad_entries = list(bad_pool[first_profile])
+        bad_entries[0] = replace(
+            bad_entries[0],
+            population_seed=scale_orbit_data.SCALE_ORBIT_SELECTION_SEED,
+            role="selection",
+        )
+        bad_pool[first_profile] = tuple(bad_entries)
+        with self.assertRaisesRegex(ValueError, "not a seed20264101"):
+            runner._validate_scale_consistency_pool(
+                bad_pool,
+                training_view_count=training_view_count,
+            )
+
+    def test_pair_rng_is_separate_and_samples_distinct_scales_per_profile(
+        self,
+    ):
+        pool, training_view_count = _scale_consistency_pool()
+        runner._validate_scale_consistency_pool(
+            pool,
+            training_view_count=training_view_count,
+        )
+        seed = 20_260_740
+        episodic_rng = np.random.default_rng(seed)
+        episodic_reference = np.random.default_rng(seed)
+        pair_rng = np.random.default_rng(
+            seed ^ runner.SCALE_CONSISTENCY_PAIR_RNG_XOR
+        )
+        sampled = runner._sample_scale_consistency_pairs(pool, pair_rng)
+        self.assertEqual(
+            sampled["positions"].shape,
+            (runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT, 2),
+        )
+        self.assertEqual(
+            sampled["profiles"],
+            runner.SCALE_CONSISTENCY_PROFILES,
+        )
+        self.assertTrue(
+            np.all(
+                sampled["scale_factors"][:, 0]
+                != sampled["scale_factors"][:, 1]
+            )
+        )
+        np.testing.assert_array_equal(
+            episodic_rng.integers(0, 2**31, size=128),
+            episodic_reference.integers(0, 2**31, size=128),
+        )
+
+        repeated = runner._sample_scale_consistency_pairs(
+            pool,
+            np.random.default_rng(
+                seed ^ runner.SCALE_CONSISTENCY_PAIR_RNG_XOR
+            ),
+        )
+        np.testing.assert_array_equal(
+            sampled["positions"],
+            repeated["positions"],
+        )
+        np.testing.assert_array_equal(
+            sampled["scale_factors"],
+            repeated["scale_factors"],
+        )
+
+    def test_cosine_distance_and_total_loss_are_exact(self):
+        embeddings = torch.zeros(
+            runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
+            2,
+            2,
+            dtype=torch.float32,
+        )
+        embeddings[:, 0, 0] = 1.0
+        embeddings[:, 1, 1] = 1.0
+        distance = runner._mean_paired_cosine_distance(embeddings)
+        self.assertEqual(float(distance), 1.0)
+        total = runner._combine_adaptation_losses(
+            torch.tensor(2.0),
+            distance,
+            weight=0.2,
+        )
+        self.assertAlmostEqual(float(total), 2.2, places=6)
+        with self.assertRaisesRegex(ValueError, "preregistered 0.2"):
+            runner._combine_adaptation_losses(
+                torch.tensor(2.0),
+                distance,
+                weight=0.1,
+            )
+
+    def test_both_pair_views_receive_existing_phase_augmentation(self):
+        pool, training_view_count = _scale_consistency_pool()
+        sampled = runner._sample_scale_consistency_pairs(
+            pool,
+            np.random.default_rng(7),
+        )
+        data = {
+            "xtr": np.ones(
+                (training_view_count, 2, 4),
+                dtype=np.float32,
+            ),
+            "ftr": np.tile(
+                np.asarray([[1.0, 0.0]], dtype=np.float32),
+                (training_view_count, 1),
+            ),
+        }
+
+        class FeatureNet(torch.nn.Module):
+            def forward(
+                self,
+                x: torch.Tensor,
+                features: torch.Tensor,
+            ) -> torch.Tensor:
+                self.observed_batch_shape = tuple(x.shape)
+                return torch.nn.functional.normalize(features, dim=-1)
+
+        net = FeatureNet()
+        with mock.patch.object(
+            runner.v3_runner,
+            "_phase_augment",
+            side_effect=lambda values: values,
+        ) as phase_augment:
+            loss = runner._scale_consistency_loss_for_pairs(
+                net,
+                data,
+                sampled["positions"],
+                torch.device("cpu"),
+                phase_augmentation=True,
+            )
+        self.assertEqual(float(loss), 0.0)
+        self.assertEqual(
+            net.observed_batch_shape[0],
+            runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT * 2,
+        )
+        phase_augment.assert_called_once()
+        self.assertEqual(
+            phase_augment.call_args.args[0].shape[0],
+            runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT * 2,
+        )
+        with self.assertRaisesRegex(ValueError, "must remain enabled"):
+            runner._scale_consistency_loss_for_pairs(
+                net,
+                data,
+                sampled["positions"],
+                torch.device("cpu"),
+                phase_augmentation=False,
+            )
+
+    def test_auxiliary_forward_preserves_batch_norm_state_and_gradients(self):
+        torch.manual_seed(11)
+        net = runner.InvariantPatchCNN(
+            runner.InvariantPatchConfig(
+                encoder="real",
+                dropout=0.35,
+            )
+        )
+        net.train()
+        batch_norm_modules = [
+            module
+            for module in net.modules()
+            if isinstance(
+                module,
+                (
+                    torch.nn.BatchNorm1d,
+                    torch.nn.BatchNorm2d,
+                    torch.nn.BatchNorm3d,
+                    torch.nn.SyncBatchNorm,
+                ),
+            )
+        ]
+        self.assertTrue(batch_norm_modules)
+        batch_norm_modules[0].eval()
+        original_modes = [
+            module.training for module in batch_norm_modules
+        ]
+        original_buffers = [
+            {
+                name: value.detach().clone()
+                for name, value in module.named_buffers(recurse=False)
+            }
+            for module in batch_norm_modules
+        ]
+        rng = np.random.default_rng(12)
+        pair_count = runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT * 2
+        data = {
+            "xtr": rng.normal(
+                size=(pair_count, 2, net.packed_length)
+            ).astype(np.float32),
+            "ftr": rng.normal(
+                size=(pair_count, net.cfg.n_features)
+            ).astype(np.float32),
+        }
+        positions = np.arange(pair_count, dtype=np.int64).reshape(-1, 2)
+
+        loss = runner._scale_consistency_loss_for_pairs(
+            net,
+            data,
+            positions,
+            torch.device("cpu"),
+            phase_augmentation=True,
+        )
+
+        self.assertTrue(loss.requires_grad)
+        self.assertEqual(
+            [module.training for module in batch_norm_modules],
+            original_modes,
+        )
+        for module, expected in zip(batch_norm_modules, original_buffers):
+            self.assertEqual(set(module._buffers), set(expected))
+            for name, value in expected.items():
+                torch.testing.assert_close(module._buffers[name], value)
+        loss.backward()
+        parameter_gradients = [
+            parameter.grad
+            for parameter in net.parameters()
+            if parameter.requires_grad and parameter.grad is not None
+        ]
+        self.assertTrue(parameter_gradients)
+        self.assertTrue(
+            all(
+                bool(torch.isfinite(gradient).all())
+                for gradient in parameter_gradients
+            )
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "deliberate"):
+            with runner._auxiliary_batch_norm_eval(net):
+                raise RuntimeError("deliberate")
+        self.assertEqual(
+            [module.training for module in batch_norm_modules],
+            original_modes,
+        )
+
+    def test_cli_and_run_configuration_freeze_attempt_one(self):
+        args = runner.build_parser().parse_args(
+            [
+                "--current-corpus",
+                "train",
+                "--current-selection-corpus",
+                "selection",
+                "--output-dir",
+                "output",
+                "--scale-consistency-weight",
+                "0.2",
+            ]
+        )
+        runner._validate_adaptation_run_configuration(args)
+        binding = runner._validate_scale_consistency_adaptation_source()
+        configuration = runner._run_configuration(
+            args,
+            device=torch.device("cpu"),
+            adaptation_binding=binding,
+        )
+        self.assertEqual(
+            configuration["adaptation"]["scale_consistency_weight"],
+            0.2,
+        )
+        self.assertEqual(
+            configuration["randomness"]["scale_consistency_pair_rng"]["seed"],
+            args.seed ^ runner.SCALE_CONSISTENCY_PAIR_RNG_XOR,
+        )
+        self.assertTrue(
+            configuration["adaptation"]["fitting_firewall"][
+                "seed20262904_selection_rows_used_for_weight_fit"
+            ]
+            == 0
+        )
+        drifted = runner.build_parser().parse_args(
+            [
+                "--current-corpus",
+                "train",
+                "--current-selection-corpus",
+                "selection",
+                "--output-dir",
+                "output",
+                "--scale-consistency-weight",
+                "0.2",
+                "--dropout",
+                "0.2",
+            ]
+        )
+        with self.assertRaisesRegex(ValueError, "dropout"):
+            runner._validate_adaptation_run_configuration(drifted)
 
     def test_checkpoint_score_is_scale_sensitive_and_fixed_width(self):
         common = {

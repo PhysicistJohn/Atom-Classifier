@@ -472,11 +472,13 @@ def validate_branch_weight(value: Any) -> float:
     try:
         weight = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError("branch weight must be a finite scalar") from exc
-    if not np.isfinite(weight):
-        raise ValueError("branch weight must be a finite scalar")
-    if not 0.0 <= weight <= 1.0:
-        raise ValueError("branch weight must lie in [0, 1]")
+        raise ValueError("branch weight must equal the frozen 0.5") from exc
+    if (
+        isinstance(value, (bool, np.bool_))
+        or not np.isfinite(weight)
+        or weight != DEFAULT_WEIGHT_REAL
+    ):
+        raise ValueError("branch weight must equal the frozen 0.5")
     return weight
 
 
@@ -652,6 +654,208 @@ def _validate_no_consumed_provenance(value: Any, *, path: str = "metrics") -> No
             _validate_no_consumed_provenance(item, path=f"{path}[{index}]")
 
 
+def _validate_scale_consistency_adaptation_contract(
+    run_configuration: Mapping[str, Any],
+    training: Mapping[str, Any],
+    preprocessing: Mapping[str, Any],
+) -> None:
+    """Require the exact preregistered attempt-1 branch contract."""
+    arguments = run_configuration.get("arguments")
+    if not isinstance(arguments, Mapping):
+        raise ValueError("branch adaptation arguments must be an object")
+    validator_arguments = dict(arguments)
+    try:
+        source_share = _validated_source_share_contract(
+            validator_arguments.get("current_source_share"),
+            "branch adaptation current_source_share",
+        )
+        validator_arguments["current_source_share"] = (
+            branch_runner.Fraction(
+                source_share["numerator"],
+                source_share["denominator"],
+            )
+        )
+        branch_runner._validate_adaptation_run_configuration(
+            argparse.Namespace(**validator_arguments)
+        )
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ValueError(
+            "branch arguments do not match scale-consistency adaptation "
+            "attempt 1"
+        ) from exc
+
+    expected_adaptation = {
+        **branch_runner._validate_scale_consistency_adaptation_source(),
+        "loss_contract": branch_runner.SCALE_CONSISTENCY_LOSS_CONTRACT,
+        "pair_sampling_contract":
+            branch_runner.SCALE_CONSISTENCY_PAIR_CONTRACT,
+        "scale_consistency_weight":
+            branch_runner.SCALE_CONSISTENCY_WEIGHT,
+        "distance": "one_minus_cosine_similarity",
+        "pairs_per_episode":
+            branch_runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
+        "phase_augmentation_applied_to_both_paired_views": True,
+        "fitting_firewall": {
+            "pair_source": "seed20264101 current train role only",
+            "seed20264101_enrollment_rows_used_for_scale_consistency": 0,
+            "seed20262904_selection_rows_used_for_weight_fit": 0,
+            "seed20262904_selection_rows_used_for_prototype_fit": 0,
+            "sealed_rows_used_for_any_fit_or_selection": 0,
+        },
+    }
+    if run_configuration.get("adaptation") != expected_adaptation:
+        raise ValueError(
+            "branch run configuration is not exact adaptation attempt 1"
+        )
+
+    preprocessing_training = preprocessing.get("training")
+    if not isinstance(preprocessing_training, Mapping):
+        raise ValueError("branch preprocessing training audit is missing")
+    audited_pool = preprocessing_training.get(
+        "scale_consistency_pair_pool"
+    )
+    consistency = training.get("scale_consistency")
+    if not isinstance(consistency, Mapping):
+        raise ValueError(
+            "branch training lacks the scale-consistency contract"
+        )
+    pool = consistency.get("pool")
+    if not isinstance(pool, Mapping) or pool != audited_pool:
+        raise ValueError(
+            "branch training scale-consistency pool does not match its "
+            "preprocessing audit"
+        )
+
+    expected_profile_count = (
+        branch_runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT
+    )
+    expected_identities_per_profile = int(
+        scale_orbit_data.SCALE_ORBIT_TRAINING_SPLIT_COUNTS["train"]
+    )
+    expected_identity_count = (
+        expected_profile_count * expected_identities_per_profile
+    )
+    expected_scale_count = len(
+        scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS
+    )
+    expected_pool_keys = {
+        "contract",
+        "loss_contract",
+        "source",
+        "population_seed",
+        "role",
+        "literal_profile_count",
+        "literal_profiles",
+        "identities_per_profile",
+        "identity_count",
+        "scale_views_per_identity",
+        "physical_scale_factors",
+        "addressable_training_scale_views",
+        "merged_training_view_count",
+        "identity_sha256",
+        "pair_rng",
+        "pairs_per_episode",
+        "fitting_firewall",
+    }
+    if set(pool) != expected_pool_keys:
+        raise ValueError(
+            "branch scale-consistency pair-pool schema changed"
+        )
+    expected_pool_values = {
+        "contract": branch_runner.SCALE_CONSISTENCY_PAIR_CONTRACT,
+        "loss_contract": branch_runner.SCALE_CONSISTENCY_LOSS_CONTRACT,
+        "source": "current",
+        "population_seed": scale_orbit_data.SCALE_ORBIT_TRAINING_SEED,
+        "role": "train",
+        "literal_profile_count": expected_profile_count,
+        "literal_profiles":
+            list(branch_runner.SCALE_CONSISTENCY_PROFILES),
+        "identities_per_profile": {
+            profile: expected_identities_per_profile
+            for profile in branch_runner.SCALE_CONSISTENCY_PROFILES
+        },
+        "identity_count": expected_identity_count,
+        "scale_views_per_identity": expected_scale_count,
+        "physical_scale_factors":
+            list(scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS),
+        "addressable_training_scale_views":
+            expected_identity_count * expected_scale_count,
+        "pair_rng": (
+            "separate numpy.default_rng(seed xor 0x5CA1E); episodic RNG "
+            "state is never passed to scale-pair sampling"
+        ),
+        "pairs_per_episode": expected_profile_count,
+        "fitting_firewall": {
+            "seed20264101_train_identities_addressable":
+                expected_identity_count,
+            "seed20264101_enrollment_rows_addressable": 0,
+            "seed20262904_selection_rows_addressable": 0,
+            "sealed_rows_addressable": 0,
+        },
+    }
+    if any(
+        pool.get(key) != value
+        for key, value in expected_pool_values.items()
+    ):
+        raise ValueError(
+            "branch scale-consistency pair-pool contract changed"
+        )
+    merged_view_count = pool.get("merged_training_view_count")
+    identity_sha256 = pool.get("identity_sha256")
+    if (
+        isinstance(merged_view_count, (bool, np.bool_))
+        or not isinstance(merged_view_count, (int, np.integer))
+        or int(merged_view_count)
+            < expected_identity_count * expected_scale_count
+        or not isinstance(identity_sha256, str)
+        or len(identity_sha256) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in identity_sha256
+        )
+    ):
+        raise ValueError(
+            "branch scale-consistency pair-pool population binding is invalid"
+        )
+
+    pair_rng_seed = (
+        int(arguments["seed"])
+        ^ branch_runner.SCALE_CONSISTENCY_PAIR_RNG_XOR
+    )
+    expected_consistency = {
+        "loss_contract": branch_runner.SCALE_CONSISTENCY_LOSS_CONTRACT,
+        "pair_sampling_contract":
+            branch_runner.SCALE_CONSISTENCY_PAIR_CONTRACT,
+        "weight": branch_runner.SCALE_CONSISTENCY_WEIGHT,
+        "distance": "one_minus_cosine_similarity",
+        "reduction": "mean_over_one_pair_per_literal_profile",
+        "pair_rng_seed": pair_rng_seed,
+        "pair_rng_seed_rule": "seed xor 0x5CA1E",
+        "pair_rng_separate_from_episodic_rng": True,
+        "phase_augmentation_applied_to_both_paired_views": True,
+        "pool": pool,
+    }
+    if dict(consistency) != expected_consistency:
+        raise ValueError(
+            "branch training scale-consistency contract changed"
+        )
+    randomness = run_configuration.get("randomness")
+    expected_pair_rng = {
+        "kind": "numpy.default_rng",
+        "seed": pair_rng_seed,
+        "seed_rule": "seed xor 0x5CA1E",
+        "separate_from_episodic_rng": True,
+    }
+    if (
+        not isinstance(randomness, Mapping)
+        or randomness.get("scale_consistency_pair_rng")
+            != expected_pair_rng
+    ):
+        raise ValueError(
+            "branch scale-consistency pair RNG binding changed"
+        )
+
+
 def validate_branch_metrics(
     payload: Mapping[str, Any],
     *,
@@ -741,6 +945,11 @@ def validate_branch_metrics(
         or runtime_policy.get("episode_rule") != branch_runner.SAMPLER_CONTRACT
     ):
         raise ValueError("branch preprocessing sampler contract changed")
+    _validate_scale_consistency_adaptation_contract(
+        run_configuration,
+        training,
+        preprocessing,
+    )
     artifacts = payload.get("artifacts")
     if not isinstance(artifacts, Mapping):
         raise ValueError("branch artifacts must be an object")
@@ -884,7 +1093,12 @@ def _training_contract(metrics: Mapping[str, Any]) -> dict[str, Any]:
         if (
             key == "episodes"
             or "contract" in key
-            or key in {"k_shot", "q_query", "hierarchy"}
+            or key in {
+                "k_shot",
+                "q_query",
+                "hierarchy",
+                "scale_consistency",
+            }
         )
     )
     contract = {key: training[key] for key in contract_keys}
@@ -916,6 +1130,7 @@ def assert_branches_match(
     for field in (
         "schema",
         "checkpoint_selection",
+        "adaptation",
         "optimizer",
         "scheduler",
         "randomness",

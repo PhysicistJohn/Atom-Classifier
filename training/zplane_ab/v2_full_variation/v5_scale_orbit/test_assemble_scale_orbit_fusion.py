@@ -87,8 +87,88 @@ def _audit() -> dict:
     }
 
 
+def _scale_consistency_pool_audit() -> dict:
+    runner = assembler.branch_runner
+    identities_per_profile = (
+        assembler.scale_orbit_data.SCALE_ORBIT_TRAINING_SPLIT_COUNTS["train"]
+    )
+    identity_count = (
+        runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT
+        * identities_per_profile
+    )
+    scale_count = len(
+        assembler.scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS
+    )
+    return {
+        "contract": runner.SCALE_CONSISTENCY_PAIR_CONTRACT,
+        "loss_contract": runner.SCALE_CONSISTENCY_LOSS_CONTRACT,
+        "source": "current",
+        "population_seed":
+            assembler.scale_orbit_data.SCALE_ORBIT_TRAINING_SEED,
+        "role": "train",
+        "literal_profile_count":
+            runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
+        "literal_profiles": list(runner.SCALE_CONSISTENCY_PROFILES),
+        "identities_per_profile": {
+            profile: identities_per_profile
+            for profile in runner.SCALE_CONSISTENCY_PROFILES
+        },
+        "identity_count": identity_count,
+        "scale_views_per_identity": scale_count,
+        "physical_scale_factors": list(
+            assembler.scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS
+        ),
+        "addressable_training_scale_views": identity_count * scale_count,
+        "merged_training_view_count": identity_count * scale_count + 128,
+        "identity_sha256": "a" * 64,
+        "pair_rng": (
+            "separate numpy.default_rng(seed xor 0x5CA1E); episodic RNG "
+            "state is never passed to scale-pair sampling"
+        ),
+        "pairs_per_episode":
+            runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
+        "fitting_firewall": {
+            "seed20264101_train_identities_addressable": identity_count,
+            "seed20264101_enrollment_rows_addressable": 0,
+            "seed20262904_selection_rows_addressable": 0,
+            "sealed_rows_addressable": 0,
+        },
+    }
+
+
 def _branch_metrics(encoder: str = "real") -> dict:
-    share = {"numerator": 1, "denominator": 2, "value": 0.5}
+    runner = assembler.branch_runner
+    arguments = runner.build_parser().parse_args(
+        [
+            "--current-corpus",
+            "training",
+            "--current-selection-corpus",
+            "selection",
+            "--output-dir",
+            "output",
+            "--encoder",
+            encoder,
+            "--scale-consistency-weight",
+            "0.2",
+        ]
+    )
+    adaptation_binding = (
+        runner._validate_scale_consistency_adaptation_source()
+    )
+    run_configuration = runner._run_configuration(
+        arguments,
+        device=assembler.torch.device("cpu"),
+        adaptation_binding=adaptation_binding,
+    )
+    share = {
+        "numerator": 1,
+        "denominator": 3,
+        "value": 1.0 / 3.0,
+    }
+    pool = _scale_consistency_pool_audit()
+    pair_rng_seed = (
+        arguments.seed ^ runner.SCALE_CONSISTENCY_PAIR_RNG_XOR
+    )
     return {
         "status": "complete",
         "development_only": True,
@@ -97,25 +177,24 @@ def _branch_metrics(encoder: str = "real") -> dict:
         "encoder": encoder,
         "architecture": {"encoder": encoder},
         "parameter_count": 1,
-        "run_configuration": {
-            "schema": assembler.BRANCH_SCHEMA,
-            "arguments": {
-                "encoder": encoder,
-                "seed": 7,
-                "episodes": 1,
-                "current_source_share": share,
-            },
-            "randomness": {"seed": 7},
-            "checkpoint_selection": {
-                "contract": assembler.branch_runner.CHECKPOINT_SCORE_CONTRACT,
-                "predeclared": True,
-                "tunable": False,
-            },
-        },
+        "run_configuration": run_configuration,
         "training": {
-            "episodes": 1,
-            "sampler_contract": assembler.branch_runner.SAMPLER_CONTRACT,
+            "episodes": arguments.episodes,
+            "sampler_contract": runner.SAMPLER_CONTRACT,
             "current_source_share": share,
+            "scale_consistency": {
+                "loss_contract": runner.SCALE_CONSISTENCY_LOSS_CONTRACT,
+                "pair_sampling_contract":
+                    runner.SCALE_CONSISTENCY_PAIR_CONTRACT,
+                "weight": runner.SCALE_CONSISTENCY_WEIGHT,
+                "distance": "one_minus_cosine_similarity",
+                "reduction": "mean_over_one_pair_per_literal_profile",
+                "pair_rng_seed": pair_rng_seed,
+                "pair_rng_seed_rule": "seed xor 0x5CA1E",
+                "pair_rng_separate_from_episodic_rng": True,
+                "phase_augmentation_applied_to_both_paired_views": True,
+                "pool": pool,
+            },
         },
         "final_evaluation": {},
         "data_audit": {
@@ -125,10 +204,11 @@ def _branch_metrics(encoder: str = "real") -> dict:
                 "frontend": assembler.td_preprocess.preprocess_metadata(),
                 "training": {
                     "hierarchical_sampler_contract":
-                        assembler.branch_runner.SAMPLER_CONTRACT,
+                        runner.SAMPLER_CONTRACT,
+                    "scale_consistency_pair_pool": pool,
                 },
                 "runtime_bucket_policy": {
-                    "episode_rule": assembler.branch_runner.SAMPLER_CONTRACT,
+                    "episode_rule": runner.SAMPLER_CONTRACT,
                 },
             },
             "consumed_test_rows_exposed": 0,
@@ -214,6 +294,82 @@ class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "exact v5"):
             assembler.validate_branch_metrics(changed, encoder="real")
+
+    def test_branch_metrics_reject_adaptation_contract_mutations(self) -> None:
+        mutations = (
+            (
+                ("run_configuration", "adaptation", "scale_consistency_weight"),
+                0.1,
+            ),
+            (
+                ("run_configuration", "adaptation", "sha256"),
+                "0" * 64,
+            ),
+            (
+                ("training", "scale_consistency", "pair_rng_seed"),
+                1,
+            ),
+            (
+                (
+                    "training",
+                    "scale_consistency",
+                    "pool",
+                    "fitting_firewall",
+                    "seed20262904_selection_rows_addressable",
+                ),
+                1,
+            ),
+        )
+        for path, replacement in mutations:
+            with self.subTest(path=path):
+                changed = copy.deepcopy(_branch_metrics())
+                target = changed
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = replacement
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "adaptation|scale-consistency",
+                ):
+                    assembler.validate_branch_metrics(
+                        changed,
+                        encoder="real",
+                    )
+
+    def test_cross_branch_adaptation_swap_is_rejected(self) -> None:
+        real = {"metrics": _branch_metrics("real")}
+        complex_branch = {"metrics": _branch_metrics("complex")}
+        assembler.assert_branches_match(real, complex_branch)
+
+        changed = copy.deepcopy(complex_branch)
+        changed["metrics"]["run_configuration"]["adaptation"][
+            "scale_consistency_weight"
+        ] = 0.1
+        with self.assertRaisesRegex(
+            ValueError,
+            "run-configuration adaptation",
+        ):
+            assembler.assert_branches_match(real, changed)
+
+        changed = copy.deepcopy(complex_branch)
+        changed["metrics"]["training"]["scale_consistency"][
+            "pair_rng_seed"
+        ] += 1
+        with self.assertRaisesRegex(
+            ValueError,
+            "sampler/training contracts",
+        ):
+            assembler.assert_branches_match(real, changed)
+
+    def test_fusion_weight_is_exactly_preregistered(self) -> None:
+        self.assertEqual(
+            assembler.validate_branch_weight(0.5),
+            assembler.DEFAULT_WEIGHT_REAL,
+        )
+        for changed in (0.0, 0.49, 0.5000001, 1.0, True, float("nan")):
+            with self.subTest(changed=changed):
+                with self.assertRaisesRegex(ValueError, "frozen 0.5"):
+                    assembler.validate_branch_weight(changed)
 
     def test_composite_audit_accepts_only_amended_seed_roles(self) -> None:
         value = _audit()
