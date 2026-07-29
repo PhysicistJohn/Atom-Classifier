@@ -70,8 +70,20 @@ HISTORICAL_CORPUS = TRAINING / "artifacts" / "signallab-corpus"
 AMENDMENT_SHA256 = (
     "3e4098d0475477bf1ba26e79992ca17848c16dd77deb44b7562c4452544003fd"
 )
-BRANCH_SCHEMA = "v5-scale-orbit-development-training-v1"
-FUSION_SCHEMA = "v5-scale-orbit-development-fusion-v1"
+ATTEMPT_1_INTENT_SHA256 = (
+    "e3166235ed53835465b3bd7afa6ad03982e31016b4d20c6875879288b3304a90"
+)
+ATTEMPT_1_MISS_REPORT_SHA256 = (
+    "1c0e6d94d418e3954a54aa44396ef5cc9d8603eb2895dd69c0a0c458c254bc9d"
+)
+ATTEMPT_2_INTENT_SHA256 = (
+    "5e0cc7bbd58ebe050bf983f854e154c43595dc804aedee3c1c3849cf5691b0a9"
+)
+ATTEMPT_2_PREREGISTRATION_COMMIT = (
+    "53ae9eb2060a0f65a2ffcf607d98866bb695e65c"
+)
+BRANCH_SCHEMA = "v5-scale-orbit-development-training-v2"
+FUSION_SCHEMA = "v5-scale-orbit-development-fusion-v2"
 COMPOSITE_AUDIT_SCHEMA = (
     "v5-current-service-scale-orbit-composite-audit-v1"
 )
@@ -100,6 +112,46 @@ REQUIRED_ARTIFACT_FIELDS = {
     "combined_prototype_bank": "combined_prototype_bank_sha256",
     "feature_moments": "feature_moments_sha256",
 }
+REQUIRED_RUN_CONFIGURATION_KEYS = frozenset(
+    {
+        "schema",
+        "arguments",
+        "checkpoint_selection",
+        "adaptation",
+        "optimizer",
+        "scheduler",
+        "randomness",
+        "software",
+    }
+)
+REQUIRED_BRANCH_ARGUMENT_KEYS = frozenset(
+    {
+        "current_corpus",
+        "current_selection_corpus",
+        "historical_corpus",
+        "device",
+        "seed",
+        "encoder",
+        "episodes",
+        "eval_every",
+        "k_shot",
+        "q_query",
+        "patch_length",
+        "patch_count",
+        "target_frac",
+        "patch_dim",
+        "hidden",
+        "set_pool",
+        "dropout",
+        "lr",
+        "weight_decay",
+        "warmup_frac",
+        "label_smoothing",
+        "current_source_share",
+        "supervised_pair_weight",
+        "phase_augmentation",
+    }
+)
 EXPECTED_COMPOSITE_AUDIT_KEYS = frozenset(
     {
         "schema",
@@ -654,12 +706,92 @@ def _validate_no_consumed_provenance(value: Any, *, path: str = "metrics") -> No
             _validate_no_consumed_provenance(item, path=f"{path}[{index}]")
 
 
-def _validate_scale_consistency_adaptation_contract(
+def _expected_supervised_pair_source_binding() -> dict[str, Any]:
+    """Return the independently pinned attempt-2 preregistration binding."""
+    return {
+        "path": str(
+            (HERE / "scale_consistency_adaptation_attempt_2.json").resolve()
+        ),
+        "sha256": ATTEMPT_2_INTENT_SHA256,
+        "status": (
+            "frozen_before_attempt_2_trainer_or_assembler_change_training_or_"
+            "inference"
+        ),
+        "adaptation_attempt": 2,
+        "preregistration_commit": ATTEMPT_2_PREREGISTRATION_COMMIT,
+        "attempt_1_intent_path": str(
+            (HERE / "scale_consistency_adaptation_attempt_1.json").resolve()
+        ),
+        "attempt_1_intent_sha256": ATTEMPT_1_INTENT_SHA256,
+        "attempt_1_miss_report_path": str(
+            (
+                HERE
+                / "scale_consistency_adaptation_attempt_1_miss_report.json"
+            ).resolve()
+        ),
+        "attempt_1_miss_report_sha256": ATTEMPT_1_MISS_REPORT_SHA256,
+    }
+
+
+def _expected_supervised_pair_targets() -> dict[str, Any]:
+    """Recompute the exact profile-order labels and contiguous view targets."""
+    profiles = tuple(branch_runner.SUPERVISED_PAIR_PROFILES)
+    profile_map = dict(
+        branch_runner.SUPERVISED_PAIR_PROFILE_PUBLIC_CLASS_MAP
+    )
+    if (
+        profiles != tuple(corpus_data.CURRENT_PROFILES)
+        or list(profile_map) != list(profiles)
+        or profile_map != dict(corpus_data.CURRENT_PROFILE_PUBLIC_CLASS_MAP)
+    ):
+        raise RuntimeError(
+            "runner supervised-pair profile/class contract changed"
+        )
+    classes = tuple(scale_orbit_data.scale_data.PUBLIC_CLASSES)
+    indices = [
+        int(value)
+        for value in branch_runner._supervised_pair_profile_class_indices(
+            classes
+        )
+    ]
+    expected_indices = [
+        classes.index(profile_map[profile])
+        for profile in profiles
+    ]
+    if (
+        indices != expected_indices
+        or tuple(indices)
+            != tuple(branch_runner.SUPERVISED_PAIR_PROFILE_CLASS_INDICES)
+    ):
+        raise RuntimeError(
+            "runner supervised-pair profile class indices changed"
+        )
+    paired_targets = np.repeat(
+        np.asarray(indices, dtype=np.int64),
+        2,
+    ).tolist()
+    target_sha256 = corpus_data.sha256_json(paired_targets)
+    if (
+        target_sha256
+            != branch_runner._supervised_pair_target_sha256(indices)
+        or target_sha256 != branch_runner.SUPERVISED_PAIR_TARGET_SHA256
+    ):
+        raise RuntimeError("runner supervised-pair target hash changed")
+    return {
+        "profiles": list(profiles),
+        "profile_public_class_map": profile_map,
+        "profile_class_indices": indices,
+        "paired_targets": paired_targets,
+        "paired_targets_sha256": target_sha256,
+    }
+
+
+def _validate_supervised_pair_adaptation_contract(
     run_configuration: Mapping[str, Any],
     training: Mapping[str, Any],
     preprocessing: Mapping[str, Any],
 ) -> None:
-    """Require the exact preregistered attempt-1 branch contract."""
+    """Require the complete preregistered attempt-2 branch contract."""
     arguments = run_configuration.get("arguments")
     if not isinstance(arguments, Mapping):
         raise ValueError("branch adaptation arguments must be an object")
@@ -680,55 +812,99 @@ def _validate_scale_consistency_adaptation_contract(
         )
     except (AttributeError, TypeError, ValueError) as exc:
         raise ValueError(
-            "branch arguments do not match scale-consistency adaptation "
-            "attempt 1"
+            "branch arguments do not match supervised-pair adaptation "
+            "attempt 2"
         ) from exc
 
+    source_binding = branch_runner._validate_supervised_pair_adaptation_source()
+    if source_binding != _expected_supervised_pair_source_binding():
+        raise RuntimeError(
+            "runner attempt-2 preregistration binding changed"
+        )
     expected_adaptation = {
-        **branch_runner._validate_scale_consistency_adaptation_source(),
-        "loss_contract": branch_runner.SCALE_CONSISTENCY_LOSS_CONTRACT,
+        **source_binding,
+        "loss_contract": branch_runner.SUPERVISED_PAIR_LOSS_CONTRACT,
         "pair_sampling_contract":
-            branch_runner.SCALE_CONSISTENCY_PAIR_CONTRACT,
-        "scale_consistency_weight":
-            branch_runner.SCALE_CONSISTENCY_WEIGHT,
-        "distance": "one_minus_cosine_similarity",
+            branch_runner.SUPERVISED_PAIR_PAIR_CONTRACT,
+        "supervised_pair_weight":
+            branch_runner.SUPERVISED_PAIR_WEIGHT,
+        "auxiliary": "public_class_cross_entropy",
         "pairs_per_episode":
-            branch_runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
-        "phase_augmentation_applied_to_both_paired_views": True,
+            len(branch_runner.SUPERVISED_PAIR_PROFILES),
+        "views_per_episode":
+            2 * len(branch_runner.SUPERVISED_PAIR_PROFILES),
+        "target_construction":
+            branch_runner.SUPERVISED_PAIR_TARGET_CONSTRUCTION,
+        "prototype_gradient": "detached_for_auxiliary",
+        "logit_scale_gradient": "detached_for_auxiliary",
+        "phase_augmentation": "one_independent_draw_per_paired_view",
+        "batch_norm_stat_firewall": True,
         "fitting_firewall": {
             "pair_source": "seed20264101 current train role only",
-            "seed20264101_enrollment_rows_used_for_scale_consistency": 0,
-            "seed20262904_selection_rows_used_for_weight_fit": 0,
-            "seed20262904_selection_rows_used_for_prototype_fit": 0,
-            "sealed_rows_used_for_any_fit_or_selection": 0,
+            "supervised_pairs_from_seed20264101_current_train_role_only":
+                True,
+            (
+                "seed20264101_enrollment_rows_used_for_supervised_pair_"
+                "auxiliary"
+            ): 0,
+            (
+                "seed20262904_selection_rows_used_for_any_gradient_or_"
+                "optimizer_step"
+            ): 0,
+            (
+                "seed20262904_selection_rows_used_for_weight_center_or_"
+                "feature_moment_fit"
+            ): 0,
+            (
+                "seed20262904_selection_rows_used_for_persistent_prototype_"
+                "fit"
+            ): 0,
+            (
+                "seed20262904_selection_rows_used_for_open_set_threshold_or_"
+                "rank_fit"
+            ): 0,
+            (
+                "seed20262904_selection_metrics_may_retain_the_existing_"
+                "development_checkpoint_and_candidate_selection_role"
+            ): True,
+            (
+                "sealed_rows_used_for_any_fit_checkpoint_or_candidate_"
+                "selection"
+            ): 0,
         },
     }
     if run_configuration.get("adaptation") != expected_adaptation:
         raise ValueError(
-            "branch run configuration is not exact adaptation attempt 1"
+            "branch run configuration is not exact adaptation attempt 2"
         )
 
     preprocessing_training = preprocessing.get("training")
     if not isinstance(preprocessing_training, Mapping):
         raise ValueError("branch preprocessing training audit is missing")
-    audited_pool = preprocessing_training.get(
-        "scale_consistency_pair_pool"
-    )
-    consistency = training.get("scale_consistency")
-    if not isinstance(consistency, Mapping):
+    if (
+        "scale_consistency" in training
+        or "scale_consistency_pair_pool" in preprocessing_training
+    ):
         raise ValueError(
-            "branch training lacks the scale-consistency contract"
+            "branch retains forbidden attempt-1 scale-consistency metadata"
         )
-    pool = consistency.get("pool")
+    audited_pool = preprocessing_training.get(
+        "supervised_pair_pool"
+    )
+    supervised_pair = training.get("supervised_pair")
+    if not isinstance(supervised_pair, Mapping):
+        raise ValueError(
+            "branch training lacks the supervised-pair contract"
+        )
+    pool = supervised_pair.get("pool")
     if not isinstance(pool, Mapping) or pool != audited_pool:
         raise ValueError(
-            "branch training scale-consistency pool does not match its "
+            "branch training supervised-pair pool does not match its "
             "preprocessing audit"
         )
 
-    expected_profile_count = (
-        branch_runner.SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT
-    )
+    targets = _expected_supervised_pair_targets()
+    expected_profile_count = len(branch_runner.SUPERVISED_PAIR_PROFILES)
     expected_identities_per_profile = int(
         scale_orbit_data.SCALE_ORBIT_TRAINING_SPLIT_COUNTS["train"]
     )
@@ -746,6 +922,11 @@ def _validate_scale_consistency_adaptation_contract(
         "role",
         "literal_profile_count",
         "literal_profiles",
+        "literal_profile_public_class_map",
+        "literal_profile_public_class_index_map",
+        "public_class_indices_in_literal_profile_order",
+        "paired_targets_sha256",
+        "target_construction",
         "identities_per_profile",
         "identity_count",
         "scale_views_per_identity",
@@ -755,24 +936,35 @@ def _validate_scale_consistency_adaptation_contract(
         "identity_sha256",
         "pair_rng",
         "pairs_per_episode",
+        "views_per_episode",
         "fitting_firewall",
     }
     if set(pool) != expected_pool_keys:
         raise ValueError(
-            "branch scale-consistency pair-pool schema changed"
+            "branch supervised-pair pool schema changed"
         )
     expected_pool_values = {
-        "contract": branch_runner.SCALE_CONSISTENCY_PAIR_CONTRACT,
-        "loss_contract": branch_runner.SCALE_CONSISTENCY_LOSS_CONTRACT,
+        "contract": branch_runner.SUPERVISED_PAIR_PAIR_CONTRACT,
+        "loss_contract": branch_runner.SUPERVISED_PAIR_LOSS_CONTRACT,
         "source": "current",
         "population_seed": scale_orbit_data.SCALE_ORBIT_TRAINING_SEED,
         "role": "train",
         "literal_profile_count": expected_profile_count,
-        "literal_profiles":
-            list(branch_runner.SCALE_CONSISTENCY_PROFILES),
+        "literal_profiles": targets["profiles"],
+        "literal_profile_public_class_map":
+            targets["profile_public_class_map"],
+        "literal_profile_public_class_index_map": {
+            profile: targets["profile_class_indices"][index]
+            for index, profile in enumerate(targets["profiles"])
+        },
+        "public_class_indices_in_literal_profile_order":
+            targets["profile_class_indices"],
+        "paired_targets_sha256": targets["paired_targets_sha256"],
+        "target_construction":
+            branch_runner.SUPERVISED_PAIR_TARGET_CONSTRUCTION,
         "identities_per_profile": {
             profile: expected_identities_per_profile
-            for profile in branch_runner.SCALE_CONSISTENCY_PROFILES
+            for profile in branch_runner.SUPERVISED_PAIR_PROFILES
         },
         "identity_count": expected_identity_count,
         "scale_views_per_identity": expected_scale_count,
@@ -782,9 +974,10 @@ def _validate_scale_consistency_adaptation_contract(
             expected_identity_count * expected_scale_count,
         "pair_rng": (
             "separate numpy.default_rng(seed xor 0x5CA1E); episodic RNG "
-            "state is never passed to scale-pair sampling"
+            "state is never passed to supervised-pair sampling"
         ),
         "pairs_per_episode": expected_profile_count,
+        "views_per_episode": 2 * expected_profile_count,
         "fitting_firewall": {
             "seed20264101_train_identities_addressable":
                 expected_identity_count,
@@ -798,7 +991,7 @@ def _validate_scale_consistency_adaptation_contract(
         for key, value in expected_pool_values.items()
     ):
         raise ValueError(
-            "branch scale-consistency pair-pool contract changed"
+            "branch supervised-pair pool contract changed"
         )
     merged_view_count = pool.get("merged_training_view_count")
     identity_sha256 = pool.get("identity_sha256")
@@ -815,29 +1008,37 @@ def _validate_scale_consistency_adaptation_contract(
         )
     ):
         raise ValueError(
-            "branch scale-consistency pair-pool population binding is invalid"
+            "branch supervised-pair pool population binding is invalid"
         )
 
     pair_rng_seed = (
         int(arguments["seed"])
-        ^ branch_runner.SCALE_CONSISTENCY_PAIR_RNG_XOR
+        ^ branch_runner.SUPERVISED_PAIR_RNG_XOR
     )
-    expected_consistency = {
-        "loss_contract": branch_runner.SCALE_CONSISTENCY_LOSS_CONTRACT,
+    expected_supervised_pair = {
+        "loss_contract": branch_runner.SUPERVISED_PAIR_LOSS_CONTRACT,
         "pair_sampling_contract":
-            branch_runner.SCALE_CONSISTENCY_PAIR_CONTRACT,
-        "weight": branch_runner.SCALE_CONSISTENCY_WEIGHT,
-        "distance": "one_minus_cosine_similarity",
-        "reduction": "mean_over_one_pair_per_literal_profile",
+            branch_runner.SUPERVISED_PAIR_PAIR_CONTRACT,
+        "weight": branch_runner.SUPERVISED_PAIR_WEIGHT,
+        "auxiliary": "public_class_cross_entropy",
+        "reduction": "mean_over_62_profile_contiguous_views",
+        "targets":
+            branch_runner.SUPERVISED_PAIR_TARGET_CONSTRUCTION,
+        "paired_targets_sha256":
+            targets["paired_targets_sha256"],
+        "prototypes":
+            "detached_current_episode_source_mixed_public_class_prototypes",
+        "logit_scale": "detached_numeric_current_episode_logit_scale",
         "pair_rng_seed": pair_rng_seed,
         "pair_rng_seed_rule": "seed xor 0x5CA1E",
         "pair_rng_separate_from_episodic_rng": True,
-        "phase_augmentation_applied_to_both_paired_views": True,
+        "phase_augmentation": "one_independent_draw_per_paired_view",
+        "batch_norm_stat_firewall": True,
         "pool": pool,
     }
-    if dict(consistency) != expected_consistency:
+    if dict(supervised_pair) != expected_supervised_pair:
         raise ValueError(
-            "branch training scale-consistency contract changed"
+            "branch training supervised-pair contract changed"
         )
     randomness = run_configuration.get("randomness")
     expected_pair_rng = {
@@ -848,11 +1049,12 @@ def _validate_scale_consistency_adaptation_contract(
     }
     if (
         not isinstance(randomness, Mapping)
-        or randomness.get("scale_consistency_pair_rng")
+        or "scale_consistency_pair_rng" in randomness
+        or randomness.get("supervised_pair_rng")
             != expected_pair_rng
     ):
         raise ValueError(
-            "branch scale-consistency pair RNG binding changed"
+            "branch supervised-pair RNG binding changed"
         )
 
 
@@ -896,21 +1098,27 @@ def validate_branch_metrics(
     run_configuration = payload.get("run_configuration")
     if not isinstance(run_configuration, Mapping):
         raise ValueError("branch run_configuration must be an object")
+    if set(run_configuration) != REQUIRED_RUN_CONFIGURATION_KEYS:
+        raise ValueError(
+            "branch run_configuration schema is not exact attempt 2"
+        )
     if run_configuration.get("schema") != BRANCH_SCHEMA:
         raise ValueError("branch run_configuration is not the exact v5 run")
     checkpoint = run_configuration.get("checkpoint_selection")
-    if (
-        not isinstance(checkpoint, Mapping)
-        or checkpoint.get("contract") != branch_runner.CHECKPOINT_SCORE_CONTRACT
-        or checkpoint.get("predeclared") is not True
-        or checkpoint.get("tunable") is not False
-    ):
+    expected_checkpoint = {
+        "contract": branch_runner.CHECKPOINT_SCORE_CONTRACT,
+        "comparison": "strict Python tuple lexicographic greater-than",
+        "predeclared": True,
+        "tunable": False,
+    }
+    if checkpoint != expected_checkpoint:
         raise ValueError("branch checkpoint-selection contract changed")
     arguments = run_configuration.get("arguments")
     randomness = run_configuration.get("randomness")
     training = payload.get("training")
     if (
         not isinstance(arguments, Mapping)
+        or set(arguments) != REQUIRED_BRANCH_ARGUMENT_KEYS
         or arguments.get("encoder") != encoder
         or not isinstance(randomness, Mapping)
         or randomness.get("seed") != arguments.get("seed")
@@ -945,11 +1153,72 @@ def validate_branch_metrics(
         or runtime_policy.get("episode_rule") != branch_runner.SAMPLER_CONTRACT
     ):
         raise ValueError("branch preprocessing sampler contract changed")
-    _validate_scale_consistency_adaptation_contract(
+    _validate_supervised_pair_adaptation_contract(
         run_configuration,
         training,
         preprocessing,
     )
+    expected_optimizer = {
+        "name": "AdamW",
+        "learning_rate": float(arguments["lr"]),
+        "network_weight_decay": float(arguments["weight_decay"]),
+        "logit_scale_weight_decay": 0.0,
+    }
+    expected_scheduler = {
+        "name": "linear warmup then cosine annealing",
+        "warmup_fraction": float(arguments["warmup_frac"]),
+    }
+    pair_rng_seed = (
+        int(arguments["seed"]) ^ branch_runner.SUPERVISED_PAIR_RNG_XOR
+    )
+    expected_randomness = {
+        "seed": int(arguments["seed"]),
+        "phase_augmentation": True,
+        "episodic_rng": "numpy.default_rng(seed)",
+        "supervised_pair_rng": {
+            "kind": "numpy.default_rng",
+            "seed": pair_rng_seed,
+            "seed_rule": "seed xor 0x5CA1E",
+            "separate_from_episodic_rng": True,
+        },
+    }
+    expected_software = {
+        "python": branch_runner.platform.python_version(),
+        "numpy": np.__version__,
+        "torch": torch.__version__,
+        "requested_device": arguments["device"],
+        "resolved_device": payload.get("device"),
+    }
+    if (
+        run_configuration.get("optimizer") != expected_optimizer
+        or run_configuration.get("scheduler") != expected_scheduler
+        or randomness != expected_randomness
+        or run_configuration.get("software") != expected_software
+    ):
+        raise ValueError(
+            "branch optimizer/scheduler/randomness/software contract changed"
+        )
+    branch_sources = payload.get("source_sha256")
+    if branch_sources != _expected_branch_source_hashes():
+        raise ValueError(
+            "branch source hashes do not reproduce the exact attempt-2 "
+            "runner source contract"
+        )
+    required_attempt_sources = {
+        "v5/scale_consistency_adaptation_attempt_1.json":
+            ATTEMPT_1_INTENT_SHA256,
+        "v5/scale_consistency_adaptation_attempt_1_miss_report.json":
+            ATTEMPT_1_MISS_REPORT_SHA256,
+        "v5/scale_consistency_adaptation_attempt_2.json":
+            ATTEMPT_2_INTENT_SHA256,
+    }
+    if any(
+        branch_sources.get(name) != digest
+        for name, digest in required_attempt_sources.items()
+    ):
+        raise ValueError(
+            "branch source hashes omit or change attempt-2 lineage evidence"
+        )
     artifacts = payload.get("artifacts")
     if not isinstance(artifacts, Mapping):
         raise ValueError("branch artifacts must be an object")
@@ -1097,7 +1366,7 @@ def _training_contract(metrics: Mapping[str, Any]) -> dict[str, Any]:
                 "k_shot",
                 "q_query",
                 "hierarchy",
-                "scale_consistency",
+                "supervised_pair",
             }
         )
     )
@@ -1127,7 +1396,7 @@ def assert_branches_match(
 
     real_run = real_metrics["run_configuration"]
     complex_run = complex_metrics["run_configuration"]
-    for field in (
+    matched_run_fields = (
         "schema",
         "checkpoint_selection",
         "adaptation",
@@ -1135,7 +1404,8 @@ def assert_branches_match(
         "scheduler",
         "randomness",
         "software",
-    ):
+    )
+    for field in matched_run_fields:
         if real_run.get(field) != complex_run.get(field):
             raise ValueError(f"branch run-configuration {field} disagrees")
     real_arguments = real_run.get("arguments")
@@ -1157,6 +1427,10 @@ def assert_branches_match(
     return {
         "architecture_without_encoder": real_architecture,
         "arguments_without_encoder": _without_encoder(real_arguments),
+        "run_configuration_contract": {
+            field: real_run[field]
+            for field in matched_run_fields
+        },
         "training_contract": real_training_contract,
         "source_sha256": real_metrics["source_sha256"],
         "data_audit_sha256": corpus_data.sha256_json(real_metrics["data_audit"]),
@@ -1186,6 +1460,12 @@ def _source_hashes() -> dict[str, str]:
     paths = {
         **branch_runner._executed_source_paths(),
         "v5/assemble_scale_orbit_fusion.py": Path(__file__).resolve(),
+        "v5/scale_consistency_adaptation_attempt_1.json":
+            HERE / "scale_consistency_adaptation_attempt_1.json",
+        "v5/scale_consistency_adaptation_attempt_1_miss_report.json":
+            HERE / "scale_consistency_adaptation_attempt_1_miss_report.json",
+        "v5/scale_consistency_adaptation_attempt_2.json":
+            HERE / "scale_consistency_adaptation_attempt_2.json",
         "v5/pretraining_amendment.json":
             amendment_validator.AMENDMENT_PATH.resolve(),
         "v5/recovery_protocol.json":

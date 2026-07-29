@@ -84,16 +84,40 @@ SAMPLER_CONTRACT = (
     "balanced round-robin over nonempty profiles; then select one uniform "
     "eligible runtime-prefix view from each selected base identity"
 )
-SCALE_CONSISTENCY_ADAPTATION_PATH = (
+ATTEMPT_1_ADAPTATION_PATH = (
     HERE / "scale_consistency_adaptation_attempt_1.json"
 )
-SCALE_CONSISTENCY_ADAPTATION_SHA256 = (
+ATTEMPT_1_ADAPTATION_SHA256 = (
     "e3166235ed53835465b3bd7afa6ad03982e31016b4d20c6875879288b3304a90"
 )
-SCALE_CONSISTENCY_WEIGHT = 0.2
-SCALE_CONSISTENCY_PAIR_RNG_XOR = 0x5CA1E
-SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT = 31
-SCALE_CONSISTENCY_PROFILES = (
+ATTEMPT_1_MISS_REPORT_PATH = (
+    HERE / "scale_consistency_adaptation_attempt_1_miss_report.json"
+)
+ATTEMPT_1_MISS_REPORT_SHA256 = (
+    "1c0e6d94d418e3954a54aa44396ef5cc9d8603eb2895dd69c0a0c458c254bc9d"
+)
+SUPERVISED_PAIR_ADAPTATION_PATH = (
+    HERE / "scale_consistency_adaptation_attempt_2.json"
+)
+SUPERVISED_PAIR_ADAPTATION_SHA256 = (
+    "5e0cc7bbd58ebe050bf983f854e154c43595dc804aedee3c1c3849cf5691b0a9"
+)
+SUPERVISED_PAIR_PREREGISTRATION_COMMIT = (
+    "53ae9eb2060a0f65a2ffcf607d98866bb695e65c"
+)
+SUPERVISED_PAIR_WEIGHT = 0.2
+SUPERVISED_PAIR_RNG_XOR = 0x5CA1E
+SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT = 31
+SUPERVISED_PAIR_PUBLIC_CLASS_ORDER = (
+    "am",
+    "bluetooth",
+    "cw",
+    "dsss",
+    "fm",
+    "gsm",
+    "ofdm",
+)
+SUPERVISED_PAIR_PROFILES = (
     "bluetooth-classic-connected",
     "bluetooth-le-advertising",
     "gsm-16qam-higher-symbol-rate-burst",
@@ -126,19 +150,66 @@ SCALE_CONSISTENCY_PROFILES = (
     "wifi6-he-su",
     "wifi6-he-tb",
 )
-SCALE_CONSISTENCY_PAIR_CONTRACT = (
+SUPERVISED_PAIR_PROFILE_PUBLIC_CLASS_MAP = {
+    "bluetooth-classic-connected": "bluetooth",
+    "bluetooth-le-advertising": "bluetooth",
+    "gsm-16qam-higher-symbol-rate-burst": "gsm",
+    "gsm-32qam-higher-symbol-rate-burst": "gsm",
+    "gsm-8psk-normal-burst": "gsm",
+    "gsm-900-loaded-bcch": "gsm",
+    "gsm-aqpsk-normal-burst": "gsm",
+    "gsm-normal-burst": "gsm",
+    "gsm-qpsk-higher-symbol-rate-burst": "gsm",
+    "lte-band3-fdd-20m": "ofdm",
+    "lte-band38-tdd-10m": "ofdm",
+    "lte-etm1.1": "ofdm",
+    "lte-etm3.1": "ofdm",
+    "lte-etm3.1a": "ofdm",
+    "lte-etm3.1b": "ofdm",
+    "lte-nbiot-guard-isolated-component": "ofdm",
+    "lte-nbiot-inband-isolated-component": "ofdm",
+    "lte-ntm": "ofdm",
+    "nr-fr1-tm1.1": "ofdm",
+    "nr-fr1-tm3.1": "ofdm",
+    "nr-fr1-tm3.1a": "ofdm",
+    "nr-fr1-tm3.1b": "ofdm",
+    "nr-n3-fdd-20m": "ofdm",
+    "nr-n78-tdd-100m": "ofdm",
+    "nr-nbiot-inband-isolated-component": "ofdm",
+    "wifi-hr-dsss-11m": "dsss",
+    "wifi-ofdm-20m": "ofdm",
+    "wifi6-he-er-su": "ofdm",
+    "wifi6-he-mu": "ofdm",
+    "wifi6-he-su": "ofdm",
+    "wifi6-he-tb": "ofdm",
+}
+SUPERVISED_PAIR_PROFILE_CLASS_INDICES = (
+    1, 1,
+    5, 5, 5, 5, 5, 5, 5,
+    6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+    3,
+    6, 6, 6, 6, 6,
+)
+SUPERVISED_PAIR_TARGET_CONSTRUCTION = (
+    "repeat(profile_public_class_indices, 2)"
+)
+SUPERVISED_PAIR_TARGET_SHA256 = (
+    "838de46075dac50b6c58dee9c29fd4149711cb74bcda692b8f9edd8913b25927"
+)
+SUPERVISED_PAIR_PAIR_CONTRACT = (
     "each episode independently selects one seed20264101 current train "
     "identity uniformly within each of the literal 31 current profiles, then "
     "selects two distinct physical-scale views uniformly without replacement"
 )
-SCALE_CONSISTENCY_LOSS_CONTRACT = (
-    "episodic_cross_entropy_plus_0.2_times_mean_cosine_distance_between_two_"
-    "distinct_physical_scale_views_of_the_same_current_training_identity"
+SUPERVISED_PAIR_LOSS_CONTRACT = (
+    "episodic_cross_entropy_plus_0.2_times_mean_supervised_public_class_cross_"
+    "entropy_over_62_profile_contiguous_scale_pair_views_against_detached_"
+    "current_episode_source_mixed_prototypes_and_detached_logit_scale"
 )
 
 
 @dataclass(frozen=True)
-class ScaleConsistencyIdentity:
+class SupervisedPairIdentity:
     """One train-only physical identity and its exact scale-view positions."""
 
     identity: str
@@ -146,6 +217,8 @@ class ScaleConsistencyIdentity:
     role: str
     population_seed: int
     profile_id: str
+    public_class_name: str
+    public_class_index: int
     scale_factors: tuple[float, ...]
     view_positions: tuple[int, ...]
 
@@ -168,96 +241,243 @@ def _parse_source_share(value: str) -> Fraction:
     return _source_share_fraction(value)
 
 
-def _validate_scale_consistency_adaptation_source() -> dict[str, Any]:
-    """Fail closed unless the exact pre-training adaptation intent is bound."""
-    observed = corpus_data.sha256_file(SCALE_CONSISTENCY_ADAPTATION_PATH)
-    if observed != SCALE_CONSISTENCY_ADAPTATION_SHA256:
+def _supervised_pair_profile_class_indices(
+    classes: Sequence[str],
+) -> tuple[int, ...]:
+    """Return the frozen class-index vector in literal profile order."""
+    if tuple(classes) != SUPERVISED_PAIR_PUBLIC_CLASS_ORDER:
+        raise ValueError(
+            "supervised-pair public class order must remain "
+            f"{list(SUPERVISED_PAIR_PUBLIC_CLASS_ORDER)}"
+        )
+    if (
+        tuple(SUPERVISED_PAIR_PROFILE_PUBLIC_CLASS_MAP)
+        != SUPERVISED_PAIR_PROFILES
+        or tuple(corpus_data.CURRENT_PROFILES) != SUPERVISED_PAIR_PROFILES
+        or dict(corpus_data.CURRENT_PROFILE_PUBLIC_CLASS_MAP)
+        != SUPERVISED_PAIR_PROFILE_PUBLIC_CLASS_MAP
+    ):
         raise RuntimeError(
-            "scale-consistency adaptation intent SHA-256 changed: "
-            f"{observed}"
+            "the exact supervised-pair profile/public-class map changed"
+        )
+    class_index = {
+        class_name: index for index, class_name in enumerate(classes)
+    }
+    result = tuple(
+        int(class_index[SUPERVISED_PAIR_PROFILE_PUBLIC_CLASS_MAP[profile]])
+        for profile in SUPERVISED_PAIR_PROFILES
+    )
+    if result != SUPERVISED_PAIR_PROFILE_CLASS_INDICES:
+        raise RuntimeError(
+            "the frozen supervised-pair profile class-index vector changed"
+        )
+    return result
+
+
+def _supervised_pair_target_sha256(
+    profile_class_indices: Sequence[int],
+) -> str:
+    """Hash the profile-contiguous `repeat(labels, 2)` target vector."""
+    indices = np.asarray(profile_class_indices)
+    if (
+        indices.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,)
+        or indices.dtype.kind not in {"i", "u"}
+        or np.any(indices < 0)
+    ):
+        raise ValueError(
+            "supervised-pair profile class indices must be 31 non-negative "
+            "integers"
+        )
+    targets = np.repeat(indices.astype(np.int64, copy=False), 2)
+    observed = corpus_data.sha256_json(targets.tolist())
+    if (
+        tuple(int(value) for value in indices)
+        == SUPERVISED_PAIR_PROFILE_CLASS_INDICES
+        and observed != SUPERVISED_PAIR_TARGET_SHA256
+    ):
+        raise RuntimeError("frozen supervised-pair target SHA-256 changed")
+    return observed
+
+
+def _read_bound_adaptation_document(
+    path: Path,
+    expected_sha256: str,
+    *,
+    name: str,
+) -> tuple[dict[str, Any], str]:
+    observed = corpus_data.sha256_file(path)
+    if observed != expected_sha256:
+        raise RuntimeError(
+            f"{name} SHA-256 changed: {observed}"
         )
     try:
-        document = json.loads(
-            SCALE_CONSISTENCY_ADAPTATION_PATH.read_text(encoding="utf-8")
-        )
+        value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(
-            "scale-consistency adaptation intent is unreadable"
-        ) from exc
-    expected = {
-        "status": "frozen_before_scale_consistency_source_change_or_training",
-        "development_only": True,
-        "release_evidence": False,
-        "adaptation_attempt": 1,
-    }
-    for field, value in expected.items():
-        if document.get(field) != value:
-            raise RuntimeError(
-                "scale-consistency adaptation intent changed field "
-                f"{field!r}"
-            )
-    change = document.get("predeclared_change")
-    firewall = document.get("fitting_firewall")
+        raise RuntimeError(f"{name} is unreadable") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{name} must contain one JSON object")
+    return value, observed
+
+
+def _validate_supervised_pair_adaptation_source() -> dict[str, Any]:
+    """Bind attempt 1, its miss, and the exact pre-source attempt-2 intent."""
+    attempt_1, attempt_1_sha256 = _read_bound_adaptation_document(
+        ATTEMPT_1_ADAPTATION_PATH,
+        ATTEMPT_1_ADAPTATION_SHA256,
+        name="attempt-1 adaptation intent",
+    )
+    miss_report, miss_report_sha256 = _read_bound_adaptation_document(
+        ATTEMPT_1_MISS_REPORT_PATH,
+        ATTEMPT_1_MISS_REPORT_SHA256,
+        name="attempt-1 miss report",
+    )
+    attempt_2, attempt_2_sha256 = _read_bound_adaptation_document(
+        SUPERVISED_PAIR_ADAPTATION_PATH,
+        SUPERVISED_PAIR_ADAPTATION_SHA256,
+        name="attempt-2 supervised-pair intent",
+    )
     if (
-        not isinstance(change, dict)
-        or change.get("scale_consistency_weight")
-        != SCALE_CONSISTENCY_WEIGHT
-        or change.get("pair_rng")
-        != (
-            "separate numpy.default_rng(seed xor 0x5CA1E) so episodic "
-            "support/query sampling remains unchanged"
+        attempt_1.get("adaptation_attempt") != 1
+        or attempt_1.get("status")
+        != "frozen_before_scale_consistency_source_change_or_training"
+        or attempt_1.get("development_only") is not True
+        or attempt_1.get("release_evidence") is not False
+    ):
+        raise RuntimeError("attempt-1 adaptation evidence changed")
+    if (
+        miss_report.get("schema")
+        != "atomos.v5.scale-orbit.adaptation-attempt-miss-report"
+        or miss_report.get("adaptation_attempt") != 1
+        or miss_report.get("full_gate_assessment", {}).get(
+            "full_21_gate_status"
         )
-        or not isinstance(firewall, dict)
-        or firewall.get(
-            "scale_consistency_pairs_from_seed20264101_train_role_only"
+        != "not_evaluated"
+        or miss_report.get("development_only") is not True
+        or miss_report.get("release_evidence") is not False
+    ):
+        raise RuntimeError("attempt-1 miss evidence changed")
+    parent_bindings = attempt_2.get("parent_bindings")
+    change = attempt_2.get("predeclared_change")
+    sampling = (
+        change.get("pair_sampling")
+        if isinstance(change, Mapping)
+        else None
+    )
+    auxiliary = (
+        change.get("supervised_pair_auxiliary")
+        if isinstance(change, Mapping)
+        else None
+    )
+    fitting = attempt_2.get("fitting_firewall")
+    if (
+        attempt_2.get("schema")
+        != (
+            "atomos.v5.scale-orbit.post-score-supervised-pair-"
+            "adaptation-intent"
+        )
+        or attempt_2.get("status")
+        != (
+            "frozen_before_attempt_2_trainer_or_assembler_change_training_"
+            "or_inference"
+        )
+        or attempt_2.get("adaptation_attempt") != 2
+        or attempt_2.get("development_only") is not True
+        or attempt_2.get("release_evidence") is not False
+        or not isinstance(parent_bindings, Mapping)
+        or parent_bindings.get("attempt_1_intent_sha256")
+        != attempt_1_sha256
+        or parent_bindings.get("attempt_1_miss_report_sha256")
+        != miss_report_sha256
+        or not isinstance(sampling, Mapping)
+        or sampling.get("literal_profiles")
+        != list(SUPERVISED_PAIR_PROFILES)
+        or sampling.get("literal_profile_public_class_map")
+        != SUPERVISED_PAIR_PROFILE_PUBLIC_CLASS_MAP
+        or sampling.get("views_per_episode") != 62
+        or not isinstance(auxiliary, Mapping)
+        or auxiliary.get("auxiliary_coefficient")
+        != SUPERVISED_PAIR_WEIGHT
+        or auxiliary.get("cross_entropy", {}).get("mean_denominator") != 62
+        or auxiliary.get("public_class_prototypes", {}).get(
+            "detached_for_auxiliary"
         )
         is not True
-        or firewall.get(
-            "seed20264101_enrollment_rows_used_for_scale_consistency"
+        or auxiliary.get("logits", {}).get(
+            "logit_scale_detached_for_auxiliary"
+        )
+        is not True
+        or not isinstance(fitting, Mapping)
+        or fitting.get(
+            "supervised_pairs_from_seed20264101_current_train_role_only"
+        )
+        is not True
+        or fitting.get(
+            "seed20264101_enrollment_rows_used_for_supervised_pair_auxiliary"
         )
         != 0
-        or firewall.get("seed20262904_selection_rows_used_for_weight_fit") != 0
-        or firewall.get(
-            "seed20262904_selection_rows_used_for_prototype_fit"
+        or fitting.get(
+            "seed20262904_selection_rows_used_for_any_gradient_or_optimizer_step"
         )
         != 0
-        or firewall.get(
+        or fitting.get(
+            "seed20262904_selection_rows_used_for_weight_center_or_feature_moment_fit"
+        )
+        != 0
+        or fitting.get(
+            "seed20262904_selection_rows_used_for_persistent_prototype_fit"
+        )
+        != 0
+        or fitting.get(
             "seed20262904_selection_rows_used_for_open_set_threshold_or_rank_fit"
         )
         != 0
-        or firewall.get("sealed_rows_used_for_any_fit_or_selection") != 0
+        or fitting.get(
+            "seed20262904_selection_metrics_may_retain_the_existing_development_"
+            "checkpoint_and_candidate_selection_role"
+        )
+        is not True
+        or fitting.get(
+            "sealed_rows_used_for_any_fit_checkpoint_or_candidate_selection"
+        )
+        != 0
     ):
         raise RuntimeError(
-            "scale-consistency adaptation intent no longer matches the "
+            "attempt-2 supervised-pair intent no longer matches the "
             "implemented loss or fitting firewall"
         )
     return {
-        "path": str(SCALE_CONSISTENCY_ADAPTATION_PATH),
-        "sha256": observed,
-        "status": document["status"],
-        "adaptation_attempt": int(document["adaptation_attempt"]),
+        "path": str(SUPERVISED_PAIR_ADAPTATION_PATH),
+        "sha256": attempt_2_sha256,
+        "status": attempt_2["status"],
+        "adaptation_attempt": 2,
+        "preregistration_commit":
+            SUPERVISED_PAIR_PREREGISTRATION_COMMIT,
+        "attempt_1_intent_path": str(ATTEMPT_1_ADAPTATION_PATH),
+        "attempt_1_intent_sha256": attempt_1_sha256,
+        "attempt_1_miss_report_path": str(ATTEMPT_1_MISS_REPORT_PATH),
+        "attempt_1_miss_report_sha256": miss_report_sha256,
     }
 
 
-def _validate_scale_consistency_weight(value: Any) -> float:
+def _validate_supervised_pair_weight(value: Any) -> float:
     if isinstance(value, bool):
-        raise ValueError("scale_consistency_weight must be the frozen 0.2")
+        raise ValueError("supervised_pair_weight must be the frozen 0.2")
     try:
         weight = float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(
-            "scale_consistency_weight must be the frozen 0.2"
+            "supervised_pair_weight must be the frozen 0.2"
         ) from exc
-    if not math.isfinite(weight) or weight != SCALE_CONSISTENCY_WEIGHT:
+    if not math.isfinite(weight) or weight != SUPERVISED_PAIR_WEIGHT:
         raise ValueError(
-            "scale_consistency_weight must equal the preregistered 0.2"
+            "supervised_pair_weight must equal the preregistered 0.2"
         )
     return weight
 
 
 def _validate_adaptation_run_configuration(args: argparse.Namespace) -> None:
-    """Reject any run that would no longer be frozen adaptation attempt 1."""
-    _validate_scale_consistency_weight(args.scale_consistency_weight)
+    """Reject any run that differs from frozen supervised-pair attempt 2."""
+    _validate_supervised_pair_weight(args.supervised_pair_weight)
     expected = {
         "seed": 20_260_740,
         "episodes": 8_000,
@@ -284,15 +504,17 @@ def _validate_adaptation_run_configuration(args: argparse.Namespace) -> None:
     ]
     if changed:
         raise ValueError(
-            "adaptation attempt 1 configuration differs from the frozen "
+            "supervised-pair attempt 2 configuration differs from the frozen "
             f"baseline for: {', '.join(changed)}"
         )
     if _source_share_fraction(args.current_source_share) != Fraction(1, 3):
         raise ValueError(
-            "adaptation attempt 1 requires current_source_share=1/3"
+            "supervised-pair attempt 2 requires current_source_share=1/3"
         )
     if getattr(args, "encoder", None) not in {"real", "complex"}:
-        raise ValueError("adaptation attempt 1 encoder must be real or complex")
+        raise ValueError(
+            "supervised-pair attempt 2 encoder must be real or complex"
+        )
 
 
 def _executed_source_paths() -> dict[str, Path]:
@@ -309,7 +531,11 @@ def _executed_source_paths() -> dict[str, Path]:
         "v5/seed20262904_identity_firewall_acceptance.json":
             scale_orbit_data.SCALE_ORBIT_IDENTITY_ACCEPTANCE_PATH.resolve(),
         "v5/scale_consistency_adaptation_attempt_1.json":
-            SCALE_CONSISTENCY_ADAPTATION_PATH.resolve(),
+            ATTEMPT_1_ADAPTATION_PATH.resolve(),
+        "v5/scale_consistency_adaptation_attempt_1_miss_report.json":
+            ATTEMPT_1_MISS_REPORT_PATH.resolve(),
+        "v5/scale_consistency_adaptation_attempt_2.json":
+            SUPERVISED_PAIR_ADAPTATION_PATH.resolve(),
         "v4/current_source_data.py": Path(corpus_data.__file__).resolve(),
         "v4/evaluate_current_scale.py":
             Path(scale_orbit_data.scale_data.__file__).resolve(),
@@ -539,21 +765,22 @@ def _stack(values: list[np.ndarray], name: str) -> np.ndarray:
     return result
 
 
-def _validate_scale_consistency_pool(
-    pool: Mapping[str, Sequence[ScaleConsistencyIdentity]],
+def _validate_supervised_pair_pool(
+    pool: Mapping[str, Sequence[SupervisedPairIdentity]],
     *,
     training_view_count: int,
+    classes: Sequence[str],
 ) -> dict[str, Any]:
-    """Validate the exact train-only population addressable by the new loss."""
+    """Validate the exact train-only population addressable by attempt 2."""
+    profile_class_indices = _supervised_pair_profile_class_indices(classes)
     if (
-        len(SCALE_CONSISTENCY_PROFILES)
-        != SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT
-        or len(set(SCALE_CONSISTENCY_PROFILES))
-        != SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT
-        or tuple(corpus_data.CURRENT_PROFILES) != SCALE_CONSISTENCY_PROFILES
+        len(SUPERVISED_PAIR_PROFILES)
+        != SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT
+        or len(set(SUPERVISED_PAIR_PROFILES))
+        != SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT
     ):
         raise RuntimeError(
-            "the literal scale-consistency profile contract changed"
+            "the literal supervised-pair profile contract changed"
         )
     if (
         isinstance(training_view_count, bool)
@@ -561,11 +788,11 @@ def _validate_scale_consistency_pool(
         or int(training_view_count) <= 0
     ):
         raise ValueError("training_view_count must be a positive integer")
-    if set(pool) != set(SCALE_CONSISTENCY_PROFILES):
-        missing = sorted(set(SCALE_CONSISTENCY_PROFILES) - set(pool))
-        extra = sorted(set(pool) - set(SCALE_CONSISTENCY_PROFILES))
+    if set(pool) != set(SUPERVISED_PAIR_PROFILES):
+        missing = sorted(set(SUPERVISED_PAIR_PROFILES) - set(pool))
+        extra = sorted(set(pool) - set(SUPERVISED_PAIR_PROFILES))
         raise ValueError(
-            "scale-consistency pool must contain exactly the literal 31 "
+            "supervised-pair pool must contain exactly the literal 31 "
             f"profiles; missing={missing}, extra={extra}"
         )
 
@@ -578,19 +805,27 @@ def _validate_scale_consistency_pool(
     identities: list[str] = []
     positions: list[int] = []
     per_profile: dict[str, int] = {}
-    for profile in SCALE_CONSISTENCY_PROFILES:
+    class_name_by_profile: dict[str, str] = {}
+    class_index_by_profile: dict[str, int] = {}
+    for profile_position, profile in enumerate(SUPERVISED_PAIR_PROFILES):
         entries = tuple(pool[profile])
         if len(entries) != expected_per_profile:
             raise ValueError(
-                f"scale-consistency profile {profile!r} must expose exactly "
+                f"supervised-pair profile {profile!r} must expose exactly "
                 f"{expected_per_profile} seed20264101 train identities"
             )
         per_profile[profile] = len(entries)
+        expected_class_name = SUPERVISED_PAIR_PROFILE_PUBLIC_CLASS_MAP[
+            profile
+        ]
+        expected_class_index = profile_class_indices[profile_position]
+        class_name_by_profile[profile] = expected_class_name
+        class_index_by_profile[profile] = expected_class_index
         for entry in entries:
-            if not isinstance(entry, ScaleConsistencyIdentity):
+            if not isinstance(entry, SupervisedPairIdentity):
                 raise TypeError(
-                    "scale-consistency pool entries must be "
-                    "ScaleConsistencyIdentity values"
+                    "supervised-pair pool entries must be "
+                    "SupervisedPairIdentity values"
                 )
             if (
                 entry.source != "current"
@@ -598,10 +833,12 @@ def _validate_scale_consistency_pool(
                 or entry.population_seed
                 != scale_orbit_data.SCALE_ORBIT_TRAINING_SEED
                 or entry.profile_id != profile
+                or entry.public_class_name != expected_class_name
+                or entry.public_class_index != expected_class_index
             ):
                 raise ValueError(
-                    f"scale-consistency identity {entry.identity!r} is not a "
-                    "seed20264101 current train identity in its profile"
+                    f"supervised-pair identity {entry.identity!r} is not an "
+                    "exactly mapped seed20264101 current train identity"
                 )
             if (
                 tuple(float(value) for value in entry.scale_factors)
@@ -610,7 +847,7 @@ def _validate_scale_consistency_pool(
                 or len(set(entry.view_positions)) != len(expected_scales)
             ):
                 raise ValueError(
-                    f"scale-consistency identity {entry.identity!r} lacks "
+                    f"supervised-pair identity {entry.identity!r} lacks "
                     "the exact four distinct physical-scale views"
                 )
             if any(
@@ -621,32 +858,43 @@ def _validate_scale_consistency_pool(
                 for position in entry.view_positions
             ):
                 raise ValueError(
-                    f"scale-consistency identity {entry.identity!r} has an "
+                    f"supervised-pair identity {entry.identity!r} has an "
                     "out-of-range training view"
                 )
             identities.append(entry.identity)
             positions.extend(int(value) for value in entry.view_positions)
     if len(set(identities)) != len(identities):
         raise ValueError(
-            "a scale-consistency training identity occurs in multiple profiles"
+            "a supervised-pair training identity occurs in multiple profiles"
         )
     if len(set(positions)) != len(positions):
         raise ValueError(
-            "a scale-consistency training view occurs in multiple identities"
+            "a supervised-pair training view occurs in multiple identities"
         )
     expected_identity_count = (
-        SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT * expected_per_profile
+        SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * expected_per_profile
     )
     if len(identities) != expected_identity_count:
-        raise AssertionError("scale-consistency identity count changed")
+        raise AssertionError("supervised-pair identity count changed")
+    paired_target_sha256 = _supervised_pair_target_sha256(
+        profile_class_indices
+    )
+    if paired_target_sha256 != SUPERVISED_PAIR_TARGET_SHA256:
+        raise RuntimeError("supervised-pair target audit changed")
     return {
-        "contract": SCALE_CONSISTENCY_PAIR_CONTRACT,
-        "loss_contract": SCALE_CONSISTENCY_LOSS_CONTRACT,
+        "contract": SUPERVISED_PAIR_PAIR_CONTRACT,
+        "loss_contract": SUPERVISED_PAIR_LOSS_CONTRACT,
         "source": "current",
         "population_seed": scale_orbit_data.SCALE_ORBIT_TRAINING_SEED,
         "role": "train",
-        "literal_profile_count": SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
-        "literal_profiles": list(SCALE_CONSISTENCY_PROFILES),
+        "literal_profile_count": SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
+        "literal_profiles": list(SUPERVISED_PAIR_PROFILES),
+        "literal_profile_public_class_map": class_name_by_profile,
+        "literal_profile_public_class_index_map": class_index_by_profile,
+        "public_class_indices_in_literal_profile_order":
+            list(profile_class_indices),
+        "target_construction": SUPERVISED_PAIR_TARGET_CONSTRUCTION,
+        "paired_targets_sha256": paired_target_sha256,
         "identities_per_profile": per_profile,
         "identity_count": len(identities),
         "scale_views_per_identity": len(expected_scales),
@@ -656,44 +904,52 @@ def _validate_scale_consistency_pool(
         "identity_sha256": corpus_data.sha256_json(sorted(identities)),
         "pair_rng": (
             "separate numpy.default_rng(seed xor 0x5CA1E); episodic RNG "
-            "state is never passed to scale-pair sampling"
+            "state is never passed to supervised-pair sampling"
         ),
-        "pairs_per_episode": SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
+        "pairs_per_episode": SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
+        "views_per_episode": SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2,
         "fitting_firewall": {
             "seed20264101_train_identities_addressable": len(identities),
             "seed20264101_enrollment_rows_addressable": 0,
             "seed20262904_selection_rows_addressable": 0,
             "sealed_rows_addressable": 0,
         },
-    }
+}
 
 
-def _sample_scale_consistency_pairs(
-    pool: Mapping[str, Sequence[ScaleConsistencyIdentity]],
+def _sample_supervised_pairs(
+    pool: Mapping[str, Sequence[SupervisedPairIdentity]],
     rng: np.random.Generator,
 ) -> dict[str, Any]:
     """Sample one identity and two distinct scales for every frozen profile."""
     if not isinstance(rng, np.random.Generator):
-        raise TypeError("scale-consistency pair RNG must be numpy.Generator")
+        raise TypeError("supervised-pair RNG must be numpy.Generator")
     pair_positions: list[tuple[int, int]] = []
     identities: list[str] = []
     selected_scales: list[tuple[float, float]] = []
-    for profile in SCALE_CONSISTENCY_PROFILES:
+    profile_class_indices: list[int] = []
+    for profile_position, profile in enumerate(SUPERVISED_PAIR_PROFILES):
         entries = tuple(pool.get(profile, ()))
         if not entries:
             raise ValueError(
-                f"scale-consistency profile {profile!r} has no identities"
+                f"supervised-pair profile {profile!r} has no identities"
             )
         entry = entries[int(rng.integers(0, len(entries)))]
+        expected_class_index = SUPERVISED_PAIR_PROFILE_CLASS_INDICES[
+            profile_position
+        ]
         if (
             entry.source != "current"
             or entry.role != "train"
             or entry.population_seed
             != scale_orbit_data.SCALE_ORBIT_TRAINING_SEED
             or entry.profile_id != profile
+            or entry.public_class_name
+            != SUPERVISED_PAIR_PROFILE_PUBLIC_CLASS_MAP[profile]
+            or entry.public_class_index != expected_class_index
         ):
             raise ValueError(
-                "scale-consistency sampler encountered a non-training entry"
+                "supervised-pair sampler encountered an invalid mapped entry"
             )
         scale_indices = np.asarray(
             rng.choice(len(entry.scale_factors), size=2, replace=False),
@@ -704,7 +960,7 @@ def _sample_scale_consistency_pairs(
             or int(scale_indices[0]) == int(scale_indices[1])
         ):
             raise AssertionError(
-                "scale-consistency sampler reused one physical scale"
+                "supervised-pair sampler reused one physical scale"
             )
         pair_positions.append(
             (
@@ -719,65 +975,52 @@ def _sample_scale_consistency_pairs(
             )
         )
         identities.append(entry.identity)
+        profile_class_indices.append(entry.public_class_index)
     positions_array = np.asarray(pair_positions, dtype=np.int64)
     scales_array = np.asarray(selected_scales, dtype=np.float64)
+    labels_array = np.asarray(profile_class_indices, dtype=np.int64)
     if (
         positions_array.shape
-        != (SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT, 2)
+        != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 2)
         or scales_array.shape
-        != (SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT, 2)
+        != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 2)
+        or labels_array.shape
+        != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,)
+        or tuple(labels_array.tolist())
+        != SUPERVISED_PAIR_PROFILE_CLASS_INDICES
         or np.any(positions_array[:, 0] == positions_array[:, 1])
         or np.any(scales_array[:, 0] == scales_array[:, 1])
     ):
-        raise AssertionError("scale-consistency pair batch changed shape")
+        raise AssertionError("supervised-pair batch changed shape or labels")
     return {
         "positions": positions_array,
-        "profiles": SCALE_CONSISTENCY_PROFILES,
+        "profiles": SUPERVISED_PAIR_PROFILES,
         "identities": tuple(identities),
         "scale_factors": scales_array,
+        "profile_class_indices": labels_array,
+        "paired_targets_sha256":
+            _supervised_pair_target_sha256(labels_array),
     }
-
-
-def _mean_paired_cosine_distance(
-    embeddings: torch.Tensor,
-) -> torch.Tensor:
-    """Mean `1 - cosine` over a [profile, two scales, embedding] tensor."""
-    if (
-        embeddings.ndim != 3
-        or embeddings.shape[0] != SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT
-        or embeddings.shape[1] != 2
-        or embeddings.shape[2] <= 0
-        or not torch.isfinite(embeddings).all()
-    ):
-        raise ValueError(
-            "paired embeddings must be finite [31,2,embedding_dim]"
-        )
-    distance = 1.0 - F.cosine_similarity(
-        embeddings[:, 0],
-        embeddings[:, 1],
-        dim=-1,
-        eps=1e-8,
-    )
-    if not torch.isfinite(distance).all():
-        raise ValueError("paired cosine distance is non-finite")
-    return distance.mean()
 
 
 def _combine_adaptation_losses(
     cross_entropy: torch.Tensor,
-    scale_consistency: torch.Tensor,
+    supervised_pair_cross_entropy: torch.Tensor,
     *,
     weight: Any,
 ) -> torch.Tensor:
-    frozen_weight = _validate_scale_consistency_weight(weight)
+    frozen_weight = _validate_supervised_pair_weight(weight)
     if (
         cross_entropy.ndim != 0
-        or scale_consistency.ndim != 0
+        or supervised_pair_cross_entropy.ndim != 0
         or not torch.isfinite(cross_entropy)
-        or not torch.isfinite(scale_consistency)
+        or not torch.isfinite(supervised_pair_cross_entropy)
     ):
         raise ValueError("adaptation loss components must be finite scalars")
-    return cross_entropy + frozen_weight * scale_consistency
+    return (
+        cross_entropy
+        + frozen_weight * supervised_pair_cross_entropy
+    )
 
 
 @contextmanager
@@ -806,33 +1049,70 @@ def _auxiliary_batch_norm_eval(net: torch.nn.Module):
             module.train(training)
 
 
-def _scale_consistency_loss_for_pairs(
+def _supervised_pair_cross_entropy_for_pairs(
     net: InvariantPatchCNN,
     data: Mapping[str, Any],
     pair_positions: np.ndarray,
+    profile_class_indices: np.ndarray,
+    prototypes: torch.Tensor,
+    log_scale: torch.Tensor,
     device: torch.device,
     *,
     phase_augmentation: bool,
 ) -> torch.Tensor:
-    """Embed both views of all 31 pairs and return their mean cosine distance."""
+    """Return mean CE for 62 views against detached episode prototypes."""
     positions = np.asarray(pair_positions, dtype=np.int64)
-    if positions.shape != (SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT, 2):
-        raise ValueError("scale-consistency positions must have shape [31,2]")
+    labels = np.asarray(profile_class_indices, dtype=np.int64)
+    if positions.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 2):
+        raise ValueError("supervised-pair positions must have shape [31,2]")
+    if (
+        labels.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,)
+        or tuple(labels.tolist()) != SUPERVISED_PAIR_PROFILE_CLASS_INDICES
+        or _supervised_pair_target_sha256(labels)
+        != SUPERVISED_PAIR_TARGET_SHA256
+    ):
+        raise ValueError(
+            "supervised-pair labels must equal the frozen profile class map"
+        )
     if np.any(positions[:, 0] == positions[:, 1]):
-        raise ValueError("scale-consistency pairs must use distinct views")
+        raise ValueError("supervised pairs must use distinct views")
     if (
         np.any(positions < 0)
         or np.any(positions >= len(data["xtr"]))
         or len(data["xtr"]) != len(data["ftr"])
     ):
         raise ValueError(
-            "scale-consistency pair position is outside aligned training views"
+            "supervised-pair position is outside aligned training views"
         )
     if phase_augmentation is not True:
         raise ValueError(
             "phase augmentation must remain enabled for both paired views"
         )
+    if (
+        prototypes.ndim != 2
+        or prototypes.shape[0] != int(data["n_classes"])
+        or prototypes.shape[1] <= 0
+        or not torch.isfinite(prototypes).all()
+    ):
+        raise ValueError(
+            "episode prototypes must be finite [public_class, embedding]"
+        )
+    if (
+        log_scale.ndim != 0
+        or not torch.isfinite(log_scale)
+    ):
+        raise ValueError("episode logit scale must be a finite scalar")
     flattened = positions.reshape(-1)
+    targets = np.repeat(labels, 2)
+    if (
+        flattened.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2,)
+        or targets.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2,)
+        or corpus_data.sha256_json(targets.tolist())
+        != SUPERVISED_PAIR_TARGET_SHA256
+    ):
+        raise AssertionError(
+            "supervised-pair flattening or repeated targets changed"
+        )
     pair_x = torch.from_numpy(
         np.asarray(data["xtr"])[flattened]
     ).to(device)
@@ -841,12 +1121,34 @@ def _scale_consistency_loss_for_pairs(
     ).to(device)
     pair_x = v3_runner._phase_augment(pair_x)
     with _auxiliary_batch_norm_eval(net):
-        paired_embeddings = net(pair_x, pair_features).reshape(
-            SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
-            2,
-            -1,
+        paired_embeddings = net(pair_x, pair_features)
+    if (
+        paired_embeddings.ndim != 2
+        or paired_embeddings.shape
+        != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2, prototypes.shape[1])
+        or not torch.isfinite(paired_embeddings).all()
+    ):
+        raise ValueError(
+            "paired embeddings must be finite [62, embedding_dim]"
         )
-    return _mean_paired_cosine_distance(paired_embeddings)
+    # Detachment is deliberately inside this helper. The auxiliary may update
+    # the encoder through paired_embeddings, but cannot update episodic support
+    # embeddings/prototype construction or the shared logit-scale parameter.
+    logits = (
+        -sq_dist(paired_embeddings, prototypes.detach())
+        * log_scale.detach().exp().clamp(1e-3, 100.0)
+    )
+    loss = F.cross_entropy(
+        logits,
+        torch.from_numpy(targets).to(device),
+        label_smoothing=0.0,
+        reduction="mean",
+    )
+    if loss.ndim != 0 or not torch.isfinite(loss):
+        raise ValueError(
+            "supervised-pair cross entropy must be a finite scalar"
+        )
+    return loss
 
 
 def _build_sampling_hierarchy(
@@ -919,6 +1221,9 @@ def _prepare_data(
     n_classes = len(classes)
     if n_classes <= 1:
         raise ValueError("at least two public classes are required")
+    supervised_pair_profile_class_indices = (
+        _supervised_pair_profile_class_indices(classes)
+    )
     for source_name, corpus in corpora.items():
         enrolled_profiles = {
             row.profile_id for row in corpus.rows_by_role["enrollment"]
@@ -963,10 +1268,10 @@ def _prepare_data(
         for source in corpora
     }
     admitted_base_identities: list[str] = []
-    scale_consistency_pool_mutable: dict[
-        str, list[ScaleConsistencyIdentity]
+    supervised_pair_pool_mutable: dict[
+        str, list[SupervisedPairIdentity]
     ] = {
-        profile: [] for profile in SCALE_CONSISTENCY_PROFILES
+        profile: [] for profile in SUPERVISED_PAIR_PROFILES
     }
     # One manifest can carry several stored variants of the same physical base
     # acquisition (for example phase/length materializations sharing a
@@ -1061,14 +1366,31 @@ def _prepare_data(
                 )
             ):
                 raise ValueError(
-                    f"current scale-consistency identity {identity!r} crosses "
+                    f"current supervised-pair identity {identity!r} crosses "
                     "source, role, seed, profile, pair, or realization"
                 )
             profile = next(iter(profiles))
-            if profile not in scale_consistency_pool_mutable:
+            if profile not in supervised_pair_pool_mutable:
                 raise ValueError(
                     f"current train identity {identity!r} has unregistered "
                     f"profile {profile!r}"
+                )
+            expected_class_name = (
+                SUPERVISED_PAIR_PROFILE_PUBLIC_CLASS_MAP[profile]
+            )
+            profile_position = SUPERVISED_PAIR_PROFILES.index(profile)
+            expected_class_index = (
+                supervised_pair_profile_class_indices[profile_position]
+            )
+            if (
+                first.class_name != expected_class_name
+                or first.label != expected_class_index
+                or classes[expected_class_index] != expected_class_name
+            ):
+                raise ValueError(
+                    f"current train profile {profile!r} has class/index "
+                    f"{first.class_name!r}/{first.label}, expected "
+                    f"{expected_class_name!r}/{expected_class_index}"
                 )
             position_by_scale: dict[float, int] = {}
             for row, view_position in current_scale_views:
@@ -1090,14 +1412,16 @@ def _prepare_data(
                     f"current train identity {identity!r} lacks the exact "
                     "physical-scale orbit"
                 )
-            scale_consistency_pool_mutable[profile].append(
-                ScaleConsistencyIdentity(
+            supervised_pair_pool_mutable[profile].append(
+                SupervisedPairIdentity(
                     identity=identity,
                     source="current",
                     role="train",
                     population_seed=
                         scale_orbit_data.SCALE_ORBIT_TRAINING_SEED,
                     profile_id=profile,
+                    public_class_name=first.class_name,
+                    public_class_index=int(first.label),
                     scale_factors=expected_scales,
                     view_positions=tuple(
                         position_by_scale[scale] for scale in expected_scales
@@ -1112,18 +1436,19 @@ def _prepare_data(
 
     xtr = _stack(train_x, "merged training patches")
     raw_ftr = _stack(train_f_raw, "merged training features")
-    scale_consistency_pool = {
+    supervised_pair_pool = {
         profile: tuple(
             sorted(
                 entries,
                 key=lambda entry: entry.identity,
             )
         )
-        for profile, entries in scale_consistency_pool_mutable.items()
+        for profile, entries in supervised_pair_pool_mutable.items()
     }
-    scale_consistency_audit = _validate_scale_consistency_pool(
-        scale_consistency_pool,
+    supervised_pair_audit = _validate_supervised_pair_pool(
+        supervised_pair_pool,
         training_view_count=len(xtr),
+        classes=classes,
     )
     base_labels_array = np.asarray(base_labels, dtype=np.int64)
     base_by_class = [
@@ -1279,7 +1604,7 @@ def _prepare_data(
         "base_labels": base_labels_array,
         "base_by_class": base_by_class,
         "base_sampling_hierarchy": sampling_hierarchy,
-        "scale_consistency_pool": scale_consistency_pool,
+        "supervised_pair_pool": supervised_pair_pool,
         "xen": xen,
         "fen": fen,
         "yen": yen,
@@ -1368,7 +1693,7 @@ def _prepare_data(
                 for class_index in range(n_classes)
             },
             "hierarchical_sampler_contract": SAMPLER_CONTRACT,
-            "scale_consistency_pair_pool": scale_consistency_audit,
+            "supervised_pair_pool": supervised_pair_audit,
             "views_by_source_and_length": training_view_counts,
             "excluded_all_zero_4096_prefix_by_source_and_class":
                 excluded_zero_prefix,
@@ -2358,7 +2683,7 @@ def _train(
     label_smoothing: float,
     phase_augmentation: bool,
     current_source_share: Any,
-    scale_consistency_weight: Any,
+    supervised_pair_weight: Any,
 ) -> tuple[InvariantPatchCNN, dict[str, Any]]:
     if episodes <= 0 or eval_every <= 0:
         raise ValueError("episodes and eval_every must be positive")
@@ -2372,19 +2697,20 @@ def _train(
         raise ValueError("seed must be a non-negative integer")
     if phase_augmentation is not True:
         raise ValueError(
-            "scale-consistency adaptation requires the existing phase "
+            "supervised-pair adaptation requires the existing phase "
             "augmentation for episodic and paired views"
         )
-    consistency_weight = _validate_scale_consistency_weight(
-        scale_consistency_weight
+    supervised_pair_weight_value = _validate_supervised_pair_weight(
+        supervised_pair_weight
     )
-    consistency_pool_audit = _validate_scale_consistency_pool(
-        data["scale_consistency_pool"],
+    supervised_pair_pool_audit = _validate_supervised_pair_pool(
+        data["supervised_pair_pool"],
         training_view_count=len(data["xtr"]),
+        classes=data["classes"],
     )
     source_share = _source_share_fraction(current_source_share)
     rng = np.random.default_rng(seed)
-    pair_rng_seed = int(seed) ^ SCALE_CONSISTENCY_PAIR_RNG_XOR
+    pair_rng_seed = int(seed) ^ SUPERVISED_PAIR_RNG_XOR
     pair_rng = np.random.default_rng(pair_rng_seed)
     net = net.to(device)
     log_scale = torch.nn.Parameter(
@@ -2407,22 +2733,32 @@ def _train(
         "loss": [],
         "evaluation": [],
         "checkpoint_score_contract": CHECKPOINT_SCORE_CONTRACT,
-        "scale_consistency": {
-            "loss_contract": SCALE_CONSISTENCY_LOSS_CONTRACT,
-            "pair_sampling_contract": SCALE_CONSISTENCY_PAIR_CONTRACT,
-            "weight": consistency_weight,
-            "distance": "one_minus_cosine_similarity",
-            "reduction": "mean_over_one_pair_per_literal_profile",
+        "supervised_pair": {
+            "loss_contract": SUPERVISED_PAIR_LOSS_CONTRACT,
+            "pair_sampling_contract": SUPERVISED_PAIR_PAIR_CONTRACT,
+            "weight": supervised_pair_weight_value,
+            "auxiliary": "public_class_cross_entropy",
+            "reduction": "mean_over_62_profile_contiguous_views",
+            "targets": SUPERVISED_PAIR_TARGET_CONSTRUCTION,
+            "paired_targets_sha256": SUPERVISED_PAIR_TARGET_SHA256,
+            "prototypes": (
+                "detached_current_episode_source_mixed_public_class_"
+                "prototypes"
+            ),
+            "logit_scale":
+                "detached_numeric_current_episode_logit_scale",
             "pair_rng_seed": pair_rng_seed,
             "pair_rng_seed_rule": "seed xor 0x5CA1E",
             "pair_rng_separate_from_episodic_rng": True,
-            "phase_augmentation_applied_to_both_paired_views": True,
-            "pool": consistency_pool_audit,
+            "phase_augmentation":
+                "one_independent_draw_per_paired_view",
+            "batch_norm_stat_firewall": True,
+            "pool": supervised_pair_pool_audit,
         },
     }
     running_loss = 0.0
     running_cross_entropy = 0.0
-    running_scale_consistency = 0.0
+    running_supervised_pair_cross_entropy = 0.0
     started = time.perf_counter()
     for episode in range(episodes):
         net.train()
@@ -2464,23 +2800,29 @@ def _train(
             torch.from_numpy(query_labels).to(device),
             label_smoothing=label_smoothing,
         )
-        paired = _sample_scale_consistency_pairs(
-            data["scale_consistency_pool"],
+        paired = _sample_supervised_pairs(
+            data["supervised_pair_pool"],
             pair_rng,
         )
-        # The preregistered attempt keeps the existing independent per-example
-        # phase augmentation enabled for both views in every selected pair.
-        scale_consistency = _scale_consistency_loss_for_pairs(
-            net,
-            data,
-            np.asarray(paired["positions"], dtype=np.int64),
-            device,
-            phase_augmentation=phase_augmentation,
+        supervised_pair_cross_entropy = (
+            _supervised_pair_cross_entropy_for_pairs(
+                net,
+                data,
+                np.asarray(paired["positions"], dtype=np.int64),
+                np.asarray(
+                    paired["profile_class_indices"],
+                    dtype=np.int64,
+                ),
+                prototypes,
+                log_scale,
+                device,
+                phase_augmentation=phase_augmentation,
+            )
         )
         loss = _combine_adaptation_losses(
             cross_entropy,
-            scale_consistency,
-            weight=consistency_weight,
+            supervised_pair_cross_entropy,
+            weight=supervised_pair_weight_value,
         )
         optimizer.zero_grad()
         loss.backward()
@@ -2489,8 +2831,8 @@ def _train(
             scheduler.step()
         running_loss += float(loss.detach().cpu())
         running_cross_entropy += float(cross_entropy.detach().cpu())
-        running_scale_consistency += float(
-            scale_consistency.detach().cpu()
+        running_supervised_pair_cross_entropy += float(
+            supervised_pair_cross_entropy.detach().cpu()
         )
 
         log_every = max(1, min(100, episodes))
@@ -2501,28 +2843,30 @@ def _train(
             )
             mean_loss = running_loss / log_every
             mean_cross_entropy = running_cross_entropy / log_every
-            mean_scale_consistency = (
-                running_scale_consistency / log_every
+            mean_supervised_pair_cross_entropy = (
+                running_supervised_pair_cross_entropy / log_every
             )
             running_loss = 0.0
             running_cross_entropy = 0.0
-            running_scale_consistency = 0.0
+            running_supervised_pair_cross_entropy = 0.0
             history["loss"].append(
                 {
                     "episode": episode + 1,
                     "value": mean_loss,
                     "cross_entropy": mean_cross_entropy,
-                    "scale_consistency_cosine_distance":
-                        mean_scale_consistency,
-                    "weighted_scale_consistency": (
-                        consistency_weight * mean_scale_consistency
+                    "supervised_pair_cross_entropy":
+                        mean_supervised_pair_cross_entropy,
+                    "weighted_supervised_pair_cross_entropy": (
+                        supervised_pair_weight_value
+                        * mean_supervised_pair_cross_entropy
                     ),
                 }
             )
             print(
                 f"[v5/{net.cfg.encoder}] ep {episode + 1}/{episodes} "
                 f"loss={mean_loss:.4f} ce={mean_cross_entropy:.4f} "
-                f"scale-consistency={mean_scale_consistency:.4f} "
+                f"supervised-pair-ce="
+                f"{mean_supervised_pair_cross_entropy:.4f} "
                 f"eta={eta_minutes:.1f}m",
                 flush=True,
             )
@@ -2589,7 +2933,7 @@ def _run_configuration(
     adaptation_binding: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
-        "schema": "v5-scale-orbit-development-training-v1",
+        "schema": "v5-scale-orbit-development-training-v2",
         "arguments": {
             key: _jsonable(value)
             for key, value in sorted(vars(args).items())
@@ -2603,21 +2947,57 @@ def _run_configuration(
         },
         "adaptation": {
             **dict(adaptation_binding),
-            "loss_contract": SCALE_CONSISTENCY_LOSS_CONTRACT,
-            "pair_sampling_contract": SCALE_CONSISTENCY_PAIR_CONTRACT,
-            "scale_consistency_weight": float(
-                args.scale_consistency_weight
+            "loss_contract": SUPERVISED_PAIR_LOSS_CONTRACT,
+            "pair_sampling_contract": SUPERVISED_PAIR_PAIR_CONTRACT,
+            "supervised_pair_weight": float(
+                args.supervised_pair_weight
             ),
-            "distance": "one_minus_cosine_similarity",
+            "auxiliary": "public_class_cross_entropy",
             "pairs_per_episode":
-                SCALE_CONSISTENCY_EXPECTED_PROFILE_COUNT,
-            "phase_augmentation_applied_to_both_paired_views": True,
+                SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
+            "views_per_episode":
+                SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2,
+            "target_construction":
+                SUPERVISED_PAIR_TARGET_CONSTRUCTION,
+            "prototype_gradient": "detached_for_auxiliary",
+            "logit_scale_gradient": "detached_for_auxiliary",
+            "phase_augmentation":
+                "one_independent_draw_per_paired_view",
+            "batch_norm_stat_firewall": True,
             "fitting_firewall": {
                 "pair_source": "seed20264101 current train role only",
-                "seed20264101_enrollment_rows_used_for_scale_consistency": 0,
-                "seed20262904_selection_rows_used_for_weight_fit": 0,
-                "seed20262904_selection_rows_used_for_prototype_fit": 0,
-                "sealed_rows_used_for_any_fit_or_selection": 0,
+                (
+                    "supervised_pairs_from_seed20264101_current_train_"
+                    "role_only"
+                ): True,
+                (
+                    "seed20264101_enrollment_rows_used_for_"
+                    "supervised_pair_auxiliary"
+                ): 0,
+                (
+                    "seed20262904_selection_rows_used_for_any_gradient_or_"
+                    "optimizer_step"
+                ): 0,
+                (
+                    "seed20262904_selection_rows_used_for_weight_center_or_"
+                    "feature_moment_fit"
+                ): 0,
+                (
+                    "seed20262904_selection_rows_used_for_persistent_"
+                    "prototype_fit"
+                ): 0,
+                (
+                    "seed20262904_selection_rows_used_for_open_set_"
+                    "threshold_or_rank_fit"
+                ): 0,
+                (
+                    "seed20262904_selection_metrics_may_retain_the_existing_"
+                    "development_checkpoint_and_candidate_selection_role"
+                ): True,
+                (
+                    "sealed_rows_used_for_any_fit_checkpoint_or_candidate_"
+                    "selection"
+                ): 0,
             },
         },
         "optimizer": {
@@ -2634,9 +3014,9 @@ def _run_configuration(
             "seed": int(args.seed),
             "phase_augmentation": bool(args.phase_augmentation),
             "episodic_rng": "numpy.default_rng(seed)",
-            "scale_consistency_pair_rng": {
+            "supervised_pair_rng": {
                 "kind": "numpy.default_rng",
-                "seed": int(args.seed) ^ SCALE_CONSISTENCY_PAIR_RNG_XOR,
+                "seed": int(args.seed) ^ SUPERVISED_PAIR_RNG_XOR,
                 "seed_rule": "seed xor 0x5CA1E",
                 "separate_from_episodic_rng": True,
             },
@@ -2653,18 +3033,24 @@ def _run_configuration(
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     started = time.perf_counter()
-    adaptation_binding = _validate_scale_consistency_adaptation_source()
+    adaptation_binding = _validate_supervised_pair_adaptation_source()
     _validate_adaptation_run_configuration(args)
     source_hashes_at_start = _source_hashes()
-    if (
-        source_hashes_at_start.get(
-            "v5/scale_consistency_adaptation_attempt_1.json"
-        )
-        != SCALE_CONSISTENCY_ADAPTATION_SHA256
+    required_adaptation_sources = {
+        "v5/scale_consistency_adaptation_attempt_1.json":
+            ATTEMPT_1_ADAPTATION_SHA256,
+        "v5/scale_consistency_adaptation_attempt_1_miss_report.json":
+            ATTEMPT_1_MISS_REPORT_SHA256,
+        "v5/scale_consistency_adaptation_attempt_2.json":
+            SUPERVISED_PAIR_ADAPTATION_SHA256,
+    }
+    if any(
+        source_hashes_at_start.get(key) != expected
+        for key, expected in required_adaptation_sources.items()
     ):
         raise RuntimeError(
             "executed source snapshot omitted or changed the exact "
-            "scale-consistency adaptation intent"
+            "attempt-1 intent, miss report, or attempt-2 intent"
         )
     output = Path(args.output_dir).expanduser().resolve()
     lowered = {part.lower() for part in output.parts}
@@ -2740,7 +3126,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         label_smoothing=args.label_smoothing,
         phase_augmentation=args.phase_augmentation,
         current_source_share=args.current_source_share,
-        scale_consistency_weight=args.scale_consistency_weight,
+        supervised_pair_weight=args.supervised_pair_weight,
     )
     final_evaluation, combined_prototypes = _evaluate(net, data, device)
 
@@ -2848,16 +3234,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=Fraction(1, 3),
         help=(
             "Exact current-source share for classes present in both sources "
-            "(adaptation attempt 1 is frozen at 1/3)"
+            "(supervised-pair attempt 2 is frozen at 1/3)"
         ),
     )
     parser.add_argument(
-        "--scale-consistency-weight",
+        "--supervised-pair-weight",
         type=float,
         required=True,
         help=(
-            "Required explicit adaptation loss weight; attempt 1 is frozen "
-            "at exactly 0.2"
+            "Required explicit supervised-pair loss weight; attempt 2 is "
+            "frozen at exactly 0.2"
         ),
     )
     parser.add_argument(
