@@ -947,10 +947,14 @@ def _classification_report(
                 index
             )
             pair_groups.setdefault(str(row.pair_id), []).append(index)
-        expected_scales = tuple(sorted(scale_groups))
-        if len(expected_scales) < 2:
+        expected_scales = tuple(
+            float(value)
+            for value in scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS
+        )
+        if tuple(sorted(scale_groups)) != expected_scales:
             raise ValueError(
-                "scale-orbit classification requires at least two scales"
+                "scale-orbit classification lacks the exact preregistered "
+                "physical-scale factors"
             )
         per_scale: dict[str, Any] = {}
         for scale, positions_list in sorted(scale_groups.items()):
