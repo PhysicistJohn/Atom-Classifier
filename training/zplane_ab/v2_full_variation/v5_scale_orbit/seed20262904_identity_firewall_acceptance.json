@@ -1,0 +1,97 @@
+{
+  "schema": "atomos.v5.scale-orbit.adaptive-corpus-identity-firewall-acceptance",
+  "schema_version": 1,
+  "status": "exact_bytes_accepted_for_composite_identity_audit_before_model_use",
+  "accepted_at": "2026-07-29T05:21:02-07:00",
+  "lineage": "v5-scale-orbit",
+  "development_only": true,
+  "release_evidence": false,
+  "append_only": true,
+  "parent_bindings": {
+    "identity_firewall_amendment_commit": "bde1e3efeb80aeb38354465eb028b65bdf920020",
+    "identity_firewall_amendment_sha256": "89d714910dc5dfdbfb05282abf752382cf382e88108d0f2b589f62289d452ba4",
+    "identity_rejection_sha256": "9f67115eaa07b97f35bcc3cc2f8c3ebd96a0bc819ab47500b98953aa57d31bc5",
+    "pretraining_amendment_sha256": "3e4098d0475477bf1ba26e79992ca17848c16dd77deb44b7562c4452544003fd",
+    "recovery_protocol_sha256": "cc79496ba398e4ce2fcb6875d8b810bcbc1ae7f89cb75271fdf2c65e6ad2afff",
+    "seed_registry_sha256": "b832e09e8eba264e21d7845f72c0d52f671aa1f9187d55ddce94fb833347e0cd"
+  },
+  "observation_boundary": {
+    "replacement_generation_completed": true,
+    "replacement_manifest_and_raw_hashes_observed": true,
+    "composite_loader_or_cross_role_collision_audit_started": false,
+    "model_training_started": false,
+    "model_inference_started": false,
+    "candidate_metrics_observed": false,
+    "sealed_seed_generated_or_read": false,
+    "acceptance_is_not_a_collision_audit_pass": true
+  },
+  "accepted_replacement_corpus": {
+    "eval_seed": 20262904,
+    "directory": "training/artifacts/signallab-current-scale-dev-v5-seed20262904-r64-identity-firewalled",
+    "statistical_role": "adaptive_development_selection_only",
+    "manifest": "scale_eval.json",
+    "manifest_sha256": "7a345bc109e46661427c2f81b46125fb48a00048e9b2b7da77505dc49135d998",
+    "raw": "scale_eval.f32",
+    "raw_sha256": "53d4ab20faf031ed2aacd3017d55ada1622d7c51f85b200aa490f3d3854dc928",
+    "manifest_declared_raw_sha256": "53d4ab20faf031ed2aacd3017d55ada1622d7c51f85b200aa490f3d3854dc928",
+    "row_count": 7936,
+    "profile_count": 31,
+    "realizations_per_profile": 64,
+    "physical_scale_factors": [
+      1.0,
+      1.25,
+      1.5,
+      2.0
+    ]
+  },
+  "quarantined_corpus": {
+    "eval_seed": 20262904,
+    "directory": "training/artifacts/signallab-current-scale-dev-v5-seed20262904-r64",
+    "manifest_sha256": "ba273ec50520b6416be40146cf595b147c7b767ad94655bec44482f7edaec750",
+    "raw_sha256": "14ae949ebcf9a56b13cddb4d9b7bcb3c725e36d15c39e8f56e311b905fe04be6",
+    "replacement_manifest_hash_differs": true,
+    "replacement_raw_hash_differs": true,
+    "disposition": "quarantined_identity_invalid_never_fit_or_scored"
+  },
+  "unchanged_training_corpus": {
+    "eval_seed": 20264101,
+    "directory": "training/artifacts/signallab-current-scale-train-v5-seed20264101-r64",
+    "manifest_sha256": "c61bce0c32ae8728b0c7212da9dd59bc1689fb6dd370c2a27bf8650a7647a353",
+    "raw_sha256": "03df2b77e6d48cebb434626a17dfc3862f1d062dfbd7b59d9f35b9ce98eda080",
+    "row_count": 7936,
+    "manifest_identity_field_audit": {
+      "missing_receiver_preset_rows": 0,
+      "missing_receiver_realization_channel_seed_rows": 0,
+      "rows_missing_both_receiver_seed_fields": 0
+    }
+  },
+  "generator_binding": {
+    "source_commit": "e2897504692db2bc3f948613ec1043c0dd51d89c",
+    "source_relative_path": "tools/generate-current-signallab-scale-eval.ts",
+    "source_sha256": "53f076da486c73bd3088d0ad2359d399736c0eaa56f5323d350d1ebca57bcd34",
+    "bundle_relative_path": ".artifacts/current-scale-eval-generator/generate-current-signallab-scale-eval.js",
+    "bundle_sha256": "621fa092a9513e6f54270120e9005df15962a1f99602b6df9ac493887910fd44",
+    "source_bundle_binding_sha256": "788c4e3f10040fe09508687837ed2f1e3deb0a99063e38384f290ab3c966d31b"
+  },
+  "manifest_firewall_binding": {
+    "scale_identity_exclusion_count": 1,
+    "excluded_corpus_eval_seed": 20264101,
+    "excluded_corpus_manifest_sha256": "c61bce0c32ae8728b0c7212da9dd59bc1689fb6dd370c2a27bf8650a7647a353",
+    "excluded_corpus_raw_sha256": "03df2b77e6d48cebb434626a17dfc3862f1d062dfbd7b59d9f35b9ce98eda080",
+    "excluded_corpus_row_count": 7936
+  },
+  "review_disclosure": {
+    "generator_source_is_frozen_for_this_completed_run": true,
+    "known_structural_limitation": "The pinned generator does not independently require receiverPreset or at least one receiver seed on every arbitrary scale-exclusion item.",
+    "specific_run_mitigation": "The sole exclusion corpus is bound by exact manifest and raw hashes; its 7,936 rows all have receiverPreset and receiverRealizationChannelSeed, and the unchanged composite loader must still prove every required cross-role collision count is zero.",
+    "future_generation_requires_append_only_generator_hardening": true
+  },
+  "remaining_pre_model_gates": {
+    "accepted_manifest_and_raw_exact_hash_validation": "required",
+    "generator_lineage_validation": "required",
+    "training_exclusion_metadata_validation": "required",
+    "exact_inventory_validation": "required",
+    "cross_role_pair_content_runtime_prefix_phase_channel_receiver_collision_audit": "required",
+    "stop_on_any_failure": true
+  }
+}
