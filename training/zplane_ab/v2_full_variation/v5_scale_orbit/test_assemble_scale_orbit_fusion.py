@@ -149,6 +149,24 @@ def _branch_metrics(encoder: str = "real") -> dict:
 
 
 class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
+    def test_consumed_model_input_is_not_consumed_test_exposure(self) -> None:
+        assembler._validate_no_consumed_provenance({
+            "trusted_current_geometry_canonicalizer": {
+                "consumed_input_samples": 4_096,
+            },
+            "consumed_test_held_out": 1_000,
+            "consumed_test_rows_exposed": 0,
+        })
+
+    def test_nonzero_consumed_test_exposure_still_fails_closed(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "forbidden exposure"):
+            assembler._validate_no_consumed_provenance({
+                "trusted_current_geometry_canonicalizer": {
+                    "consumed_input_samples": 4_096,
+                },
+                "consumed_test_rows_exposed": 1,
+            })
+
     def test_imports_exact_v5_runner(self) -> None:
         self.assertEqual(
             Path(assembler.branch_runner.__file__).resolve(),

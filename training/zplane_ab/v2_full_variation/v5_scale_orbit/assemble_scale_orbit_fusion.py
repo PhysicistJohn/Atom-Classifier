@@ -611,10 +611,22 @@ def _validate_no_consumed_provenance(value: Any, *, path: str = "metrics") -> No
             # an exposure counter.  Keep this exception exact so a similarly
             # named "used"/"loaded"/"exposed" field still fails closed.
             safe_withheld_count = key_text == "consumed_test_held_out"
+            consumed_test_exposure = (
+                "consumed" in key_text
+                and (
+                    "test" in key_text
+                    or "validation" in key_text
+                    or key_text.endswith((
+                        "_rows_used",
+                        "_rows_loaded",
+                        "_rows_exposed",
+                    ))
+                )
+            )
             sensitive = (
                 not safe_withheld_count
                 and (
-                    "consumed" in key_text
+                    consumed_test_exposure
                     or "sealed" in key_text
                     or key_text in {
                         "test_rows_used",
