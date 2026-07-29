@@ -1,0 +1,194 @@
+{
+  "schema": "atomos.v5.scale-orbit.adaptation-attempt-miss-report",
+  "schema_version": 2,
+  "status": "adaptation_attempt_2_recovered_pooled_accuracy_but_not_every_profile_scale_agreement",
+  "authored_at": "2026-07-29T07:41:20-07:00",
+  "lineage": "v5-scale-orbit",
+  "development_only": true,
+  "release_evidence": false,
+  "append_only": true,
+  "adaptation_attempt": 2,
+  "parent_source_commit": "e14a7f2160e6792a07a77619be7281c55c8c0704",
+  "parent_source_commit_subject": "Train v5 with supervised scale pairs",
+  "parent_source_commit_parent": "53ae9eb2060a0f65a2ffcf607d98866bb695e65c",
+  "parent_bindings": {
+    "recovery_protocol_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/recovery_protocol.json",
+    "recovery_protocol_sha256": "cc79496ba398e4ce2fcb6875d8b810bcbc1ae7f89cb75271fdf2c65e6ad2afff",
+    "seed_registry_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/seed_registry.json",
+    "seed_registry_sha256": "b832e09e8eba264e21d7845f72c0d52f671aa1f9187d55ddce94fb833347e0cd",
+    "attempt_1_intent_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_1.json",
+    "attempt_1_intent_sha256": "e3166235ed53835465b3bd7afa6ad03982e31016b4d20c6875879288b3304a90",
+    "attempt_1_miss_report_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_1_miss_report.json",
+    "attempt_1_miss_report_sha256": "1c0e6d94d418e3954a54aa44396ef5cc9d8603eb2895dd69c0a0c458c254bc9d",
+    "attempt_2_intent_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/scale_consistency_adaptation_attempt_2.json",
+    "attempt_2_intent_sha256": "5e0cc7bbd58ebe050bf983f854e154c43595dc804aedee3c1c3849cf5691b0a9",
+    "openset_novelty_adaptive_amendment_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/openset_novelty_adaptive_amendment.json",
+    "openset_novelty_adaptive_amendment_sha256": "5622458262d51a255fa70f00f1a8baeb150500d32bb9af65db44c641cf4e1154"
+  },
+  "evaluated_candidates": {
+    "baseline_fusion": {
+      "description": "frozen pre-adaptation v5 scale-orbit development fusion",
+      "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-fusion-w0.5/dev_metrics.json",
+      "dev_metrics_sha256": "1c02705081cb4f973e1ea092a0b995501ca9c84e609f09d7931f2337462b28b5"
+    },
+    "attempt_1_sc02_fusion": {
+      "description": "attempt-1 cosine-distance auxiliary development fusion",
+      "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-fusion-w0.5-sc02/dev_metrics.json",
+      "dev_metrics_sha256": "d23c8717261961dec99a07cc45f0476cdc784fdacaf827742ee1677275186e7b"
+    },
+    "attempt_2_spair02": {
+      "description": "attempt-2 mean supervised public-class CE over 62 paired views",
+      "attempt_2_intent_sha256": "5e0cc7bbd58ebe050bf983f854e154c43595dc804aedee3c1c3849cf5691b0a9",
+      "source_commit": "e14a7f2160e6792a07a77619be7281c55c8c0704",
+      "real_branch": {
+        "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-real-seed20260740-e8000-reg-spair02/dev_metrics.json",
+        "dev_metrics_sha256": "8128780c4b81f44934d29ca77ad80409289d10d1c488e024a7fdfdf3cbfce34e"
+      },
+      "complex_branch": {
+        "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-complex-seed20260740-e8000-reg-spair02/dev_metrics.json",
+        "dev_metrics_sha256": "e834e323a6da40c678a826d6376733ea4585e8da9cdb9ab51b16af7e1fd74071"
+      },
+      "fusion": {
+        "dev_metrics_relative_path": ".artifacts/v5-scale-orbit-fusion-w0.5-spair02/dev_metrics.json",
+        "dev_metrics_sha256": "13d25fdfd81916a49ba2e48bca49992bbd4524e3b91191299ca6fb43ebbebd87"
+      }
+    }
+  },
+  "reassessed_predeclared_recovery_goals": [
+    {
+      "name": "classifier_development_current_service_pooled_closed_accuracy",
+      "comparison": "greater_than_or_equal",
+      "threshold": 0.95,
+      "fusion_metric_path": "final_evaluation.current.pooled.accuracy",
+      "baseline_observed": 0.940398185483871,
+      "attempt_1_sc02_observed": 0.9343497983870968,
+      "attempt_2_spair02_observed": 0.96875,
+      "attempt_2_spair02_pass": true,
+      "recovered_by_attempt_2": true
+    },
+    {
+      "name": "length_scale_outcome_agreement_every_source_profile",
+      "comparison": "greater_than_or_equal",
+      "threshold": 0.95,
+      "fusion_metric_path": "final_evaluation.current.pooled.worst_profile_physical_scale_prediction_agreement_rate",
+      "baseline_observed": 0.875,
+      "attempt_1_sc02_observed": 0.875,
+      "attempt_2_spair02_observed": 0.90625,
+      "attempt_2_spair02_pass": false,
+      "recovered_by_attempt_2": false
+    }
+  ],
+  "attempt_2_fusion_diagnostics": {
+    "current_pooled_closed_accuracy": 0.96875,
+    "current_pooled_profile_balanced_accuracy": 0.96875,
+    "current_worst_scale_present_class_balanced_accuracy": 0.9719122023809524,
+    "current_physical_scale_prediction_agreement_rate": 0.9808467741935484,
+    "current_worst_profile_physical_scale_prediction_agreement_rate": 0.90625,
+    "current_worst_profile_scale_recall": 0.84375,
+    "wifi_hr_dsss_worst_scale_accuracy": 0.984375,
+    "wifi_hr_dsss_to_bluetooth_worst_scale_confusion_rate": 0.0,
+    "bluetooth_to_dsss_worst_profile_scale_confusion_rate": 0.0,
+    "historical_worst_length_balanced_accuracy": {
+      "baseline": 0.7670275561964515,
+      "attempt_1_sc02": 0.7663222810129052,
+      "attempt_2_spair02": 0.7373488150085509,
+      "attempt_2_direction_from_attempt_1": "decreased"
+    },
+    "formal_full_gate_results": false,
+    "reason": "These are classifier-artifact diagnostics only; the exact open-set, abstention, legal-route, and novelty gate runners were not executed."
+  },
+  "exact_subthreshold_classifier_diagnostics": {
+    "legal_cell_accuracy_reference_threshold": 0.9,
+    "formal_21_gate_result": false,
+    "profile_scale_cells_below_reference_threshold": [
+      {
+        "profile_scale": "current:wifi6-he-mu|scale=1",
+        "public_class": "ofdm",
+        "rows": 64,
+        "recall": 0.84375
+      },
+      {
+        "profile_scale": "current:wifi6-he-mu|scale=1.25",
+        "public_class": "ofdm",
+        "rows": 64,
+        "recall": 0.890625
+      },
+      {
+        "profile_scale": "current:wifi6-he-su|scale=1.25",
+        "public_class": "ofdm",
+        "rows": 64,
+        "recall": 0.890625
+      },
+      {
+        "profile_scale": "current:wifi6-he-tb|scale=1",
+        "public_class": "ofdm",
+        "rows": 64,
+        "recall": 0.890625
+      }
+    ],
+    "every_profile_agreement_threshold": 0.95,
+    "profiles_below_agreement_threshold": [
+      {
+        "profile": "current:lte-band3-fdd-20m",
+        "paired_identity_count": 64,
+        "agreement": 0.90625,
+        "additional_consistent_pairs_required_to_reach_next_64_row_fraction_at_or_above_threshold": 3
+      },
+      {
+        "profile": "current:wifi6-he-mu",
+        "paired_identity_count": 64,
+        "agreement": 0.9375,
+        "additional_consistent_pairs_required_to_reach_next_64_row_fraction_at_or_above_threshold": 1
+      },
+      {
+        "profile": "current:wifi6-he-tb",
+        "paired_identity_count": 64,
+        "agreement": 0.921875,
+        "additional_consistent_pairs_required_to_reach_next_64_row_fraction_at_or_above_threshold": 2
+      }
+    ]
+  },
+  "wifi_bluetooth_preservation_diagnostics": {
+    "current_wifi_hr_dsss_profile_recall": 0.99609375,
+    "current_wifi_hr_dsss_profile_scale_agreement": 0.984375,
+    "current_bluetooth_classic_profile_recall": 1.0,
+    "current_bluetooth_classic_profile_scale_agreement": 1.0,
+    "current_bluetooth_le_profile_recall": 1.0,
+    "current_bluetooth_le_profile_scale_agreement": 1.0,
+    "directional_wifi_hr_dsss_to_bluetooth_confusion_rate": 0.0,
+    "directional_bluetooth_to_dsss_confusion_rate": 0.0
+  },
+  "full_gate_assessment": {
+    "known_21_gate_status": "not_evaluated",
+    "known_21_gate_reason": "No exact v5 open-set policy, abstention, and legal-route full-gate result was produced for attempt 2.",
+    "inherited_gate_count": 19,
+    "added_directional_confusion_gate_count": 2,
+    "known_gate_count": 21,
+    "known_plus_novelty_27_gate_status": "not_evaluated",
+    "known_plus_novelty_27_gate_reason": "No exact 21-known-plus-6-novelty gate runner was executed for attempt 2.",
+    "novelty_gate_count": 6,
+    "total_gate_count": 27,
+    "classifier_diagnostics_are_not_formal_gate_rows": true,
+    "other_gates_claimed_passed": false,
+    "release_claim_permitted": false
+  },
+  "outcome": {
+    "reassessed_predeclared_recovery_goal_count": 2,
+    "attempt_2_recovered_reassessed_predeclared_recovery_goal_count": 1,
+    "attempt_2_recovered_pooled_accuracy_goal": true,
+    "attempt_2_recovered_every_profile_agreement_goal": false,
+    "attempt_2_selected_as_final_candidate": false,
+    "attempt_2_retained_as_parent_for_attempt_3": true,
+    "attempt_2_is_independent_validation_evidence": false,
+    "attempt_2_is_release_evidence": false,
+    "scientific_conclusion": "Mean supervised pair cross-entropy recovered pooled closed accuracy and improved pooled scale agreement while preserving zero directional WiFi HR-DSSS/Bluetooth confusion, but it did not recover the frozen every-profile scale-agreement goal and regressed the historical checkpoint diagnostic."
+  },
+  "fitting_and_validation_boundary": {
+    "seed20262904_role": "adaptive_development_only",
+    "seed20262904_metrics_informed_this_miss_report": true,
+    "seed20262904_rows_used_for_weight_center_feature_moment_prototype_threshold_or_rank_fit": 0,
+    "sealed_validation_seed_generated_or_read": false,
+    "sealed_rows_used_for_any_fit_or_selection": 0,
+    "candidate_bytes_frozen_for_independent_validation": false
+  }
+}
