@@ -1,0 +1,100 @@
+{
+  "schema": "atomos.v5.scale-orbit.post-score-adaptation-intent",
+  "schema_version": 1,
+  "status": "frozen_before_scale_consistency_source_change_or_training",
+  "authored_at": "2026-07-29T05:48:23-07:00",
+  "lineage": "v5-scale-orbit",
+  "development_only": true,
+  "release_evidence": false,
+  "append_only": true,
+  "adaptation_attempt": 1,
+  "parent_source_commit": "85c4e587c370be593f49e46249d6d0ee8d9d4b84",
+  "parent_bindings": {
+    "recovery_protocol_sha256": "cc79496ba398e4ce2fcb6875d8b810bcbc1ae7f89cb75271fdf2c65e6ad2afff",
+    "pretraining_amendment_sha256": "3e4098d0475477bf1ba26e79992ca17848c16dd77deb44b7562c4452544003fd",
+    "identity_firewall_acceptance_sha256": "9da7e5b08bb6d5f15e80e920660315d43efe859b4db160d7e40f7b673c741d9b"
+  },
+  "observed_adaptive_candidate": {
+    "real_directory": ".artifacts/v5-scale-orbit-real-seed20260740-e8000-reg",
+    "real_metrics_sha256": "80c653923dfabdf4d516c499562969a9c402f939e819e9b893106053161acf31",
+    "complex_directory": ".artifacts/v5-scale-orbit-complex-seed20260740-e8000-reg",
+    "complex_metrics_sha256": "a3b15398fa5fe145996eeb4f273e0d566decddb55bc79b622ae3c019f2c23043",
+    "fusion_directory": ".artifacts/v5-scale-orbit-fusion-w0.5",
+    "fusion_metrics_sha256": "1c02705081cb4f973e1ea092a0b995501ca9c84e609f09d7931f2337462b28b5",
+    "branch_weight_real": 0.5,
+    "branch_weight_complex": 0.5,
+    "adaptive_selection_seed": 20262904
+  },
+  "observed_metrics": {
+    "current_service_pooled_closed_accuracy": 0.940398185483871,
+    "current_service_pooled_profile_balanced_accuracy": 0.940398185483871,
+    "current_service_worst_scale_present_class_balanced_accuracy": 0.9681919642857142,
+    "current_service_worst_profile_scale_recall": 0.796875,
+    "current_service_physical_scale_prediction_agreement": 0.9722782258064516,
+    "current_service_worst_profile_physical_scale_prediction_agreement": 0.875,
+    "wifi_hr_dsss_worst_scale_accuracy": 1.0,
+    "wifi_hr_dsss_to_bluetooth_worst_scale_confusion_rate": 0.0,
+    "bluetooth_to_dsss_worst_profile_scale_confusion_rate": 0.0,
+    "historical_worst_length_balanced_accuracy": 0.7670275561964515
+  },
+  "failed_frozen_goals": [
+    {
+      "name": "classifier_development_current_service_pooled_closed_accuracy",
+      "comparison": "greater_than_or_equal",
+      "threshold": 0.95,
+      "observed": 0.940398185483871
+    },
+    {
+      "name": "length_scale_outcome_agreement_every_source_profile",
+      "comparison": "greater_than_or_equal",
+      "threshold": 0.95,
+      "observed_current_profile_floor": 0.875
+    }
+  ],
+  "preserved_successes": {
+    "wifi_hr_dsss_worst_scale_accuracy_at_least_0_95": true,
+    "wifi_hr_dsss_to_bluetooth_confusion_at_most_0_02": true,
+    "bluetooth_to_dsss_confusion_at_most_0_02": true,
+    "pooled_physical_scale_agreement_at_least_0_95": true
+  },
+  "predeclared_change": {
+    "name": "profile_balanced_current_training_scale_pair_consistency",
+    "model_architecture_changed": false,
+    "frontend_or_canonicalizer_changed": false,
+    "prototype_fit_changed": false,
+    "checkpoint_score_order_changed": false,
+    "gate_threshold_or_comparison_changed": false,
+    "class_or_profile_removed": false,
+    "loss": "episodic_cross_entropy_plus_0.2_times_mean_cosine_distance_between_two_distinct_physical_scale_views_of_the_same_current_training_identity",
+    "scale_consistency_weight": 0.2,
+    "pair_sampling": "each episode selects one seed20264101 training identity independently and uniformly within every one of the 31 current profiles, then selects two distinct physical-scale views uniformly without replacement",
+    "pair_rng": "separate numpy.default_rng(seed xor 0x5CA1E) so episodic support/query sampling remains unchanged",
+    "phase_augmentation": "the existing per-example phase augmentation remains enabled for both paired views",
+    "episodes": 8000,
+    "evaluation_interval": 500,
+    "seed": 20260740,
+    "dropout": 0.35,
+    "weight_decay": 0.0005,
+    "current_source_share": "1/3",
+    "encoders": [
+      "real",
+      "complex"
+    ],
+    "fusion_weight_real": 0.5,
+    "fusion_weight_complex": 0.5
+  },
+  "fitting_firewall": {
+    "scale_consistency_pairs_from_seed20264101_train_role_only": true,
+    "seed20264101_enrollment_rows_used_for_scale_consistency": 0,
+    "seed20262904_selection_rows_used_for_weight_fit": 0,
+    "seed20262904_selection_rows_used_for_prototype_fit": 0,
+    "seed20262904_selection_rows_used_for_open_set_threshold_or_rank_fit": 0,
+    "sealed_rows_used_for_any_fit_or_selection": 0
+  },
+  "validation_boundary": {
+    "this_attempt_may_be_selected_on_seed20262904": true,
+    "this_attempt_is_independent_validation_evidence": false,
+    "candidate_must_be_frozen_before_any_sealed_generation": true,
+    "sealed_seed_generated_or_read": false
+  }
+}
