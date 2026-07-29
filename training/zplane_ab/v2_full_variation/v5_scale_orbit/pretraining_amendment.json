@@ -1,0 +1,312 @@
+{
+  "schema": "atomos.v5.scale-orbit.pretraining-amendment",
+  "schema_version": 1,
+  "status": "append_only_outcome_blind_before_any_v5_corpus_read_training_or_inference",
+  "authored_at": "2026-07-29T04:50:29-07:00",
+  "development_only": true,
+  "release_evidence": false,
+  "append_only": true,
+  "mutates_parent_protocol_or_registry": false,
+  "parent_bindings": {
+    "protocol_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/recovery_protocol.json",
+    "protocol_sha256": "cc79496ba398e4ce2fcb6875d8b810bcbc1ae7f89cb75271fdf2c65e6ad2afff",
+    "seed_registry_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/seed_registry.json",
+    "seed_registry_sha256": "b832e09e8eba264e21d7845f72c0d52f671aa1f9187d55ddce94fb833347e0cd",
+    "parent_commit": "7911bb6045c553a19b524acecd7b2f465759fce8",
+    "parent_commit_subject": "preregister v5 scale-orbit recovery lineage"
+  },
+  "timing_and_outcome_blindness": {
+    "seed20264101_generation_started_at": "2026-07-29T04:42:00-07:00",
+    "generation_start_observation": "local process-table metadata; no manifest, raw sample, hash, metric, or generated row was opened",
+    "seed20264101_generation_began_before_amendment": true,
+    "seed20264101_generation_was_in_progress_when_amendment_was_authored": true,
+    "seed20264101_manifest_read_before_amendment": false,
+    "seed20264101_raw_samples_read_before_amendment": false,
+    "seed20264101_generated_content_hashes_observed_before_amendment": false,
+    "seed20264101_generated_metrics_observed_before_amendment": false,
+    "v5_model_training_started_before_amendment": false,
+    "v5_model_inference_started_before_amendment": false,
+    "reason_for_amendment": "static code-to-protocol audit found that one corpus was being assigned both training and adaptive-selection roles and that fixed-origin one-shot rows cannot honestly satisfy a universal phase-identity claim",
+    "amendment_is_response_to_generated_outcomes": false
+  },
+  "role_allocation": {
+    "training_and_enrollment": {
+      "seed": 20264101,
+      "seed_registry_allocation": "training_scale",
+      "seed_registry_statistical_role": "training_only",
+      "realizations_per_profile": 64,
+      "realization_rules": [
+        {
+          "start_inclusive": 0,
+          "end_exclusive": 40,
+          "role": "train"
+        },
+        {
+          "start_inclusive": 40,
+          "end_exclusive": 64,
+          "role": "enrollment"
+        }
+      ],
+      "allowed_roles": [
+        "train",
+        "enrollment"
+      ],
+      "forbidden_roles": [
+        "selection",
+        "validation"
+      ]
+    },
+    "adaptive_selection": {
+      "seed": 20262904,
+      "seed_registry_allocation": "adaptive_scale_development",
+      "seed_registry_statistical_role": "adaptive_development_only",
+      "realizations_per_profile": 64,
+      "realization_rules": [
+        {
+          "start_inclusive": 0,
+          "end_exclusive": 64,
+          "role": "selection"
+        }
+      ],
+      "allowed_roles": [
+        "selection"
+      ],
+      "forbidden_roles": [
+        "train",
+        "enrollment",
+        "validation"
+      ],
+      "rows_used_for_weight_fit": 0,
+      "rows_used_for_prototype_or_enrollment_fit": 0,
+      "rows_used_for_threshold_or_rank_fit": 0,
+      "candidate_selection_allowed": true
+    },
+    "seed20264101_selection_rows": 0,
+    "seed20262904_training_or_enrollment_rows": 0,
+    "seed_reassignment": false
+  },
+  "composite_loader_contract": {
+    "required_input_seeds": [
+      20264101,
+      20262904
+    ],
+    "required_seed_to_roles": {
+      "20262904": [
+        "selection"
+      ],
+      "20264101": [
+        "train",
+        "enrollment"
+      ]
+    },
+    "each_manifest_and_raw_file_remains_separately_hash_bound": true,
+    "row_reference_must_include_source_seed": true,
+    "row_identity_format": "scale-orbit:<eval_seed>:<pair_id>",
+    "prefix_dispatch_uses_row_source_seed": true,
+    "raw_source_index_is_never_applied_to_the_other_seed_corpus": true,
+    "all_four_scale_views_of_a_pair_share_one_role_and_one_identity": true,
+    "exact_realization_index_set_required_per_profile_per_seed": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63
+    ],
+    "exact_public_class_order": [
+      "am",
+      "bluetooth",
+      "cw",
+      "dsss",
+      "fm",
+      "gsm",
+      "ofdm"
+    ],
+    "fixed_profile_public_class_map_must_equal_parent_current_source_map": true,
+    "training_must_not_start_until_composite_loader_audit_passes": true
+  },
+  "identity_applicability_and_separation": {
+    "scope": "pairwise across train, enrollment, adaptive selection, and every later sealed validation partition",
+    "paired_scale_views_are_deduplicated_before_identity_collision_counting": true,
+    "unconditional_zero_collision_keys": [
+      "pair_id",
+      "content_sha256",
+      "runtime_prefix_sha256",
+      "receiver_realization_channel_seed",
+      "receiver_realization_seed_when_non_null"
+    ],
+    "cyclic_replay": {
+      "base_transmitter_identity": "profile_and_phase_native_sample",
+      "required_zero_collision_keys": [
+        "base_transmitter_identity",
+        "profile_and_phase_native_sample",
+        "pair_id",
+        "content_sha256",
+        "runtime_prefix_sha256",
+        "receiver_realization_channel_seed",
+        "receiver_realization_seed_when_non_null"
+      ],
+      "phase_identity_separation_weakened": false
+    },
+    "payload_seed": {
+      "required_when_emitted_by_generator": true,
+      "key": "profile_and_payload_seed",
+      "cross_partition_collision_count_when_present": 0,
+      "payload_identity_separation_weakened": false
+    },
+    "one_shot_replay": {
+      "phase_native_sample_is_structurally_fixed_to_zero": true,
+      "current_generator_emits_payload_seed": false,
+      "current_generator_emits_independent_transmitter_waveforms_per_realization": false,
+      "structurally_inapplicable_identity_keys": [
+        "base_transmitter_identity",
+        "profile_and_payload_seed",
+        "profile_and_phase_native_sample"
+      ],
+      "forbidden_claims": [
+        "one-shot transmitter identity is independent across partitions",
+        "one-shot phase identity is held out across partitions",
+        "one-shot payload identity is held out across partitions"
+      ],
+      "permitted_generalization_claim": "fixed-waveform receiver-realization generalization only",
+      "still_required_zero_collision_keys": [
+        "pair_id",
+        "content_sha256",
+        "runtime_prefix_sha256",
+        "receiver_realization_channel_seed",
+        "receiver_realization_seed_when_non_null"
+      ]
+    },
+    "required_cross_partition_collision_counts": {
+      "pair_id": 0,
+      "content_sha256": 0,
+      "runtime_prefix_sha256": 0,
+      "receiver_realization_channel_seed": 0,
+      "receiver_realization_seed_when_non_null": 0,
+      "cyclic_base_transmitter_identity": 0,
+      "cyclic_profile_and_phase_native_sample": 0,
+      "profile_and_payload_seed_when_present": 0
+    },
+    "identity_claim_must_report_applicable_and_inapplicable_counts_separately": true,
+    "missing_identity_key_may_not_be_reported_as_zero_collisions": true
+  },
+  "required_composite_audit": {
+    "exact_top_level_keys": [
+      "schema",
+      "lineage",
+      "amendment_sha256",
+      "parent_protocol_sha256",
+      "seed_registry_sha256",
+      "corpora",
+      "roles",
+      "rows_by_role",
+      "pair_identities_by_role",
+      "profile_role_counts",
+      "profiles_present",
+      "profile_public_class_map",
+      "classes_present",
+      "public_class_order",
+      "scale_factors",
+      "runtime_input_lengths",
+      "identity_separation",
+      "fitting_firewall",
+      "development_only",
+      "release_evidence",
+      "consumed_test_rows_exposed"
+    ],
+    "corpus_binding_keys_per_seed": [
+      "eval_seed",
+      "manifest_relative_path",
+      "manifest_sha256",
+      "raw_relative_path",
+      "raw_sha256",
+      "registry_allocation",
+      "statistical_role",
+      "allowed_roles"
+    ],
+    "identity_separation_keys": [
+      "applicable_collision_counts",
+      "inapplicable_keys_by_replay",
+      "prefix_lengths_hashed",
+      "paired_views_deduplicated",
+      "all_applicable_collision_counts_zero"
+    ],
+    "fitting_firewall_exact": {
+      "adaptive_selection_rows_used_for_weight_fit": 0,
+      "adaptive_selection_rows_used_for_prototype_or_enrollment_fit": 0,
+      "adaptive_selection_rows_used_for_threshold_or_rank_fit": 0,
+      "sealed_validation_rows_used_for_any_fit_or_selection": 0
+    },
+    "development_only": true,
+    "release_evidence": false,
+    "consumed_test_rows_exposed": 0
+  },
+  "stop_conditions": {
+    "reject_if_either_seed_or_role_differs": true,
+    "reject_if_any_profile_lacks_exact_realization_index_set": true,
+    "reject_if_pair_views_cross_roles_or_corpora": true,
+    "reject_if_any_applicable_identity_collision_count_is_nonzero": true,
+    "reject_if_one_shot_inapplicable_key_is_claimed_as_independently_held_out": true,
+    "reject_if_adaptive_selection_reaches_any_fit_population": true,
+    "reject_if_composite_prefix_dispatch_is_ambiguous": true,
+    "stop_before_training_on_first_failure": true
+  }
+}
