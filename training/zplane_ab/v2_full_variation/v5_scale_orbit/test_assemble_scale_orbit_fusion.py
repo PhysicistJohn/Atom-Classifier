@@ -199,7 +199,8 @@ def _branch_metrics(encoder: str = "real") -> dict:
                     runner.SUPERVISED_PAIR_PAIR_CONTRACT,
                 "weight": runner.SUPERVISED_PAIR_WEIGHT,
                 "auxiliary": "public_class_cross_entropy",
-                "reduction": "mean_over_62_profile_contiguous_views",
+                "reduction": assembler.HARD_VIEW_REDUCTION,
+                **assembler.HARD_VIEW_REDUCTION_METADATA,
                 "targets": runner.SUPERVISED_PAIR_TARGET_CONSTRUCTION,
                 "paired_targets_sha256":
                     runner.SUPERVISED_PAIR_TARGET_SHA256,
@@ -328,11 +329,11 @@ class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
         )
         self.assertEqual(
             assembler.BRANCH_SCHEMA,
-            "v5-scale-orbit-development-training-v2",
+            "v5-scale-orbit-development-training-v3",
         )
         self.assertEqual(
             assembler.FUSION_SCHEMA,
-            "v5-scale-orbit-development-fusion-v2",
+            "v5-scale-orbit-development-fusion-v3",
         )
 
     def test_parser_requires_both_current_corpora(self) -> None:
@@ -368,7 +369,7 @@ class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
         )
         changed = copy.deepcopy(value)
         changed["run_configuration"]["schema"] = (
-            "v5-scale-orbit-development-training-v1"
+            "v5-scale-orbit-development-training-v2"
         )
         with self.assertRaisesRegex(ValueError, "exact v5"):
             assembler.validate_branch_metrics(changed, encoder="real")
@@ -570,7 +571,85 @@ class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
                         encoder="real",
                     )
 
-    def test_attempt_1_metadata_cannot_coexist_with_attempt_2(self) -> None:
+    def test_hard_view_reduction_metadata_is_exact(self) -> None:
+        value = _branch_metrics()
+        adaptation = value["run_configuration"]["adaptation"]
+        training = value["training"]["supervised_pair"]
+        for field, expected in assembler.HARD_VIEW_REDUCTION_METADATA.items():
+            self.assertEqual(adaptation[field], expected)
+            self.assertEqual(training[field], expected)
+        self.assertEqual(
+            adaptation["loss_contract"],
+            assembler.HARD_VIEW_LOSS_CONTRACT,
+        )
+        self.assertEqual(
+            training["loss_contract"],
+            assembler.HARD_VIEW_LOSS_CONTRACT,
+        )
+        self.assertEqual(
+            training["reduction"],
+            assembler.HARD_VIEW_REDUCTION,
+        )
+
+        mutations = {
+            "per_view_reduction": "mean",
+            "per_view_loss_shape_before_profile_reduction": [62],
+            "within_profile_reduction": "mean_over_two_views",
+            "across_profile_reduction": "maximum_over_profiles",
+            "across_profile_mean_denominator": 62,
+            "maximum_is_not_taken_over_profiles_classes_or_batch_episodes":
+                False,
+        }
+        for section_path in (
+            ("run_configuration", "adaptation"),
+            ("training", "supervised_pair"),
+        ):
+            for field, replacement in mutations.items():
+                with self.subTest(
+                    section_path=section_path,
+                    field=field,
+                ):
+                    changed = copy.deepcopy(value)
+                    section = changed
+                    for component in section_path:
+                        section = section[component]
+                    section[field] = replacement
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "adaptation|supervised-pair",
+                    ):
+                        assembler.validate_branch_metrics(
+                            changed,
+                            encoder="real",
+                        )
+
+        changed = copy.deepcopy(value)
+        changed["training"]["supervised_pair"]["reduction"] = (
+            "mean_over_62_profile_contiguous_views"
+        )
+        with self.assertRaisesRegex(ValueError, "supervised-pair"):
+            assembler.validate_branch_metrics(changed, encoder="real")
+
+        for section_path in (
+            ("run_configuration", "adaptation"),
+            ("training", "supervised_pair"),
+        ):
+            with self.subTest(section_path=section_path):
+                changed = copy.deepcopy(value)
+                section = changed
+                for component in section_path:
+                    section = section[component]
+                section["loss_contract"] = "attempt_2_mean_loss"
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "adaptation|supervised-pair",
+                ):
+                    assembler.validate_branch_metrics(
+                        changed,
+                        encoder="real",
+                    )
+
+    def test_attempt_1_metadata_cannot_coexist_with_attempt_3(self) -> None:
         changed = copy.deepcopy(_branch_metrics())
         changed["training"]["scale_consistency"] = {}
         with self.assertRaisesRegex(ValueError, "forbidden attempt-1"):
@@ -620,7 +699,7 @@ class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
                 changed["run_configuration"]["adaptation"][
                     "fitting_firewall"
                 ][key] = 1
-                with self.assertRaisesRegex(ValueError, "attempt 2"):
+                with self.assertRaisesRegex(ValueError, "attempt 3"):
                     assembler.validate_branch_metrics(
                         changed,
                         encoder="real",
@@ -687,7 +766,7 @@ class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_sha256"):
             assembler.assert_branches_match(real, changed)
 
-    def test_branch_source_snapshot_exactly_binds_attempt_2_lineage(self) -> None:
+    def test_branch_source_snapshot_exactly_binds_attempt_3_lineage(self) -> None:
         value = _branch_metrics()
         expected = assembler._expected_branch_source_hashes()
         self.assertEqual(value["source_sha256"], expected)
@@ -701,13 +780,39 @@ class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
             expected["v5/scale_consistency_adaptation_attempt_2.json"],
             assembler.ATTEMPT_2_INTENT_SHA256,
         )
+        self.assertEqual(
+            expected[
+                "v5/scale_consistency_adaptation_attempt_2_miss_report.json"
+            ],
+            assembler.ATTEMPT_2_MISS_REPORT_SHA256,
+        )
+        self.assertEqual(
+            expected["v5/scale_consistency_adaptation_attempt_3.json"],
+            assembler.ATTEMPT_3_INTENT_SHA256,
+        )
+        binding = assembler._expected_supervised_pair_source_binding()
+        self.assertEqual(binding["adaptation_attempt"], 3)
+        self.assertEqual(
+            binding["preregistration_commit"],
+            assembler.ATTEMPT_3_PREREGISTRATION_COMMIT,
+        )
+        self.assertEqual(
+            binding["attempt_2_miss_report_sha256"],
+            assembler.ATTEMPT_2_MISS_REPORT_SHA256,
+        )
 
-        changed = copy.deepcopy(value)
-        changed["source_sha256"][
-            "v5/scale_consistency_adaptation_attempt_2.json"
-        ] = "0" * 64
-        with self.assertRaisesRegex(ValueError, "source hashes"):
-            assembler.validate_branch_metrics(changed, encoder="real")
+        for relative in (
+            "v5/scale_consistency_adaptation_attempt_2_miss_report.json",
+            "v5/scale_consistency_adaptation_attempt_3.json",
+        ):
+            with self.subTest(relative=relative):
+                changed = copy.deepcopy(value)
+                changed["source_sha256"][relative] = "0" * 64
+                with self.assertRaisesRegex(ValueError, "source hashes"):
+                    assembler.validate_branch_metrics(
+                        changed,
+                        encoder="real",
+                    )
 
     def test_branch_arguments_are_frozen_and_cross_branch_equal(self) -> None:
         value = _branch_metrics()
@@ -718,7 +823,7 @@ class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
             "seed"
         ] += 1
         changed["training"]["supervised_pair"]["pair_rng_seed"] += 1
-        with self.assertRaisesRegex(ValueError, "attempt 2"):
+        with self.assertRaisesRegex(ValueError, "attempt 3"):
             assembler.validate_branch_metrics(changed, encoder="real")
 
         real = {"metrics": _branch_metrics("real")}
@@ -840,6 +945,16 @@ class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
         self.assertEqual(
             hashes["v5/scale_consistency_adaptation_attempt_2.json"],
             assembler.ATTEMPT_2_INTENT_SHA256,
+        )
+        self.assertEqual(
+            hashes[
+                "v5/scale_consistency_adaptation_attempt_2_miss_report.json"
+            ],
+            assembler.ATTEMPT_2_MISS_REPORT_SHA256,
+        )
+        self.assertEqual(
+            hashes["v5/scale_consistency_adaptation_attempt_3.json"],
+            assembler.ATTEMPT_3_INTENT_SHA256,
         )
         self.assertEqual(
             hashes[

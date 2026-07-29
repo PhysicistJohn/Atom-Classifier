@@ -79,14 +79,37 @@ ATTEMPT_1_MISS_REPORT_SHA256 = (
 ATTEMPT_2_INTENT_SHA256 = (
     "5e0cc7bbd58ebe050bf983f854e154c43595dc804aedee3c1c3849cf5691b0a9"
 )
-ATTEMPT_2_PREREGISTRATION_COMMIT = (
-    "53ae9eb2060a0f65a2ffcf607d98866bb695e65c"
+ATTEMPT_2_MISS_REPORT_SHA256 = (
+    "ccdcbbac1e77ff9886b32a7982c64ffcf19819156ac2c08eaae3a54c3a8fdbee"
 )
-BRANCH_SCHEMA = "v5-scale-orbit-development-training-v2"
-FUSION_SCHEMA = "v5-scale-orbit-development-fusion-v2"
+ATTEMPT_3_INTENT_SHA256 = (
+    "8cf6b53875be644a56b970012d332bff6e8a4d0408de83d466deedb74b5d721e"
+)
+ATTEMPT_3_PREREGISTRATION_COMMIT = (
+    "64e6799a8bf3d38bbbed62d2ae5006c60f79c936"
+)
+BRANCH_SCHEMA = "v5-scale-orbit-development-training-v3"
+FUSION_SCHEMA = "v5-scale-orbit-development-fusion-v3"
 COMPOSITE_AUDIT_SCHEMA = (
     "v5-current-service-scale-orbit-composite-audit-v1"
 )
+HARD_VIEW_REDUCTION = "mean_over_31_profile_hard_view_losses"
+HARD_VIEW_LOSS_CONTRACT = (
+    "episodic_cross_entropy_plus_0.2_times_mean_over_31_literal_profiles_of_"
+    "maximum_over_two_contiguous_scale_view_supervised_public_class_cross_"
+    "entropy_against_detached_current_episode_source_mixed_prototypes_and_"
+    "detached_logit_scale"
+)
+HARD_VIEW_REDUCTION_METADATA = {
+    "per_view_reduction": "none",
+    "per_view_loss_shape_before_profile_reduction": [31, 2],
+    "within_profile_reduction":
+        "maximum_over_exactly_two_contiguous_scale_view_losses",
+    "across_profile_reduction":
+        "arithmetic_mean_over_31_literal_profile_hard_losses",
+    "across_profile_mean_denominator": 31,
+    "maximum_is_not_taken_over_profiles_classes_or_batch_episodes": True,
+}
 
 REQUIRED_BRANCH_KEYS = frozenset(
     {
@@ -707,18 +730,18 @@ def _validate_no_consumed_provenance(value: Any, *, path: str = "metrics") -> No
 
 
 def _expected_supervised_pair_source_binding() -> dict[str, Any]:
-    """Return the independently pinned attempt-2 preregistration binding."""
+    """Return the independently pinned attempt-3 preregistration binding."""
     return {
         "path": str(
-            (HERE / "scale_consistency_adaptation_attempt_2.json").resolve()
+            (HERE / "scale_consistency_adaptation_attempt_3.json").resolve()
         ),
-        "sha256": ATTEMPT_2_INTENT_SHA256,
+        "sha256": ATTEMPT_3_INTENT_SHA256,
         "status": (
-            "frozen_before_attempt_2_trainer_or_assembler_change_training_or_"
+            "frozen_before_attempt_3_trainer_or_assembler_change_training_or_"
             "inference"
         ),
-        "adaptation_attempt": 2,
-        "preregistration_commit": ATTEMPT_2_PREREGISTRATION_COMMIT,
+        "adaptation_attempt": 3,
+        "preregistration_commit": ATTEMPT_3_PREREGISTRATION_COMMIT,
         "attempt_1_intent_path": str(
             (HERE / "scale_consistency_adaptation_attempt_1.json").resolve()
         ),
@@ -730,6 +753,17 @@ def _expected_supervised_pair_source_binding() -> dict[str, Any]:
             ).resolve()
         ),
         "attempt_1_miss_report_sha256": ATTEMPT_1_MISS_REPORT_SHA256,
+        "attempt_2_intent_path": str(
+            (HERE / "scale_consistency_adaptation_attempt_2.json").resolve()
+        ),
+        "attempt_2_intent_sha256": ATTEMPT_2_INTENT_SHA256,
+        "attempt_2_miss_report_path": str(
+            (
+                HERE
+                / "scale_consistency_adaptation_attempt_2_miss_report.json"
+            ).resolve()
+        ),
+        "attempt_2_miss_report_sha256": ATTEMPT_2_MISS_REPORT_SHA256,
     }
 
 
@@ -791,7 +825,18 @@ def _validate_supervised_pair_adaptation_contract(
     training: Mapping[str, Any],
     preprocessing: Mapping[str, Any],
 ) -> None:
-    """Require the complete preregistered attempt-2 branch contract."""
+    """Require the complete preregistered attempt-3 branch contract."""
+    runner_reduction = branch_runner._supervised_pair_reduction_metadata()
+    if (
+        runner_reduction != HARD_VIEW_REDUCTION_METADATA
+        or branch_runner.SUPERVISED_PAIR_TRAINING_REDUCTION
+            != HARD_VIEW_REDUCTION
+        or branch_runner.SUPERVISED_PAIR_LOSS_CONTRACT
+            != HARD_VIEW_LOSS_CONTRACT
+    ):
+        raise RuntimeError(
+            "runner attempt-3 hard-view reduction contract changed"
+        )
     arguments = run_configuration.get("arguments")
     if not isinstance(arguments, Mapping):
         raise ValueError("branch adaptation arguments must be an object")
@@ -813,17 +858,17 @@ def _validate_supervised_pair_adaptation_contract(
     except (AttributeError, TypeError, ValueError) as exc:
         raise ValueError(
             "branch arguments do not match supervised-pair adaptation "
-            "attempt 2"
+            "attempt 3"
         ) from exc
 
     source_binding = branch_runner._validate_supervised_pair_adaptation_source()
     if source_binding != _expected_supervised_pair_source_binding():
         raise RuntimeError(
-            "runner attempt-2 preregistration binding changed"
+            "runner attempt-3 preregistration binding changed"
         )
     expected_adaptation = {
         **source_binding,
-        "loss_contract": branch_runner.SUPERVISED_PAIR_LOSS_CONTRACT,
+        "loss_contract": HARD_VIEW_LOSS_CONTRACT,
         "pair_sampling_contract":
             branch_runner.SUPERVISED_PAIR_PAIR_CONTRACT,
         "supervised_pair_weight":
@@ -839,6 +884,7 @@ def _validate_supervised_pair_adaptation_contract(
         "logit_scale_gradient": "detached_for_auxiliary",
         "phase_augmentation": "one_independent_draw_per_paired_view",
         "batch_norm_stat_firewall": True,
+        **HARD_VIEW_REDUCTION_METADATA,
         "fitting_firewall": {
             "pair_source": "seed20264101 current train role only",
             "supervised_pairs_from_seed20264101_current_train_role_only":
@@ -875,7 +921,7 @@ def _validate_supervised_pair_adaptation_contract(
     }
     if run_configuration.get("adaptation") != expected_adaptation:
         raise ValueError(
-            "branch run configuration is not exact adaptation attempt 2"
+            "branch run configuration is not exact adaptation attempt 3"
         )
 
     preprocessing_training = preprocessing.get("training")
@@ -945,7 +991,7 @@ def _validate_supervised_pair_adaptation_contract(
         )
     expected_pool_values = {
         "contract": branch_runner.SUPERVISED_PAIR_PAIR_CONTRACT,
-        "loss_contract": branch_runner.SUPERVISED_PAIR_LOSS_CONTRACT,
+        "loss_contract": HARD_VIEW_LOSS_CONTRACT,
         "source": "current",
         "population_seed": scale_orbit_data.SCALE_ORBIT_TRAINING_SEED,
         "role": "train",
@@ -1016,12 +1062,13 @@ def _validate_supervised_pair_adaptation_contract(
         ^ branch_runner.SUPERVISED_PAIR_RNG_XOR
     )
     expected_supervised_pair = {
-        "loss_contract": branch_runner.SUPERVISED_PAIR_LOSS_CONTRACT,
+        "loss_contract": HARD_VIEW_LOSS_CONTRACT,
         "pair_sampling_contract":
             branch_runner.SUPERVISED_PAIR_PAIR_CONTRACT,
         "weight": branch_runner.SUPERVISED_PAIR_WEIGHT,
         "auxiliary": "public_class_cross_entropy",
-        "reduction": "mean_over_62_profile_contiguous_views",
+        "reduction": HARD_VIEW_REDUCTION,
+        **HARD_VIEW_REDUCTION_METADATA,
         "targets":
             branch_runner.SUPERVISED_PAIR_TARGET_CONSTRUCTION,
         "paired_targets_sha256":
@@ -1100,7 +1147,7 @@ def validate_branch_metrics(
         raise ValueError("branch run_configuration must be an object")
     if set(run_configuration) != REQUIRED_RUN_CONFIGURATION_KEYS:
         raise ValueError(
-            "branch run_configuration schema is not exact attempt 2"
+            "branch run_configuration schema is not exact attempt 3"
         )
     if run_configuration.get("schema") != BRANCH_SCHEMA:
         raise ValueError("branch run_configuration is not the exact v5 run")
@@ -1201,7 +1248,7 @@ def validate_branch_metrics(
     branch_sources = payload.get("source_sha256")
     if branch_sources != _expected_branch_source_hashes():
         raise ValueError(
-            "branch source hashes do not reproduce the exact attempt-2 "
+            "branch source hashes do not reproduce the exact attempt-3 "
             "runner source contract"
         )
     required_attempt_sources = {
@@ -1211,13 +1258,17 @@ def validate_branch_metrics(
             ATTEMPT_1_MISS_REPORT_SHA256,
         "v5/scale_consistency_adaptation_attempt_2.json":
             ATTEMPT_2_INTENT_SHA256,
+        "v5/scale_consistency_adaptation_attempt_2_miss_report.json":
+            ATTEMPT_2_MISS_REPORT_SHA256,
+        "v5/scale_consistency_adaptation_attempt_3.json":
+            ATTEMPT_3_INTENT_SHA256,
     }
     if any(
         branch_sources.get(name) != digest
         for name, digest in required_attempt_sources.items()
     ):
         raise ValueError(
-            "branch source hashes omit or change attempt-2 lineage evidence"
+            "branch source hashes omit or change attempt-3 lineage evidence"
         )
     artifacts = payload.get("artifacts")
     if not isinstance(artifacts, Mapping):
@@ -1466,6 +1517,10 @@ def _source_hashes() -> dict[str, str]:
             HERE / "scale_consistency_adaptation_attempt_1_miss_report.json",
         "v5/scale_consistency_adaptation_attempt_2.json":
             HERE / "scale_consistency_adaptation_attempt_2.json",
+        "v5/scale_consistency_adaptation_attempt_2_miss_report.json":
+            HERE / "scale_consistency_adaptation_attempt_2_miss_report.json",
+        "v5/scale_consistency_adaptation_attempt_3.json":
+            HERE / "scale_consistency_adaptation_attempt_3.json",
         "v5/pretraining_amendment.json":
             amendment_validator.AMENDMENT_PATH.resolve(),
         "v5/recovery_protocol.json":

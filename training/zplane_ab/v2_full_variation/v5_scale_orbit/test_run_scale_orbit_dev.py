@@ -149,6 +149,16 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
             paths["v5/scale_consistency_adaptation_attempt_2.json"],
             runner.SUPERVISED_PAIR_ADAPTATION_PATH.resolve(),
         )
+        self.assertEqual(
+            paths[
+                "v5/scale_consistency_adaptation_attempt_2_miss_report.json"
+            ],
+            runner.ATTEMPT_2_MISS_REPORT_PATH.resolve(),
+        )
+        self.assertEqual(
+            paths["v5/scale_consistency_adaptation_attempt_3.json"],
+            runner.HARD_VIEW_ADAPTATION_PATH.resolve(),
+        )
         expected_source_keys = {
             "v5/run_scale_orbit_dev.py",
             "v5/scale_orbit_data.py",
@@ -159,6 +169,8 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
             "v5/scale_consistency_adaptation_attempt_1.json",
             "v5/scale_consistency_adaptation_attempt_1_miss_report.json",
             "v5/scale_consistency_adaptation_attempt_2.json",
+            "v5/scale_consistency_adaptation_attempt_2_miss_report.json",
+            "v5/scale_consistency_adaptation_attempt_3.json",
             "v4/current_source_data.py",
             "v4/evaluate_current_scale.py",
             "v2/run_invariant_cnn_dev.py",
@@ -191,12 +203,13 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
         binding = runner._validate_supervised_pair_adaptation_source()
         self.assertEqual(
             binding["sha256"],
-            runner.SUPERVISED_PAIR_ADAPTATION_SHA256,
+            runner.HARD_VIEW_ADAPTATION_SHA256,
         )
         self.assertEqual(
             binding["preregistration_commit"],
-            "53ae9eb2060a0f65a2ffcf607d98866bb695e65c",
+            "64e6799a8bf3d38bbbed62d2ae5006c60f79c936",
         )
+        self.assertEqual(binding["adaptation_attempt"], 3)
         self.assertEqual(
             binding["attempt_1_intent_sha256"],
             runner.ATTEMPT_1_ADAPTATION_SHA256,
@@ -204,6 +217,14 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
         self.assertEqual(
             binding["attempt_1_miss_report_sha256"],
             "1c0e6d94d418e3954a54aa44396ef5cc9d8603eb2895dd69c0a0c458c254bc9d",
+        )
+        self.assertEqual(
+            binding["attempt_2_intent_sha256"],
+            runner.SUPERVISED_PAIR_ADAPTATION_SHA256,
+        )
+        self.assertEqual(
+            binding["attempt_2_miss_report_sha256"],
+            runner.ATTEMPT_2_MISS_REPORT_SHA256,
         )
         source_hashes = runner._source_hashes()
         self.assertEqual(
@@ -223,6 +244,18 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
                 "v5/scale_consistency_adaptation_attempt_2.json"
             ],
             runner.SUPERVISED_PAIR_ADAPTATION_SHA256,
+        )
+        self.assertEqual(
+            source_hashes[
+                "v5/scale_consistency_adaptation_attempt_2_miss_report.json"
+            ],
+            runner.ATTEMPT_2_MISS_REPORT_SHA256,
+        )
+        self.assertEqual(
+            source_hashes[
+                "v5/scale_consistency_adaptation_attempt_3.json"
+            ],
+            runner.HARD_VIEW_ADAPTATION_SHA256,
         )
 
     def test_supervised_pair_pool_binds_exact_profile_classes_and_targets(
@@ -501,11 +534,22 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
             -runner.sq_dist(embeddings, prototypes.detach())
             * log_scale.detach().exp().clamp(1e-3, 100.0)
         )
-        expected = torch.nn.functional.cross_entropy(
+        expected_per_view = torch.nn.functional.cross_entropy(
             expected_logits,
             torch.from_numpy(np.repeat(_paired_labels(), 2)),
             label_smoothing=0.0,
-            reduction="mean",
+            reduction="none",
+        )
+        expected = torch.amax(
+            expected_per_view.reshape(
+                runner.SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
+                2,
+            ),
+            dim=1,
+        ).mean()
+        mean_over_all_views = expected_per_view.mean()
+        self.assertFalse(
+            torch.isclose(expected, mean_over_all_views).item()
         )
         torch.testing.assert_close(observed, expected)
         self.assertEqual(
@@ -546,6 +590,21 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
                 torch.device("cpu"),
                 phase_augmentation=False,
             )
+
+    def test_hard_view_reduction_backpropagates_only_through_each_max(self):
+        easy = torch.arange(31, dtype=torch.float32)
+        hard = easy + 100.0
+        per_view = torch.stack((easy, hard), dim=1).reshape(-1)
+        per_view.requires_grad_(True)
+        loss = runner._hard_view_supervised_pair_reduction(per_view)
+        torch.testing.assert_close(loss, hard.mean())
+        loss.backward()
+        expected_gradients = torch.zeros(31, 2)
+        expected_gradients[:, 1] = 1.0 / 31.0
+        torch.testing.assert_close(
+            per_view.grad.reshape(31, 2),
+            expected_gradients,
+        )
 
     def test_auxiliary_updates_encoder_only_and_preserves_batch_norm(
         self,
@@ -705,7 +764,7 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
         for name, value in original_buffers.items():
             torch.testing.assert_close(net.bn._buffers[name], value)
 
-    def test_cli_run_configuration_and_metadata_freeze_attempt_two(self):
+    def test_cli_run_configuration_and_metadata_freeze_attempt_three(self):
         args = runner.build_parser().parse_args(
             [
                 "--current-corpus",
@@ -727,7 +786,15 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
         )
         self.assertEqual(
             configuration["schema"],
-            "v5-scale-orbit-development-training-v2",
+            "v5-scale-orbit-development-training-v3",
+        )
+        self.assertEqual(
+            configuration["adaptation"]["adaptation_attempt"],
+            3,
+        )
+        self.assertEqual(
+            configuration["adaptation"]["sha256"],
+            runner.HARD_VIEW_ADAPTATION_SHA256,
         )
         self.assertEqual(
             configuration["adaptation"]["supervised_pair_weight"],
@@ -737,6 +804,16 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
             configuration["adaptation"]["loss_contract"],
             runner.SUPERVISED_PAIR_LOSS_CONTRACT,
         )
+        expected_reduction = runner._supervised_pair_reduction_metadata()
+        for key, value in expected_reduction.items():
+            self.assertEqual(
+                configuration["adaptation"][key],
+                value,
+            )
+        stale = dict(configuration)
+        stale["schema"] = "v5-scale-orbit-development-training-v2"
+        with self.assertRaisesRegex(ValueError, "training-v3"):
+            runner._validate_attempt_3_run_configuration_metadata(stale)
         self.assertEqual(
             configuration["randomness"]["supervised_pair_rng"]["seed"],
             args.seed ^ runner.SUPERVISED_PAIR_RNG_XOR,
@@ -815,10 +892,10 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
         )
         real_sha256_file = runner.corpus_data.sha256_file
 
-        def changed_attempt_2(path: Path) -> str:
+        def changed_attempt_3(path: Path) -> str:
             if (
                 Path(path).resolve()
-                == runner.SUPERVISED_PAIR_ADAPTATION_PATH.resolve()
+                == runner.HARD_VIEW_ADAPTATION_PATH.resolve()
             ):
                 return "0" * 64
             return real_sha256_file(path)
@@ -827,7 +904,7 @@ class ScaleOrbitRunnerTests(unittest.TestCase):
             mock.patch.object(
                 runner.corpus_data,
                 "sha256_file",
-                side_effect=changed_attempt_2,
+                side_effect=changed_attempt_3,
             ),
             mock.patch.object(
                 runner.corpus_data,

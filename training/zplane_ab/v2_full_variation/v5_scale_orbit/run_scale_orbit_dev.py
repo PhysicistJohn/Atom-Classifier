@@ -102,9 +102,25 @@ SUPERVISED_PAIR_ADAPTATION_PATH = (
 SUPERVISED_PAIR_ADAPTATION_SHA256 = (
     "5e0cc7bbd58ebe050bf983f854e154c43595dc804aedee3c1c3849cf5691b0a9"
 )
-SUPERVISED_PAIR_PREREGISTRATION_COMMIT = (
+ATTEMPT_2_PREREGISTRATION_COMMIT = (
     "53ae9eb2060a0f65a2ffcf607d98866bb695e65c"
 )
+ATTEMPT_2_MISS_REPORT_PATH = (
+    HERE / "scale_consistency_adaptation_attempt_2_miss_report.json"
+)
+ATTEMPT_2_MISS_REPORT_SHA256 = (
+    "ccdcbbac1e77ff9886b32a7982c64ffcf19819156ac2c08eaae3a54c3a8fdbee"
+)
+HARD_VIEW_ADAPTATION_PATH = (
+    HERE / "scale_consistency_adaptation_attempt_3.json"
+)
+HARD_VIEW_ADAPTATION_SHA256 = (
+    "8cf6b53875be644a56b970012d332bff6e8a4d0408de83d466deedb74b5d721e"
+)
+HARD_VIEW_PREREGISTRATION_COMMIT = (
+    "64e6799a8bf3d38bbbed62d2ae5006c60f79c936"
+)
+RUN_CONFIGURATION_SCHEMA = "v5-scale-orbit-development-training-v3"
 SUPERVISED_PAIR_WEIGHT = 0.2
 SUPERVISED_PAIR_RNG_XOR = 0x5CA1E
 SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT = 31
@@ -202,9 +218,22 @@ SUPERVISED_PAIR_PAIR_CONTRACT = (
     "selects two distinct physical-scale views uniformly without replacement"
 )
 SUPERVISED_PAIR_LOSS_CONTRACT = (
-    "episodic_cross_entropy_plus_0.2_times_mean_supervised_public_class_cross_"
-    "entropy_over_62_profile_contiguous_scale_pair_views_against_detached_"
-    "current_episode_source_mixed_prototypes_and_detached_logit_scale"
+    "episodic_cross_entropy_plus_0.2_times_mean_over_31_literal_profiles_of_"
+    "maximum_over_two_contiguous_scale_view_supervised_public_class_cross_"
+    "entropy_against_detached_current_episode_source_mixed_prototypes_and_"
+    "detached_logit_scale"
+)
+SUPERVISED_PAIR_PER_VIEW_REDUCTION = "none"
+SUPERVISED_PAIR_PER_VIEW_LOSS_SHAPE = (31, 2)
+SUPERVISED_PAIR_WITHIN_PROFILE_REDUCTION = (
+    "maximum_over_exactly_two_contiguous_scale_view_losses"
+)
+SUPERVISED_PAIR_ACROSS_PROFILE_REDUCTION = (
+    "arithmetic_mean_over_31_literal_profile_hard_losses"
+)
+SUPERVISED_PAIR_ACROSS_PROFILE_MEAN_DENOMINATOR = 31
+SUPERVISED_PAIR_TRAINING_REDUCTION = (
+    "mean_over_31_profile_hard_view_losses"
 )
 
 
@@ -299,6 +328,23 @@ def _supervised_pair_target_sha256(
     return observed
 
 
+def _supervised_pair_reduction_metadata() -> dict[str, Any]:
+    """Return the exact attempt-3 hard-view reduction description."""
+    return {
+        "per_view_reduction": SUPERVISED_PAIR_PER_VIEW_REDUCTION,
+        "per_view_loss_shape_before_profile_reduction":
+            list(SUPERVISED_PAIR_PER_VIEW_LOSS_SHAPE),
+        "within_profile_reduction":
+            SUPERVISED_PAIR_WITHIN_PROFILE_REDUCTION,
+        "across_profile_reduction":
+            SUPERVISED_PAIR_ACROSS_PROFILE_REDUCTION,
+        "across_profile_mean_denominator":
+            SUPERVISED_PAIR_ACROSS_PROFILE_MEAN_DENOMINATOR,
+        "maximum_is_not_taken_over_profiles_classes_or_batch_episodes":
+            True,
+    }
+
+
 def _read_bound_adaptation_document(
     path: Path,
     expected_sha256: str,
@@ -320,7 +366,7 @@ def _read_bound_adaptation_document(
 
 
 def _validate_supervised_pair_adaptation_source() -> dict[str, Any]:
-    """Bind attempt 1, its miss, and the exact pre-source attempt-2 intent."""
+    """Bind the complete append-only chain through attempt-3 preregistration."""
     attempt_1, attempt_1_sha256 = _read_bound_adaptation_document(
         ATTEMPT_1_ADAPTATION_PATH,
         ATTEMPT_1_ADAPTATION_SHA256,
@@ -335,6 +381,18 @@ def _validate_supervised_pair_adaptation_source() -> dict[str, Any]:
         SUPERVISED_PAIR_ADAPTATION_PATH,
         SUPERVISED_PAIR_ADAPTATION_SHA256,
         name="attempt-2 supervised-pair intent",
+    )
+    attempt_2_miss, attempt_2_miss_sha256 = (
+        _read_bound_adaptation_document(
+            ATTEMPT_2_MISS_REPORT_PATH,
+            ATTEMPT_2_MISS_REPORT_SHA256,
+            name="attempt-2 miss report",
+        )
+    )
+    attempt_3, attempt_3_sha256 = _read_bound_adaptation_document(
+        HARD_VIEW_ADAPTATION_PATH,
+        HARD_VIEW_ADAPTATION_SHA256,
+        name="attempt-3 hard-view supervised-pair intent",
     )
     if (
         attempt_1.get("adaptation_attempt") != 1
@@ -445,17 +503,159 @@ def _validate_supervised_pair_adaptation_source() -> dict[str, Any]:
             "attempt-2 supervised-pair intent no longer matches the "
             "implemented loss or fitting firewall"
         )
+
+    attempt_2_miss_gates = attempt_2_miss.get("full_gate_assessment")
+    attempt_3_parent_bindings = attempt_3.get("parent_bindings")
+    attempt_3_change = attempt_3.get("predeclared_change")
+    attempt_3_pair_sampling = (
+        attempt_3_change.get(
+            "pair_sampling_inherited_exactly_from_attempt_2"
+        )
+        if isinstance(attempt_3_change, Mapping)
+        else None
+    )
+    attempt_3_auxiliary = (
+        attempt_3_change.get("supervised_pair_auxiliary")
+        if isinstance(attempt_3_change, Mapping)
+        else None
+    )
+    attempt_3_cross_entropy = (
+        attempt_3_auxiliary.get("cross_entropy")
+        if isinstance(attempt_3_auxiliary, Mapping)
+        else None
+    )
+    attempt_3_prototypes = (
+        attempt_3_auxiliary.get("public_class_prototypes")
+        if isinstance(attempt_3_auxiliary, Mapping)
+        else None
+    )
+    attempt_3_logits = (
+        attempt_3_auxiliary.get("logits")
+        if isinstance(attempt_3_auxiliary, Mapping)
+        else None
+    )
+    attempt_3_fitting = attempt_3.get("fitting_firewall")
+    attempt_3_no_other_change = attempt_3.get(
+        "no_other_change_contract"
+    )
+    expected_reduction = _supervised_pair_reduction_metadata()
+    if (
+        attempt_2_miss.get("schema")
+        != "atomos.v5.scale-orbit.adaptation-attempt-miss-report"
+        or attempt_2_miss.get("schema_version") != 2
+        or attempt_2_miss.get("adaptation_attempt") != 2
+        or attempt_2_miss.get("development_only") is not True
+        or attempt_2_miss.get("release_evidence") is not False
+        or not isinstance(attempt_2_miss_gates, Mapping)
+        or attempt_2_miss_gates.get("known_21_gate_status")
+        != "not_evaluated"
+        or attempt_2_miss_gates.get(
+            "known_plus_novelty_27_gate_status"
+        )
+        != "not_evaluated"
+        or attempt_2_miss.get("outcome", {}).get(
+            "attempt_2_selected_as_final_candidate"
+        )
+        is not False
+    ):
+        raise RuntimeError("attempt-2 miss evidence changed")
+    if (
+        attempt_3.get("schema")
+        != (
+            "atomos.v5.scale-orbit.post-score-hard-view-supervised-pair-"
+            "adaptation-intent"
+        )
+        or attempt_3.get("status")
+        != (
+            "frozen_before_attempt_3_trainer_or_assembler_change_training_"
+            "or_inference"
+        )
+        or attempt_3.get("adaptation_attempt") != 3
+        or attempt_3.get("development_only") is not True
+        or attempt_3.get("release_evidence") is not False
+        or not isinstance(attempt_3_parent_bindings, Mapping)
+        or attempt_3_parent_bindings.get("attempt_1_intent_sha256")
+        != attempt_1_sha256
+        or attempt_3_parent_bindings.get("attempt_1_miss_report_sha256")
+        != miss_report_sha256
+        or attempt_3_parent_bindings.get("attempt_2_intent_sha256")
+        != attempt_2_sha256
+        or attempt_3_parent_bindings.get("attempt_2_miss_report_sha256")
+        != attempt_2_miss_sha256
+        or not isinstance(attempt_3_change, Mapping)
+        or attempt_3_change.get("only_changed_axis")
+        != "supervised_pair_cross_entropy_reduction"
+        or attempt_3_change.get(
+            "attempt_2_mean_over_62_views_replaced"
+        )
+        is not True
+        or attempt_3_change.get(
+            "attempt_2_pair_population_sampling_order_targets_logits_and_"
+            "coefficient_changed"
+        )
+        is not False
+        or not isinstance(attempt_3_pair_sampling, Mapping)
+        or attempt_3_pair_sampling.get("population_seed")
+        != scale_orbit_data.SCALE_ORBIT_TRAINING_SEED
+        or attempt_3_pair_sampling.get("population_source") != "current"
+        or attempt_3_pair_sampling.get("population_role") != "train"
+        or attempt_3_pair_sampling.get("literal_profile_count")
+        != SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT
+        or attempt_3_pair_sampling.get("views_per_episode")
+        != SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2
+        or attempt_3_pair_sampling.get(
+            "profile_order_and_public_class_map_parent_sha256"
+        )
+        != attempt_2_sha256
+        or not isinstance(attempt_3_auxiliary, Mapping)
+        or attempt_3_auxiliary.get("paired_embedding_count")
+        != SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2
+        or attempt_3_auxiliary.get("paired_logits_shape")
+        != [SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 2, 7]
+        or attempt_3_auxiliary.get("paired_targets_shape")
+        != [SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 2]
+        or attempt_3_auxiliary.get("auxiliary_coefficient")
+        != SUPERVISED_PAIR_WEIGHT
+        or not isinstance(attempt_3_prototypes, Mapping)
+        or attempt_3_prototypes.get("detached_for_auxiliary") is not True
+        or not isinstance(attempt_3_logits, Mapping)
+        or attempt_3_logits.get(
+            "logit_scale_detached_for_auxiliary"
+        )
+        is not True
+        or not isinstance(attempt_3_cross_entropy, Mapping)
+        or any(
+            attempt_3_cross_entropy.get(key) != value
+            for key, value in expected_reduction.items()
+        )
+        or not isinstance(attempt_3_no_other_change, Mapping)
+        or not attempt_3_no_other_change
+        or any(
+            value is not False
+            for value in attempt_3_no_other_change.values()
+        )
+        or not isinstance(attempt_3_fitting, Mapping)
+        or attempt_3_fitting != fitting
+    ):
+        raise RuntimeError(
+            "attempt-3 hard-view intent no longer matches the implemented "
+            "loss or inherited fitting firewall"
+        )
     return {
-        "path": str(SUPERVISED_PAIR_ADAPTATION_PATH),
-        "sha256": attempt_2_sha256,
-        "status": attempt_2["status"],
-        "adaptation_attempt": 2,
+        "path": str(HARD_VIEW_ADAPTATION_PATH),
+        "sha256": attempt_3_sha256,
+        "status": attempt_3["status"],
+        "adaptation_attempt": 3,
         "preregistration_commit":
-            SUPERVISED_PAIR_PREREGISTRATION_COMMIT,
+            HARD_VIEW_PREREGISTRATION_COMMIT,
         "attempt_1_intent_path": str(ATTEMPT_1_ADAPTATION_PATH),
         "attempt_1_intent_sha256": attempt_1_sha256,
         "attempt_1_miss_report_path": str(ATTEMPT_1_MISS_REPORT_PATH),
         "attempt_1_miss_report_sha256": miss_report_sha256,
+        "attempt_2_intent_path": str(SUPERVISED_PAIR_ADAPTATION_PATH),
+        "attempt_2_intent_sha256": attempt_2_sha256,
+        "attempt_2_miss_report_path": str(ATTEMPT_2_MISS_REPORT_PATH),
+        "attempt_2_miss_report_sha256": attempt_2_miss_sha256,
     }
 
 
@@ -476,7 +676,7 @@ def _validate_supervised_pair_weight(value: Any) -> float:
 
 
 def _validate_adaptation_run_configuration(args: argparse.Namespace) -> None:
-    """Reject any run that differs from frozen supervised-pair attempt 2."""
+    """Reject any run that differs from frozen hard-view attempt 3."""
     _validate_supervised_pair_weight(args.supervised_pair_weight)
     expected = {
         "seed": 20_260_740,
@@ -504,16 +704,16 @@ def _validate_adaptation_run_configuration(args: argparse.Namespace) -> None:
     ]
     if changed:
         raise ValueError(
-            "supervised-pair attempt 2 configuration differs from the frozen "
+            "hard-view attempt 3 configuration differs from the frozen "
             f"baseline for: {', '.join(changed)}"
         )
     if _source_share_fraction(args.current_source_share) != Fraction(1, 3):
         raise ValueError(
-            "supervised-pair attempt 2 requires current_source_share=1/3"
+            "hard-view attempt 3 requires current_source_share=1/3"
         )
     if getattr(args, "encoder", None) not in {"real", "complex"}:
         raise ValueError(
-            "supervised-pair attempt 2 encoder must be real or complex"
+            "hard-view attempt 3 encoder must be real or complex"
         )
 
 
@@ -536,6 +736,10 @@ def _executed_source_paths() -> dict[str, Path]:
             ATTEMPT_1_MISS_REPORT_PATH.resolve(),
         "v5/scale_consistency_adaptation_attempt_2.json":
             SUPERVISED_PAIR_ADAPTATION_PATH.resolve(),
+        "v5/scale_consistency_adaptation_attempt_2_miss_report.json":
+            ATTEMPT_2_MISS_REPORT_PATH.resolve(),
+        "v5/scale_consistency_adaptation_attempt_3.json":
+            HARD_VIEW_ADAPTATION_PATH.resolve(),
         "v4/current_source_data.py": Path(corpus_data.__file__).resolve(),
         "v4/evaluate_current_scale.py":
             Path(scale_orbit_data.scale_data.__file__).resolve(),
@@ -771,7 +975,7 @@ def _validate_supervised_pair_pool(
     training_view_count: int,
     classes: Sequence[str],
 ) -> dict[str, Any]:
-    """Validate the exact train-only population addressable by attempt 2."""
+    """Validate the exact train-only population inherited by attempt 3."""
     profile_class_indices = _supervised_pair_profile_class_indices(classes)
     if (
         len(SUPERVISED_PAIR_PROFILES)
@@ -1049,6 +1253,32 @@ def _auxiliary_batch_norm_eval(net: torch.nn.Module):
             module.train(training)
 
 
+def _hard_view_supervised_pair_reduction(
+    per_view_cross_entropy: torch.Tensor,
+) -> torch.Tensor:
+    """Reduce 62 view losses by max within profile, then mean over profiles."""
+    expected_view_count = SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2
+    if (
+        per_view_cross_entropy.ndim != 1
+        or per_view_cross_entropy.shape != (expected_view_count,)
+        or not torch.isfinite(per_view_cross_entropy).all()
+    ):
+        raise ValueError(
+            "per-view supervised-pair cross entropy must be 62 finite losses"
+        )
+    profile_view_losses = per_view_cross_entropy.reshape(
+        SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
+        2,
+    )
+    hard_profile_losses = torch.amax(profile_view_losses, dim=1)
+    loss = hard_profile_losses.mean()
+    if loss.ndim != 0 or not torch.isfinite(loss):
+        raise ValueError(
+            "hard-view supervised-pair cross entropy must be a finite scalar"
+        )
+    return loss
+
+
 def _supervised_pair_cross_entropy_for_pairs(
     net: InvariantPatchCNN,
     data: Mapping[str, Any],
@@ -1060,7 +1290,7 @@ def _supervised_pair_cross_entropy_for_pairs(
     *,
     phase_augmentation: bool,
 ) -> torch.Tensor:
-    """Return mean CE for 62 views against detached episode prototypes."""
+    """Return the mean per-profile hard-view CE for 31 scale pairs."""
     positions = np.asarray(pair_positions, dtype=np.int64)
     labels = np.asarray(profile_class_indices, dtype=np.int64)
     if positions.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 2):
@@ -1138,17 +1368,13 @@ def _supervised_pair_cross_entropy_for_pairs(
         -sq_dist(paired_embeddings, prototypes.detach())
         * log_scale.detach().exp().clamp(1e-3, 100.0)
     )
-    loss = F.cross_entropy(
+    per_view_cross_entropy = F.cross_entropy(
         logits,
         torch.from_numpy(targets).to(device),
         label_smoothing=0.0,
-        reduction="mean",
+        reduction="none",
     )
-    if loss.ndim != 0 or not torch.isfinite(loss):
-        raise ValueError(
-            "supervised-pair cross entropy must be a finite scalar"
-        )
-    return loss
+    return _hard_view_supervised_pair_reduction(per_view_cross_entropy)
 
 
 def _build_sampling_hierarchy(
@@ -2738,7 +2964,8 @@ def _train(
             "pair_sampling_contract": SUPERVISED_PAIR_PAIR_CONTRACT,
             "weight": supervised_pair_weight_value,
             "auxiliary": "public_class_cross_entropy",
-            "reduction": "mean_over_62_profile_contiguous_views",
+            "reduction": SUPERVISED_PAIR_TRAINING_REDUCTION,
+            **_supervised_pair_reduction_metadata(),
             "targets": SUPERVISED_PAIR_TARGET_CONSTRUCTION,
             "paired_targets_sha256": SUPERVISED_PAIR_TARGET_SHA256,
             "prototypes": (
@@ -2932,8 +3159,8 @@ def _run_configuration(
     device: torch.device,
     adaptation_binding: Mapping[str, Any],
 ) -> dict[str, Any]:
-    return {
-        "schema": "v5-scale-orbit-development-training-v2",
+    configuration = {
+        "schema": RUN_CONFIGURATION_SCHEMA,
         "arguments": {
             key: _jsonable(value)
             for key, value in sorted(vars(args).items())
@@ -2953,6 +3180,7 @@ def _run_configuration(
                 args.supervised_pair_weight
             ),
             "auxiliary": "public_class_cross_entropy",
+            **_supervised_pair_reduction_metadata(),
             "pairs_per_episode":
                 SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
             "views_per_episode":
@@ -3029,6 +3257,76 @@ def _run_configuration(
             "resolved_device": str(device),
         },
     }
+    _validate_attempt_3_run_configuration_metadata(configuration)
+    return configuration
+
+
+def _validate_attempt_3_run_configuration_metadata(
+    configuration: Mapping[str, Any],
+) -> None:
+    """Reject stale or incomplete branch metadata before it is persisted."""
+    expected_top_level_keys = {
+        "schema",
+        "arguments",
+        "checkpoint_selection",
+        "adaptation",
+        "optimizer",
+        "scheduler",
+        "randomness",
+        "software",
+    }
+    if (
+        not isinstance(configuration, Mapping)
+        or set(configuration) != expected_top_level_keys
+        or configuration.get("schema") != RUN_CONFIGURATION_SCHEMA
+    ):
+        raise ValueError(
+            "run configuration is not exact attempt-3 training-v3 metadata"
+        )
+    adaptation = configuration.get("adaptation")
+    arguments = configuration.get("arguments")
+    if not isinstance(adaptation, Mapping) or not isinstance(
+        arguments, Mapping
+    ):
+        raise ValueError("attempt-3 run metadata sections must be objects")
+    source_binding = _validate_supervised_pair_adaptation_source()
+    if any(
+        adaptation.get(key) != value
+        for key, value in source_binding.items()
+    ):
+        raise ValueError("attempt-3 source binding metadata changed")
+    immutable_adaptation = {
+        "loss_contract": SUPERVISED_PAIR_LOSS_CONTRACT,
+        "pair_sampling_contract": SUPERVISED_PAIR_PAIR_CONTRACT,
+        "supervised_pair_weight": SUPERVISED_PAIR_WEIGHT,
+        "auxiliary": "public_class_cross_entropy",
+        **_supervised_pair_reduction_metadata(),
+        "pairs_per_episode": SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
+        "views_per_episode": SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2,
+        "target_construction": SUPERVISED_PAIR_TARGET_CONSTRUCTION,
+        "prototype_gradient": "detached_for_auxiliary",
+        "logit_scale_gradient": "detached_for_auxiliary",
+        "phase_augmentation":
+            "one_independent_draw_per_paired_view",
+        "batch_norm_stat_firewall": True,
+    }
+    if any(
+        adaptation.get(key) != value
+        for key, value in immutable_adaptation.items()
+    ):
+        raise ValueError("attempt-3 hard-view adaptation metadata changed")
+    expected_adaptation_keys = (
+        set(source_binding)
+        | set(immutable_adaptation)
+        | {"fitting_firewall"}
+    )
+    if set(adaptation) != expected_adaptation_keys:
+        raise ValueError("attempt-3 adaptation metadata schema changed")
+    if (
+        arguments.get("supervised_pair_weight")
+        != SUPERVISED_PAIR_WEIGHT
+    ):
+        raise ValueError("attempt-3 argument metadata changed")
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -3043,6 +3341,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ATTEMPT_1_MISS_REPORT_SHA256,
         "v5/scale_consistency_adaptation_attempt_2.json":
             SUPERVISED_PAIR_ADAPTATION_SHA256,
+        "v5/scale_consistency_adaptation_attempt_2_miss_report.json":
+            ATTEMPT_2_MISS_REPORT_SHA256,
+        "v5/scale_consistency_adaptation_attempt_3.json":
+            HARD_VIEW_ADAPTATION_SHA256,
     }
     if any(
         source_hashes_at_start.get(key) != expected
@@ -3050,7 +3352,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     ):
         raise RuntimeError(
             "executed source snapshot omitted or changed the exact "
-            "attempt-1 intent, miss report, or attempt-2 intent"
+            "attempt-1/2 intent and miss chain or attempt-3 intent"
         )
     output = Path(args.output_dir).expanduser().resolve()
     lowered = {part.lower() for part in output.parts}
@@ -3234,7 +3536,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=Fraction(1, 3),
         help=(
             "Exact current-source share for classes present in both sources "
-            "(supervised-pair attempt 2 is frozen at 1/3)"
+            "(hard-view attempt 3 is frozen at 1/3)"
         ),
     )
     parser.add_argument(
@@ -3242,7 +3544,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         required=True,
         help=(
-            "Required explicit supervised-pair loss weight; attempt 2 is "
+            "Required explicit supervised-pair loss weight; attempt 3 is "
             "frozen at exactly 0.2"
         ),
     )
