@@ -1,0 +1,306 @@
+{
+  "schema": "atomos.v5.scale-orbit.recovery-protocol",
+  "schema_version": 1,
+  "status": "precommitted_before_v5_corpus_generation_training_or_scoring",
+  "development_only": true,
+  "release_evidence": false,
+  "declaration_date": "2026-07-29",
+  "lineage": {
+    "id": "v5-scale-orbit",
+    "ancestor_lineage": "v4-current-source-lineage-share13",
+    "ancestor_lineage_terminal": true,
+    "continuation_of_v4_one_shot_claim": false,
+    "post_score_adaptation_disclosed": true,
+    "independence_from_seed20262903": false,
+    "ancestor_failed_evidence": {
+      "report_relative_path": ".artifacts/v4-current-source-scale-dev-seed20262903-score/scale-development-evaluation.json",
+      "report_sha256": "ef58940c1504ef4e914c21991887dd49f4ead98aeea313ceeaa43f2ad6dbaafa",
+      "manifest_relative_path": ".artifacts/v4-current-source-scale-dev-seed20262903-score/scale-development-manifest.json",
+      "manifest_sha256": "2330868b6f17a06ab28383712521822b922afab74185492a4e62bda346551826",
+      "intent_relative_path": "training/artifacts/v4-current-source-scale-dev-seed20262903.score.intent.json",
+      "intent_sha256": "b79718ac8be1327f7096d491a8aa72a7557683765c925f9e262e39e501453832",
+      "ledger_relative_path": "training/artifacts/v4-current-source-scale-dev-seed20262903.score.ledger.json",
+      "ledger_sha256": "e549fe98fda22f04e90c46f260d8a082f508fc49ed36e96282fbfce0107c35e4",
+      "all_pass": false,
+      "development_only": true,
+      "release_evidence": false,
+      "classifier_sha256": "c0dc837ddacd0bd3055701719a567e8011392180ad2421c007cc2a20e927d86a",
+      "policy_sha256": "57f3262bb6c10785a766ef6834b88fc2c8daaeae3ef9d1c9e747658c8bfc3bea"
+    },
+    "adaptation_boundary": {
+      "seed20262903_is_adaptive_design_evidence": true,
+      "seed20262903_is_independent_validation_evidence": false,
+      "seed20262903_corpus_may_be_rescored": false,
+      "seed20262903_raw_rows_may_be_used_for_fit_or_calibration": false,
+      "cell_specific_changes_informed_by_the_failed_report_must_be_disclosed": true,
+      "new_validation_claims_require_fresh_sealed_seeds": true
+    }
+  },
+  "data_contract": {
+    "physical_scale_factors": [
+      1.0,
+      1.25,
+      1.5,
+      2.0
+    ],
+    "causal_observation_lengths": [
+      4096,
+      8192,
+      16384
+    ],
+    "signal_generation_path": "AtomizerMeasurementService end-to-end service path",
+    "evaluator_side_array_resampling": false,
+    "frequency_transform_at_inference": false,
+    "paired_scale_views_share_one_latent_transmitter_identity": true,
+    "shorter_observations_are_exact_leading_prefixes": true,
+    "partition_unit": "base_transmitter_identity",
+    "identity_separation": {
+      "train_dev_validation_pairwise_disjoint": true,
+      "paired_views_may_not_cross_partitions": true,
+      "prefix_families_may_not_cross_partitions": true,
+      "required_disjoint_identity_keys": [
+        "base_transmitter_identity",
+        "pair_id",
+        "content_sha256",
+        "profile_and_payload_seed",
+        "profile_and_phase_native_sample",
+        "receiver_realization_channel_seed",
+        "receiver_realization_seed"
+      ],
+      "content_collision_count_between_any_partitions": 0,
+      "receiver_identity_collision_count_between_any_partitions": 0,
+      "reference_training_content_collision_count_in_validation": 0
+    },
+    "fitting_firewall": {
+      "adaptive_development_rows_used_for_weight_fit": 0,
+      "adaptive_development_rows_used_for_threshold_or_rank_fit": 0,
+      "sealed_validation_rows_used_for_any_fit_or_selection": 0,
+      "threshold_and_rank_fit_population": "training_or_enrollment_only",
+      "candidate_selection_population": "training_and_adaptive_development_only"
+    }
+  },
+  "gate_contract": {
+    "weakening_inherited_gates_forbidden": true,
+    "all_inherited_and_added_gates_required": true,
+    "inherited_gate_count": 19,
+    "conditional_cell_minimum_closed_head_correct_rows": 20,
+    "inherited_gates": [
+      {
+        "name": "causal_prefix_outcome_agreement_across_observation_lengths",
+        "comparison": "greater_than_or_equal",
+        "threshold": 1.0
+      },
+      {
+        "name": "causal_prefix_outcome_agreement_every_source_profile",
+        "comparison": "greater_than_or_equal",
+        "threshold": 1.0
+      },
+      {
+        "name": "classifier_development_current_service_every_legal_cell_closed_accuracy",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.9
+      },
+      {
+        "name": "classifier_development_current_service_pooled_closed_accuracy",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.95
+      },
+      {
+        "name": "classifier_development_current_service_pooled_profile_balanced_accuracy",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.9
+      },
+      {
+        "name": "classifier_development_current_service_wifi_hr_dsss_worst_legal_cell_accuracy",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.95
+      },
+      {
+        "name": "classifier_development_current_service_worst_cell_present_class_balanced_accuracy",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.85
+      },
+      {
+        "name": "classifier_development_current_service_worst_profile_legal_cell_closed_accuracy",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.5
+      },
+      {
+        "name": "classifier_development_current_service_worst_profile_pooled_closed_accuracy",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.7
+      },
+      {
+        "name": "exact_eligible_pair_and_observation_coverage",
+        "comparison": "equals",
+        "threshold": true
+      },
+      {
+        "name": "exact_profile_length_scale_key_and_count_coverage",
+        "comparison": "equals",
+        "threshold": true
+      },
+      {
+        "name": "known_abstention_damage_given_closed_head_correct_pooled",
+        "comparison": "less_than_or_equal",
+        "threshold": 0.12
+      },
+      {
+        "name": "known_abstention_damage_given_closed_head_correct_worst_observation_length",
+        "comparison": "less_than_or_equal",
+        "threshold": 0.12
+      },
+      {
+        "name": "known_abstention_damage_given_closed_head_correct_worst_supported_source_profile_cell",
+        "comparison": "less_than_or_equal",
+        "threshold": 0.12
+      },
+      {
+        "name": "known_abstention_damage_given_closed_head_correct_worst_supported_true_class_cell",
+        "comparison": "less_than_or_equal",
+        "threshold": 0.12
+      },
+      {
+        "name": "length_scale_outcome_agreement_every_source_profile",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.95
+      },
+      {
+        "name": "length_scale_outcome_agreement_pooled",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.95
+      },
+      {
+        "name": "physical_scale_outcome_agreement_every_observation_length",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.95
+      },
+      {
+        "name": "physical_scale_outcome_agreement_pooled",
+        "comparison": "greater_than_or_equal",
+        "threshold": 0.95
+      }
+    ],
+    "added_directional_confusion_gates": [
+      {
+        "name": "wifi_hr_dsss_to_bluetooth_worst_legal_cell_confusion_rate",
+        "truth": "dsss",
+        "source_profile": "current:wifi-hr-dsss-11m",
+        "predicted_class": "bluetooth",
+        "scope": "every_legal_observation_length_scale_cell",
+        "comparison": "less_than_or_equal",
+        "threshold": 0.02
+      },
+      {
+        "name": "bluetooth_to_dsss_worst_legal_cell_confusion_rate",
+        "truth": "bluetooth",
+        "source_profile": "every_current_bluetooth_profile",
+        "predicted_class": "dsss",
+        "scope": "every_legal_observation_length_scale_cell",
+        "comparison": "less_than_or_equal",
+        "threshold": 0.02
+      }
+    ]
+  },
+  "validation_sequence": [
+    {
+      "ordinal": 0,
+      "name": "adaptive_design",
+      "seed_registry_roles": [
+        "training_scale",
+        "adaptive_scale_development",
+        "adaptive_novelty_development"
+      ],
+      "candidate_bytes_frozen_before_stage": false,
+      "selection_allowed": true,
+      "release_evidence": false
+    },
+    {
+      "ordinal": 1,
+      "name": "candidate_freeze",
+      "candidate_bytes_frozen_before_stage": false,
+      "selection_allowed": false,
+      "required_bindings": [
+        "model",
+        "policy",
+        "preprocessing",
+        "runtime_export",
+        "generator_sources",
+        "scorers",
+        "gate_contract",
+        "device",
+        "batch_size",
+        "executed_source_hashes"
+      ],
+      "release_evidence": false
+    },
+    {
+      "ordinal": 2,
+      "name": "known_scale_validation_primary",
+      "seeds": [
+        20262920
+      ],
+      "candidate_bytes_frozen_before_stage": true,
+      "generation_claim_ledger_before_corpus_generation": true,
+      "score_claim_ledger_before_first_model_inference": true,
+      "metric_miss_report_must_publish": true,
+      "selection_allowed": false,
+      "adaptation_allowed_after_stage": false,
+      "stop_on_failure": true,
+      "release_evidence": false
+    },
+    {
+      "ordinal": 3,
+      "name": "known_scale_validation_confirmation",
+      "seeds": [
+        20262921
+      ],
+      "requires_prior_stage_pass": "known_scale_validation_primary",
+      "candidate_bytes_frozen_before_stage": true,
+      "candidate_bytes_must_equal_prior_stage": true,
+      "generation_claim_ledger_before_corpus_generation": true,
+      "score_claim_ledger_before_first_model_inference": true,
+      "metric_miss_report_must_publish": true,
+      "selection_allowed": false,
+      "adaptation_allowed_after_stage": false,
+      "stop_on_failure": true,
+      "release_evidence": false
+    },
+    {
+      "ordinal": 4,
+      "name": "novelty_validation_joint",
+      "seeds": [
+        20263002,
+        20263003
+      ],
+      "requires_prior_stage_pass": "known_scale_validation_confirmation",
+      "candidate_bytes_frozen_before_stage": true,
+      "candidate_bytes_must_equal_prior_stage": true,
+      "joint_claim_ledger_before_generation_or_first_model_inference": true,
+      "metric_miss_report_must_publish": true,
+      "selection_allowed": false,
+      "adaptation_allowed_after_stage": false,
+      "stop_on_failure": true,
+      "release_evidence": false
+    },
+    {
+      "ordinal": 5,
+      "name": "release_eligibility",
+      "requires_prior_stage_pass": "novelty_validation_joint",
+      "requires_every_validation_gate_pass": true,
+      "requires_identical_candidate_bytes_across_validation": true,
+      "selection_allowed": false,
+      "release_evidence": false
+    }
+  ],
+  "failure_policy": {
+    "first_failed_validation_stage_terminates_lineage": true,
+    "no_later_validation_stage_after_failure": true,
+    "no_candidate_change_after_candidate_freeze": true,
+    "no_redraw_or_rescore_of_failed_seed": true,
+    "unused_validation_seeds_allocated_to_a_failed_lineage_require_owner_reauthorization_or_retirement": true,
+    "old_and_new_evidence_may_not_be_deleted_or_replaced": true
+  },
+  "seed_registry_relative_path": "training/zplane_ab/v2_full_variation/v5_scale_orbit/seed_registry.json",
+  "seed_registry_sha256": "b832e09e8eba264e21d7845f72c0d52f671aa1f9187d55ddce94fb833347e0cd"
+}

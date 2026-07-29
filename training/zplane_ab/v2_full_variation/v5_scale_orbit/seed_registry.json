@@ -1,0 +1,133 @@
+{
+  "schema": "atomos.v5.scale-orbit.seed-registry",
+  "schema_version": 1,
+  "status": "immutable_allocation_declaration",
+  "declaration_date": "2026-07-29",
+  "lineage": "v5-scale-orbit",
+  "spent_or_quarantined": [
+    {
+      "seed": 20262902,
+      "family": "physical_scale",
+      "state": "spent_exposed_design_diagnostic_only",
+      "independent_evidence_eligible": false,
+      "raw_corpus_access_in_v5": "forbidden",
+      "quarantined_corpus_relative_path": "training/artifacts/signallab-current-scale-eval-v3-seed20262902-r24",
+      "evidence_relative_path": ".artifacts/v4-current-source-lineage-share13-openset-design-seed20263001-scale-v3-20262902/design-evaluation.json",
+      "evidence_sha256": "4080810f24b3225e47427b28c2d73d74739f850e237ebe5d41a3c2388a784078"
+    },
+    {
+      "seed": 20262903,
+      "family": "physical_scale",
+      "state": "spent_failed_one_shot_development_diagnostic_only",
+      "independent_evidence_eligible": false,
+      "raw_corpus_access_in_v5": "forbidden",
+      "quarantined_corpus_relative_path": "training/artifacts/signallab-current-scale-dev-v3-seed20262903-r24",
+      "evidence_relative_path": ".artifacts/v4-current-source-scale-dev-seed20262903-score/scale-development-evaluation.json",
+      "evidence_sha256": "ef58940c1504ef4e914c21991887dd49f4ead98aeea313ceeaa43f2ad6dbaafa"
+    },
+    {
+      "seed": 20263001,
+      "family": "novelty_design",
+      "state": "spent_adaptive_design",
+      "independent_evidence_eligible": false,
+      "raw_corpus_access_in_v5": "not_applicable_generated_in_memory",
+      "evidence_relative_path": ".artifacts/v4-openset-schema5-final-independent-design-seed20263001/design-evaluation.json",
+      "evidence_sha256": "c0e64ef2bdb7a8b43297af9a2c3d6dcfa775055dfae2e860d8b073d5794493c0"
+    },
+    {
+      "seed": 20263004,
+      "family": "novelty_design",
+      "state": "spent_adaptive_confirmation_design",
+      "independent_evidence_eligible": false,
+      "raw_corpus_access_in_v5": "not_applicable_generated_in_memory",
+      "evidence_relative_path": ".artifacts/v4-current-source-lineage-share13-openset-confirmation-seed20263004-final/design-evaluation.json",
+      "evidence_sha256": "fcdc78ee55ee3ecfad2f61ae74c5ecd44f80fddb573cd3ee88f0433ca38192fe"
+    },
+    {
+      "seed": 20264001,
+      "family": "fitting",
+      "state": "spent_stage_one_fit",
+      "independent_evidence_eligible": false,
+      "raw_corpus_access_in_v5": "not_applicable_fit_rng",
+      "evidence_relative_path": ".artifacts/v4-openset-schema5-final-independent-design-seed20263001/time-domain-profile-bank-openset-v4.json",
+      "evidence_sha256": "57f3262bb6c10785a766ef6834b88fc2c8daaeae3ef9d1c9e747658c8bfc3bea"
+    }
+  ],
+  "fresh_allocations": {
+    "training_scale": {
+      "seeds": [
+        20264101,
+        20264102,
+        20264103,
+        20264104,
+        20264105,
+        20264106,
+        20264107,
+        20264108
+      ],
+      "state_at_declaration": "allocated_unspent",
+      "statistical_role": "training_only",
+      "adaptive_reuse_allowed": true,
+      "independent_evidence_eligible": false,
+      "generation_allowed_before_candidate_freeze": true
+    },
+    "adaptive_scale_development": {
+      "seeds": [
+        20262904,
+        20262905,
+        20262906,
+        20262907,
+        20262908
+      ],
+      "state_at_declaration": "allocated_unspent",
+      "statistical_role": "adaptive_development_only",
+      "adaptive_reuse_allowed": true,
+      "independent_evidence_eligible": false,
+      "generation_allowed_before_candidate_freeze": true
+    },
+    "adaptive_novelty_development": {
+      "seeds": [
+        20263005,
+        20263006,
+        20263007,
+        20263008
+      ],
+      "state_at_declaration": "allocated_unspent",
+      "statistical_role": "adaptive_development_only",
+      "adaptive_reuse_allowed": true,
+      "independent_evidence_eligible": false,
+      "generation_allowed_before_candidate_freeze": true
+    },
+    "sealed_known_scale_validation": {
+      "seeds": [
+        20262920,
+        20262921
+      ],
+      "state_at_declaration": "sealed_unspent",
+      "statistical_role": "one_shot_validation",
+      "adaptive_reuse_allowed": false,
+      "independent_evidence_eligible": true,
+      "generation_allowed_before_candidate_freeze": false
+    },
+    "sealed_novelty_validation": {
+      "seeds": [
+        20263002,
+        20263003
+      ],
+      "state_at_declaration": "sealed_unspent",
+      "statistical_role": "one_shot_validation",
+      "adaptive_reuse_allowed": false,
+      "independent_evidence_eligible": true,
+      "generation_allowed_before_candidate_freeze": false
+    }
+  },
+  "allocation_rules": {
+    "all_seed_values_globally_unique_in_this_registry": true,
+    "spent_seeds_may_not_appear_in_fresh_allocations": true,
+    "training_development_and_validation_allocations_pairwise_disjoint": true,
+    "sealed_seed_generation_before_candidate_freeze_forbidden": true,
+    "sealed_seed_read_or_score_before_claim_ledger_forbidden": true,
+    "seed_reassignment_requires_new_owner_authorized_registry": true,
+    "consumption_is_recorded_by_append_only_external_ledgers_not_by_mutating_this_registry": true
+  }
+}
