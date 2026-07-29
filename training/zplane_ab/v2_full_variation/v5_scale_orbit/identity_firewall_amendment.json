@@ -1,0 +1,97 @@
+{
+  "schema": "atomos.v5.scale-orbit.identity-firewall-amendment",
+  "schema_version": 1,
+  "status": "append_only_before_identity_firewalled_replacement_generation",
+  "authored_at": "2026-07-29T05:08:57-07:00",
+  "lineage": "v5-scale-orbit",
+  "development_only": true,
+  "release_evidence": false,
+  "append_only": true,
+  "mutates_parent_amendment_protocol_or_seed_registry": false,
+  "parent_bindings": {
+    "pretraining_amendment_sha256": "3e4098d0475477bf1ba26e79992ca17848c16dd77deb44b7562c4452544003fd",
+    "recovery_protocol_sha256": "cc79496ba398e4ce2fcb6875d8b810bcbc1ae7f89cb75271fdf2c65e6ad2afff",
+    "seed_registry_sha256": "b832e09e8eba264e21d7845f72c0d52f671aa1f9187d55ddce94fb833347e0cd",
+    "identity_rejection_sha256": "9f67115eaa07b97f35bcc3cc2f8c3ebd96a0bc819ab47500b98953aa57d31bc5"
+  },
+  "timing_and_observation_boundary": {
+    "first_seed20262904_generation_completed": true,
+    "first_seed20262904_identity_audit_attempted": true,
+    "first_seed20262904_model_training_started": false,
+    "first_seed20262904_model_inference_started": false,
+    "first_seed20262904_candidate_metrics_observed": false,
+    "replacement_generation_started_before_this_amendment": false,
+    "adaptation_input": "identity keys and collision counts only",
+    "class_predictions_or_model_outcomes_used": false
+  },
+  "rejected_corpus": {
+    "eval_seed": 20262904,
+    "manifest_sha256": "ba273ec50520b6416be40146cf595b147c7b767ad94655bec44482f7edaec750",
+    "raw_sha256": "14ae949ebcf9a56b13cddb4d9b7bcb3c725e36d15c39e8f56e311b905fe04be6",
+    "disposition": "quarantined_identity_invalid_never_fit_or_scored"
+  },
+  "unchanged_training_corpus": {
+    "eval_seed": 20264101,
+    "manifest_sha256": "c61bce0c32ae8728b0c7212da9dd59bc1689fb6dd370c2a27bf8650a7647a353",
+    "raw_sha256": "03df2b77e6d48cebb434626a17dfc3862f1d062dfbd7b59d9f35b9ce98eda080",
+    "roles": [
+      "train",
+      "enrollment"
+    ]
+  },
+  "replacement_adaptive_corpus": {
+    "eval_seed": 20262904,
+    "seed_registry_allocation": "adaptive_scale_development",
+    "seed_registry_adaptive_reuse_allowed": true,
+    "statistical_role": "adaptive_development_only",
+    "roles": [
+      "selection"
+    ],
+    "realizations_per_profile": 64,
+    "output_directory": "training/artifacts/signallab-current-scale-dev-v5-seed20262904-r64-identity-firewalled",
+    "must_not_overwrite_rejected_directory": true,
+    "replacement_manifest_and_raw_hashes_must_differ_from_rejected": true
+  },
+  "generator_binding": {
+    "source_commit": "e2897504692db2bc3f948613ec1043c0dd51d89c",
+    "source_relative_path": "tools/generate-current-signallab-scale-eval.ts",
+    "source_sha256": "53f076da486c73bd3088d0ad2359d399736c0eaa56f5323d350d1ebca57bcd34",
+    "bundle_relative_path": ".artifacts/current-scale-eval-generator/generate-current-signallab-scale-eval.js",
+    "bundle_sha256": "621fa092a9513e6f54270120e9005df15962a1f99602b6df9ac493887910fd44",
+    "required_identity_exclusion_environment": {
+      "IDENTITY_EXCLUSION_SCALE_CORPUS_DIRS_JSON": "[\"training/artifacts/signallab-current-scale-train-v5-seed20264101-r64\"]"
+    }
+  },
+  "reference_corpus_binding": {
+    "directory": "training/artifacts/signallab-current-94171ba-lineage-v1-seed20260729-n288-s16384",
+    "corpus_seed": 20260729,
+    "count": 8928,
+    "manifest_sha256": "5b72b98e7275d408e1e47c9922de756aec6fd48f69eedbc1593ab7c484271bea",
+    "raw_sha256": "61ae9300c20af4e296cbb68e36239ae66c3272bb84e20e11d648fb71ca95d8d2"
+  },
+  "identity_firewall": {
+    "generator_must_hash_verify_every_reference_manifest_and_raw_file_before_generation": true,
+    "excluded_keys_union": [
+      "profile_and_phase_native_sample",
+      "receiver_realization_channel_seed",
+      "receiver_realization_seed_when_non_null",
+      "content_sha256"
+    ],
+    "cross_role_pair_id_collision_count": 0,
+    "cross_role_content_sha256_collision_count": 0,
+    "cross_role_runtime_prefix_sha256_collision_count": 0,
+    "cross_role_receiver_realization_channel_seed_collision_count": 0,
+    "cross_role_receiver_realization_seed_when_non_null_collision_count": 0,
+    "cross_role_cyclic_profile_and_phase_native_sample_collision_count": 0,
+    "one_shot_transmitter_phase_payload_independence_claimed": false,
+    "composite_loader_must_pass_before_training": true
+  },
+  "unchanged_contracts": {
+    "gate_threshold_or_comparison_changed": false,
+    "class_or_profile_removed": false,
+    "realization_or_scale_count_reduced": false,
+    "selection_rows_used_for_any_fit": 0,
+    "sealed_seed_generated_or_read": false,
+    "stop_on_identity_collision": true
+  }
+}
