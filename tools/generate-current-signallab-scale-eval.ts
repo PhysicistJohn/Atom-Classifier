@@ -17,12 +17,16 @@
  *
  *   PATH=/Users/johnelliott/.nvm/versions/node/v22.23.1/bin:$PATH \
  *     REFERENCE_CORPUS_DIR=training/artifacts/<current-training-corpus> \
+ *     IDENTITY_EXCLUSION_SCALE_CORPUS_DIRS_JSON='["training/artifacts/<scale-training-corpus>"]' \
  *     OUTPUT_DIR=training/artifacts/<fresh-current-scale-eval> \
  *     node .artifacts/current-scale-eval-generator/\
  *generate-current-signallab-scale-eval.js
  *
  * The reference corpus is mandatory for a real evaluation.  Its current-source
- * phase, receiver-seed, and content identities are excluded.  A deliberately
+ * phase, receiver-seed, and content identities are excluded. Additional
+ * scale-corpus identity firewalls may be supplied as a JSON array; their
+ * phase, channel, receiver, and valid-content identities are unioned with the
+ * reference exclusions before any realization is materialized. A deliberately
  * labelled UNBOUND_SMOKE=1 mode exists only for short API smoke tests.
  */
 
@@ -123,6 +127,7 @@ export interface ScaleEvalOptions {
   readonly generatorBundlePath: string;
   readonly outputDirectory: string;
   readonly referenceCorpusDirectory?: string;
+  readonly identityExclusionScaleCorpusDirectories: readonly string[];
   readonly signalLabRoot: string;
   readonly evalSeed: number;
   readonly realizationsPerProfile: number;
@@ -148,7 +153,14 @@ interface GitIdentity {
   readonly worktreeClean: boolean;
 }
 
-interface ReferenceCorpus {
+export interface IdentityExclusions {
+  readonly forbiddenPhases: ReadonlyMap<string, ReadonlySet<number>>;
+  readonly forbiddenChannelSeeds: ReadonlySet<number>;
+  readonly forbiddenReceiverSeeds: ReadonlySet<number>;
+  readonly forbiddenContentHashes: ReadonlySet<string>;
+}
+
+interface ReferenceCorpus extends IdentityExclusions {
   readonly directory: string;
   readonly manifestPath: string;
   readonly manifestSha256: string;
@@ -156,10 +168,17 @@ interface ReferenceCorpus {
   readonly corpusSeed: number;
   readonly sourceCommit: string;
   readonly sourceTree: string;
-  readonly forbiddenPhases: ReadonlyMap<string, ReadonlySet<number>>;
-  readonly forbiddenChannelSeeds: ReadonlySet<number>;
-  readonly forbiddenReceiverSeeds: ReadonlySet<number>;
-  readonly forbiddenContentHashes: ReadonlySet<string>;
+  readonly count: number;
+}
+
+export interface ScaleIdentityExclusionCorpus extends IdentityExclusions {
+  readonly directory: string;
+  readonly manifestPath: string;
+  readonly manifestSha256: string;
+  readonly rawSha256: string;
+  readonly evalSeed: number;
+  readonly sourceCommit: string;
+  readonly sourceTree: string;
   readonly count: number;
 }
 
@@ -337,6 +356,40 @@ export function oneShotPresetForRealization(
   ]!;
 }
 
+export function parseIdentityExclusionScaleCorpusDirectories(
+  value: string | undefined,
+  baseDirectory: string,
+): string[] {
+  if (value === undefined) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch (error) {
+    throw new Error(
+      'IDENTITY_EXCLUSION_SCALE_CORPUS_DIRS_JSON must be valid JSON',
+      { cause: error },
+    );
+  }
+  if (
+    !Array.isArray(parsed)
+    || parsed.length === 0
+    || parsed.some((entry) => typeof entry !== 'string' || entry.length === 0)
+  ) {
+    throw new Error(
+      'IDENTITY_EXCLUSION_SCALE_CORPUS_DIRS_JSON must be a nonempty '
+      + 'JSON array of directory strings',
+    );
+  }
+  const directories = parsed.map((entry) =>
+    resolve(baseDirectory, entry as string));
+  if (new Set(directories).size !== directories.length) {
+    throw new Error(
+      'IDENTITY_EXCLUSION_SCALE_CORPUS_DIRS_JSON contains duplicate paths',
+    );
+  }
+  return directories;
+}
+
 export function readOptions(
   environment: NodeJS.ProcessEnv = process.env,
 ): ScaleEvalOptions {
@@ -425,6 +478,24 @@ export function readOptions(
   ) {
     throw new Error('Evaluation output cannot overwrite its reference corpus');
   }
+  const identityExclusionScaleCorpusDirectories =
+    parseIdentityExclusionScaleCorpusDirectories(
+      environment.IDENTITY_EXCLUSION_SCALE_CORPUS_DIRS_JSON,
+      classifierRoot,
+    );
+  if (
+    identityExclusionScaleCorpusDirectories.includes(outputDirectory)
+    || (
+      referenceCorpusDirectory !== undefined
+      && identityExclusionScaleCorpusDirectories.includes(
+        referenceCorpusDirectory,
+      )
+    )
+  ) {
+    throw new Error(
+      'Scale identity exclusions must differ from output and reference paths',
+    );
+  }
   return {
     classifierRoot,
     generatorBundlePath: process.argv[1] === undefined
@@ -432,6 +503,7 @@ export function readOptions(
       : resolve(process.argv[1]),
     outputDirectory,
     referenceCorpusDirectory,
+    identityExclusionScaleCorpusDirectories,
     signalLabRoot,
     evalSeed,
     realizationsPerProfile,
@@ -480,6 +552,9 @@ export function generateCurrentSignalLabScaleEval(
   const reference = options.referenceCorpusDirectory === undefined
     ? undefined
     : readReferenceCorpus(options.referenceCorpusDirectory);
+  const scaleIdentityExclusions =
+    options.identityExclusionScaleCorpusDirectories.map((directory) =>
+      readScaleIdentityExclusionCorpus(directory));
   if (!options.unboundSmoke && reference === undefined) {
     throw new Error('A bound evaluation requires a reference corpus');
   }
@@ -498,6 +573,25 @@ export function generateCurrentSignalLabScaleEval(
       );
     }
   }
+  for (const exclusion of scaleIdentityExclusions) {
+    if (
+      exclusion.sourceCommit !== sourceGit.commit
+      || exclusion.sourceTree !== sourceGit.tree
+    ) {
+      throw new Error(
+        'Scale identity exclusion and evaluation use different SignalLab source',
+      );
+    }
+    if (exclusion.evalSeed === options.evalSeed) {
+      throw new Error(
+        'Scale identity-exclusion seed must differ from the output seed',
+      );
+    }
+  }
+  const identityExclusions = mergeIdentityExclusions([
+    ...(reference === undefined ? [] : [reference]),
+    ...scaleIdentityExclusions,
+  ]);
 
   const outputPaths = prepareOutputs(options);
   let descriptor = -1;
@@ -519,7 +613,7 @@ export function generateCurrentSignalLabScaleEval(
             binding,
             options,
             buildIdentity,
-            reference,
+            identityExclusions,
             evaluationContentHashes,
           })
         : materializeOneShotRealizations({
@@ -527,7 +621,7 @@ export function generateCurrentSignalLabScaleEval(
             binding,
             options,
             buildIdentity,
-            reference,
+            identityExclusions,
             evaluationContentHashes,
           });
       if (realizations.length !== options.realizationsPerProfile) {
@@ -664,13 +758,17 @@ export function generateCurrentSignalLabScaleEval(
       ),
       heldOutContract: {
         referenceBound: reference !== undefined,
+        scaleIdentityExclusionCount: scaleIdentityExclusions.length,
         cyclic:
-          'native phases present in reference corpus are excluded',
+          'native phases present in reference and bound scale identity '
+          + 'exclusion corpora are excluded',
         oneShot:
           'waveform origin cannot be held out; stochastic receiver seeds '
-          + 'present in reference corpus are excluded',
+          + 'present in reference and bound scale identity exclusion corpora '
+          + 'are excluded',
         exactValidContent:
-          'every evaluation valid-content SHA-256 is absent from reference',
+          'every evaluation valid-content SHA-256 is absent from every bound '
+          + 'reference and scale identity exclusion corpus',
       },
       unboundSmoke: options.unboundSmoke,
       referenceCorpus: reference === undefined
@@ -683,6 +781,16 @@ export function generateCurrentSignalLabScaleEval(
             count: reference.count,
             corpusSeed: reference.corpusSeed,
           },
+      scaleIdentityExclusionCorpora: scaleIdentityExclusions.map(
+        (exclusion) => ({
+          directory: exclusion.directory,
+          manifest: 'scale_eval.json',
+          manifestSha256: exclusion.manifestSha256,
+          rawSha256: exclusion.rawSha256,
+          count: exclusion.count,
+          evalSeed: exclusion.evalSeed,
+        }),
+      ),
       source: {
         repository: 'Atom-SignalLab',
         gitCommit: sourceGit.commit,
@@ -743,7 +851,7 @@ function materializeCyclicRealizations(input: {
   readonly binding: FixedDigitalProfileBinding;
   readonly options: ScaleEvalOptions;
   readonly buildIdentity: MeasurementBuildIdentity;
-  readonly reference?: ReferenceCorpus;
+  readonly identityExclusions?: IdentityExclusions;
   readonly evaluationContentHashes: Set<string>;
 }): EvaluationRealization[] {
   const {
@@ -751,13 +859,14 @@ function materializeCyclicRealizations(input: {
     binding,
     options,
     buildIdentity,
-    reference,
+    identityExclusions,
     evaluationContentHashes,
   } = input;
   if (binding.replay !== 'cyclic' || binding.nativePeriodSamples === undefined) {
     throw new Error(`${profile} is not a cyclic binding`);
   }
-  const forbidden = reference?.forbiddenPhases.get(profile) ?? new Set();
+  const forbidden =
+    identityExclusions?.forbiddenPhases.get(profile) ?? new Set();
   const candidates = deterministicPhaseCandidates(
     binding.nativePeriodSamples,
     options.evalSeed,
@@ -808,7 +917,7 @@ function materializeCyclicRealizations(input: {
         `${profile}\0phase\0${phaseNativeSample}\0${receiverPreset}`
         + `\0attempt\0${seedAttempt}`,
       );
-      if (reference?.forbiddenChannelSeeds.has(channelSeed)) {
+      if (identityExclusions?.forbiddenChannelSeeds.has(channelSeed)) {
         seedAttempt += 1;
         continue;
       }
@@ -842,12 +951,13 @@ function materializeCyclicRealizations(input: {
         .filter((seed): seed is number => seed !== null);
       const collides = measurements.some(
         (measurement) =>
-          reference?.forbiddenContentHashes.has(
+          identityExclusions?.forbiddenContentHashes.has(
             measurement.contentSha256,
           ) === true
           || evaluationContentHashes.has(measurement.contentSha256),
       ) || receiverSeeds.some(
-        (seed) => reference?.forbiddenReceiverSeeds.has(seed) === true,
+        (seed) =>
+          identityExclusions?.forbiddenReceiverSeeds.has(seed) === true,
       );
       if (collides) {
         seedAttempt += 1;
@@ -882,7 +992,7 @@ function materializeOneShotRealizations(input: {
   readonly binding: FixedDigitalProfileBinding;
   readonly options: ScaleEvalOptions;
   readonly buildIdentity: MeasurementBuildIdentity;
-  readonly reference?: ReferenceCorpus;
+  readonly identityExclusions?: IdentityExclusions;
   readonly evaluationContentHashes: Set<string>;
 }): EvaluationRealization[] {
   const {
@@ -890,7 +1000,7 @@ function materializeOneShotRealizations(input: {
     binding,
     options,
     buildIdentity,
-    reference,
+    identityExclusions,
     evaluationContentHashes,
   } = input;
   if (binding.replay !== 'one-shot' || binding.captureSamples === undefined) {
@@ -932,7 +1042,9 @@ function materializeOneShotRealizations(input: {
         `${profile}\0one-shot\0${realizationIndex}\0${receiverPreset}`
         + `\0attempt\0${attempt}`,
       );
-      if (reference?.forbiddenChannelSeeds.has(channelSeed)) continue;
+      if (identityExclusions?.forbiddenChannelSeeds.has(channelSeed)) {
+        continue;
+      }
       const measurements = acquireScaleFamily({
         profile,
         binding,
@@ -962,12 +1074,13 @@ function materializeOneShotRealizations(input: {
         .filter((seed): seed is number => seed !== null);
       const collides = measurements.some(
         (measurement) =>
-          reference?.forbiddenContentHashes.has(
+          identityExclusions?.forbiddenContentHashes.has(
             measurement.contentSha256,
           ) === true
           || evaluationContentHashes.has(measurement.contentSha256),
       ) || receiverSeeds.some(
-        (seed) => reference?.forbiddenReceiverSeeds.has(seed) === true,
+        (seed) =>
+          identityExclusions?.forbiddenReceiverSeeds.has(seed) === true,
       );
       if (!collides) accepted = { channelSeed, measurements };
     }
@@ -1249,6 +1362,175 @@ function readReferenceCorpus(directory: string): ReferenceCorpus {
     forbiddenReceiverSeeds,
     forbiddenContentHashes,
     count,
+  };
+}
+
+export function readScaleIdentityExclusionCorpus(
+  directory: string,
+): ScaleIdentityExclusionCorpus {
+  const resolved = resolve(directory);
+  const manifestPath = resolve(resolved, 'scale_eval.json');
+  if (!existsSync(manifestPath)) {
+    throw new Error(
+      `Scale identity-exclusion manifest is missing: ${manifestPath}`,
+    );
+  }
+  const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown;
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Scale identity-exclusion manifest must be an object');
+  }
+  const manifest = parsed as Record<string, unknown>;
+  if (
+    manifest.schema !== SCALE_EVAL_SCHEMA
+    || manifest.generator !== SCALE_EVAL_SCHEMA
+  ) {
+    throw new Error(
+      'Scale identity exclusion must be a reviewed service-path scale corpus',
+    );
+  }
+  const items = manifest.items;
+  const count = requireManifestInteger(
+    manifest.count,
+    'scale identity-exclusion count',
+    1,
+  );
+  if (!Array.isArray(items) || items.length !== count) {
+    throw new Error('Scale identity-exclusion count/items disagree');
+  }
+  const source = manifest.source;
+  if (source === null || typeof source !== 'object' || Array.isArray(source)) {
+    throw new Error('Scale identity-exclusion source must be an object');
+  }
+  const sourceRecord = source as Record<string, unknown>;
+  const sourceCommit = requireSha1(
+    sourceRecord.gitCommit,
+    'scale identity-exclusion source gitCommit',
+  );
+  const sourceTree = requireSha1(
+    sourceRecord.gitTree,
+    'scale identity-exclusion source gitTree',
+  );
+  const dataFile = manifest.dataFile;
+  if (
+    typeof dataFile !== 'string'
+    || !dataFile
+    || dataFile.includes('/')
+    || dataFile.includes('\\')
+  ) {
+    throw new Error(
+      'Scale identity-exclusion dataFile must be a plain local filename',
+    );
+  }
+  const rawPath = resolve(resolved, dataFile);
+  if (!existsSync(rawPath)) {
+    throw new Error(`Scale identity-exclusion raw file is missing: ${rawPath}`);
+  }
+  const actualRawSha256 = sha256File(rawPath);
+  if (
+    typeof manifest.dataSha256 !== 'string'
+    || manifest.dataSha256 !== actualRawSha256
+  ) {
+    throw new Error(
+      'Scale identity-exclusion raw SHA-256 disagrees with its manifest',
+    );
+  }
+
+  const forbiddenPhasesMutable = new Map<string, Set<number>>();
+  const forbiddenChannelSeeds = new Set<number>();
+  const forbiddenReceiverSeeds = new Set<number>();
+  const forbiddenContentHashes = new Set<string>();
+  for (const [index, value] of items.entries()) {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(`Scale identity-exclusion item ${index} must be an object`);
+    }
+    const item = value as Record<string, unknown>;
+    const profile = requireString(
+      item.profile,
+      `scale identity-exclusion item ${index} profile`,
+    );
+    if (!Object.hasOwn(FIXED_DIGITAL_PROFILE_BINDINGS, profile)) {
+      throw new Error(
+        `Scale identity-exclusion item ${index} has an unknown profile`,
+      );
+    }
+    const phase = requireManifestInteger(
+      item.phaseNativeSample,
+      `scale identity-exclusion item ${index} phaseNativeSample`,
+      0,
+    );
+    const phases = forbiddenPhasesMutable.get(profile) ?? new Set<number>();
+    phases.add(phase);
+    forbiddenPhasesMutable.set(profile, phases);
+    addOptionalSeed(
+      forbiddenChannelSeeds,
+      item.receiverRealizationChannelSeed,
+      `scale identity-exclusion item ${index} receiver channel seed`,
+    );
+    addOptionalSeed(
+      forbiddenReceiverSeeds,
+      item.receiverRealizationSeed,
+      `scale identity-exclusion item ${index} receiver seed`,
+    );
+    const contentSha256 = item.contentSha256;
+    if (
+      typeof contentSha256 !== 'string'
+      || !HASH_PATTERN.test(contentSha256)
+    ) {
+      throw new Error(
+        `Scale identity-exclusion item ${index} content SHA-256 is malformed`,
+      );
+    }
+    forbiddenContentHashes.add(contentSha256);
+  }
+  return {
+    directory: resolved,
+    manifestPath,
+    manifestSha256: sha256File(manifestPath),
+    rawSha256: actualRawSha256,
+    evalSeed: requireManifestInteger(
+      manifest.evalSeed,
+      'scale identity-exclusion evalSeed',
+      0,
+    ),
+    sourceCommit,
+    sourceTree,
+    forbiddenPhases: forbiddenPhasesMutable,
+    forbiddenChannelSeeds,
+    forbiddenReceiverSeeds,
+    forbiddenContentHashes,
+    count,
+  };
+}
+
+export function mergeIdentityExclusions(
+  inputs: readonly IdentityExclusions[],
+): IdentityExclusions | undefined {
+  if (inputs.length === 0) return undefined;
+  const forbiddenPhases = new Map<string, Set<number>>();
+  const forbiddenChannelSeeds = new Set<number>();
+  const forbiddenReceiverSeeds = new Set<number>();
+  const forbiddenContentHashes = new Set<string>();
+  for (const input of inputs) {
+    for (const [profile, phases] of input.forbiddenPhases) {
+      const destination = forbiddenPhases.get(profile) ?? new Set<number>();
+      for (const phase of phases) destination.add(phase);
+      forbiddenPhases.set(profile, destination);
+    }
+    for (const seed of input.forbiddenChannelSeeds) {
+      forbiddenChannelSeeds.add(seed);
+    }
+    for (const seed of input.forbiddenReceiverSeeds) {
+      forbiddenReceiverSeeds.add(seed);
+    }
+    for (const digest of input.forbiddenContentHashes) {
+      forbiddenContentHashes.add(digest);
+    }
+  }
+  return {
+    forbiddenPhases,
+    forbiddenChannelSeeds,
+    forbiddenReceiverSeeds,
+    forbiddenContentHashes,
   };
 }
 

@@ -29,11 +29,14 @@ import {
   hasExactUniqueScaleFamilyContentHashes,
   hasInformativeCf32lePrefix,
   maximumOneShotOutputSamples,
+  mergeIdentityExclusions,
   oneShotPresetForRealization,
+  parseIdentityExclusionScaleCorpusDirectories,
   productionCaptureBandwidthHz,
   publicClassForProfile,
   readGeneratorLineage,
   readOptions,
+  readScaleIdentityExclusionCorpus,
   scaledSampleRateHz,
 } from '../.artifacts/current-scale-eval-generator/generate-current-signallab-scale-eval.js';
 
@@ -260,6 +263,7 @@ test('real runs require a reference and profile filters are smoke-only', () => {
   });
   assert.equal(options.unboundSmoke, true);
   assert.deepEqual(options.profiles, ['wifi-hr-dsss-11m']);
+  assert.deepEqual(options.identityExclusionScaleCorpusDirectories, []);
   assert.throws(
     () => readOptions({
       UNBOUND_SMOKE: '1',
@@ -267,6 +271,110 @@ test('real runs require a reference and profile filters are smoke-only', () => {
     }),
     /cannot redirect provenance/i,
   );
+});
+
+test('scale identity-exclusion directories are explicit unique JSON paths', () => {
+  assert.deepEqual(
+    parseIdentityExclusionScaleCorpusDirectories(
+      '["training/artifacts/one","training/artifacts/two"]',
+      '/classifier',
+    ),
+    [
+      '/classifier/training/artifacts/one',
+      '/classifier/training/artifacts/two',
+    ],
+  );
+  assert.throws(
+    () => parseIdentityExclusionScaleCorpusDirectories(
+      '["training/artifacts/one","training/artifacts/one"]',
+      '/classifier',
+    ),
+    /duplicate paths/i,
+  );
+  assert.throws(
+    () => parseIdentityExclusionScaleCorpusDirectories('{}', '/classifier'),
+    /nonempty JSON array/i,
+  );
+  assert.throws(
+    () => parseIdentityExclusionScaleCorpusDirectories('[', '/classifier'),
+    /valid JSON/i,
+  );
+});
+
+test('reviewed scale corpora contribute unioned identity exclusions', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scale-identity-exclusion-'));
+  try {
+    const makeCorpus = (name, {
+      evalSeed,
+      phase,
+      channelSeed,
+      receiverSeed,
+      content,
+    }) => {
+      const directory = resolve(root, name);
+      mkdirSync(directory, { recursive: true });
+      const raw = Buffer.from(`bound-scale-raw:${name}\n`);
+      writeFileSync(resolve(directory, 'scale_eval.f32'), raw);
+      writeFileSync(
+        resolve(directory, 'scale_eval.json'),
+        `${JSON.stringify({
+          schema: SCALE_EVAL_SCHEMA,
+          generator: SCALE_EVAL_SCHEMA,
+          evalSeed,
+          count: 1,
+          dataFile: 'scale_eval.f32',
+          dataSha256: sha256(raw),
+          source: {
+            gitCommit: EXPECTED_SIGNAL_LAB_GIT_COMMIT,
+            gitTree: EXPECTED_SIGNAL_LAB_GIT_TREE,
+          },
+          items: [{
+            profile: 'wifi-hr-dsss-11m',
+            phaseNativeSample: phase,
+            receiverRealizationChannelSeed: channelSeed,
+            receiverRealizationSeed: receiverSeed,
+            contentSha256: content,
+          }],
+        })}\n`,
+      );
+      return readScaleIdentityExclusionCorpus(directory);
+    };
+    const first = makeCorpus('one', {
+      evalSeed: 20_264_101,
+      phase: 17,
+      channelSeed: 101,
+      receiverSeed: 201,
+      content: '1'.repeat(64),
+    });
+    const second = makeCorpus('two', {
+      evalSeed: 20_262_904,
+      phase: 23,
+      channelSeed: 102,
+      receiverSeed: null,
+      content: '2'.repeat(64),
+    });
+    const merged = mergeIdentityExclusions([first, second]);
+    assert.deepEqual(
+      [...merged.forbiddenPhases.get('wifi-hr-dsss-11m')].sort(
+        (left, right) => left - right,
+      ),
+      [17, 23],
+    );
+    assert.deepEqual(
+      [...merged.forbiddenChannelSeeds].sort((left, right) => left - right),
+      [101, 102],
+    );
+    assert.deepEqual([...merged.forbiddenReceiverSeeds], [201]);
+    assert.deepEqual(
+      [...merged.forbiddenContentHashes].sort(),
+      ['1'.repeat(64), '2'.repeat(64)],
+    );
+    assert.equal(first.evalSeed, 20_264_101);
+    assert.match(first.manifestSha256, /^[a-f0-9]{64}$/);
+    assert.equal(mergeIdentityExclusions([]), undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('binds the scale source and bundle and rejects mid-run drift', () => {
