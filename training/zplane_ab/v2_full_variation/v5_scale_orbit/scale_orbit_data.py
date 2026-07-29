@@ -53,16 +53,83 @@ SCALE_ORBIT_AUDIT_SCHEMA = (
     "v5-current-service-scale-orbit-composite-audit-v1"
 )
 SCALE_ORBIT_AMENDMENT_PATH = HERE / "pretraining_amendment.json"
+SCALE_ORBIT_IDENTITY_FIREWALL_AMENDMENT_PATH = (
+    HERE / "identity_firewall_amendment.json"
+)
+SCALE_ORBIT_IDENTITY_REJECTION_PATH = (
+    HERE / "seed20262904_identity_rejection.json"
+)
+SCALE_ORBIT_IDENTITY_ACCEPTANCE_PATH = (
+    HERE / "seed20262904_identity_firewall_acceptance.json"
+)
 SCALE_ORBIT_PROTOCOL_PATH = HERE / "recovery_protocol.json"
 SCALE_ORBIT_SEED_REGISTRY_PATH = HERE / "seed_registry.json"
 SCALE_ORBIT_AMENDMENT_SHA256 = (
     "3e4098d0475477bf1ba26e79992ca17848c16dd77deb44b7562c4452544003fd"
+)
+SCALE_ORBIT_IDENTITY_FIREWALL_AMENDMENT_SHA256 = (
+    "89d714910dc5dfdbfb05282abf752382cf382e88108d0f2b589f62289d452ba4"
+)
+SCALE_ORBIT_IDENTITY_REJECTION_SHA256 = (
+    "9f67115eaa07b97f35bcc3cc2f8c3ebd96a0bc819ab47500b98953aa57d31bc5"
+)
+SCALE_ORBIT_IDENTITY_ACCEPTANCE_SHA256 = (
+    "9da7e5b08bb6d5f15e80e920660315d43efe859b4db160d7e40f7b673c741d9b"
 )
 SCALE_ORBIT_PROTOCOL_SHA256 = (
     "cc79496ba398e4ce2fcb6875d8b810bcbc1ae7f89cb75271fdf2c65e6ad2afff"
 )
 SCALE_ORBIT_SEED_REGISTRY_SHA256 = (
     "b832e09e8eba264e21d7845f72c0d52f671aa1f9187d55ddce94fb833347e0cd"
+)
+SCALE_ORBIT_REJECTED_SELECTION_MANIFEST_SHA256 = (
+    "ba273ec50520b6416be40146cf595b147c7b767ad94655bec44482f7edaec750"
+)
+SCALE_ORBIT_REJECTED_SELECTION_RAW_SHA256 = (
+    "14ae949ebcf9a56b13cddb4d9b7bcb3c725e36d15c39e8f56e311b905fe04be6"
+)
+SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_MANIFEST_SHA256: str | None = (
+    "7a345bc109e46661427c2f81b46125fb48a00048e9b2b7da77505dc49135d998"
+)
+SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_RAW_SHA256: str | None = (
+    "53d4ab20faf031ed2aacd3017d55ada1622d7c51f85b200aa490f3d3854dc928"
+)
+SCALE_ORBIT_TRAINING_MANIFEST_SHA256 = (
+    "c61bce0c32ae8728b0c7212da9dd59bc1689fb6dd370c2a27bf8650a7647a353"
+)
+SCALE_ORBIT_TRAINING_RAW_SHA256 = (
+    "03df2b77e6d48cebb434626a17dfc3862f1d062dfbd7b59d9f35b9ce98eda080"
+)
+SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_DIRECTORY = (
+    "training/artifacts/"
+    "signallab-current-scale-dev-v5-seed20262904-r64-identity-firewalled"
+)
+SCALE_ORBIT_REFERENCE_DIRECTORY = (
+    "training/artifacts/"
+    "signallab-current-94171ba-lineage-v1-seed20260729-n288-s16384"
+)
+SCALE_ORBIT_REFERENCE_SEED = 20_260_729
+SCALE_ORBIT_REFERENCE_COUNT = 8_928
+SCALE_ORBIT_REFERENCE_MANIFEST_SHA256 = (
+    "5b72b98e7275d408e1e47c9922de756aec6fd48f69eedbc1593ab7c484271bea"
+)
+SCALE_ORBIT_REFERENCE_RAW_SHA256 = (
+    "61ae9300c20af4e296cbb68e36239ae66c3272bb84e20e11d648fb71ca95d8d2"
+)
+SCALE_ORBIT_FIREWALL_GENERATOR_SOURCE_SHA256 = (
+    "53f076da486c73bd3088d0ad2359d399736c0eaa56f5323d350d1ebca57bcd34"
+)
+SCALE_ORBIT_FIREWALL_GENERATOR_BUNDLE_SHA256 = (
+    "621fa092a9513e6f54270120e9005df15962a1f99602b6df9ac493887910fd44"
+)
+SCALE_ORBIT_TRAINING_GENERATOR_LINEAGE = (
+    scale_data.DEFAULT_SCALE_GENERATOR_LINEAGE
+)
+SCALE_ORBIT_FIREWALL_GENERATOR_LINEAGE = (
+    scale_data.ScaleGeneratorLineageBinding(
+        source_sha256=SCALE_ORBIT_FIREWALL_GENERATOR_SOURCE_SHA256,
+        bundle_sha256=SCALE_ORBIT_FIREWALL_GENERATOR_BUNDLE_SHA256,
+    )
 )
 SCALE_ORBIT_REQUIRED_AUDIT_KEYS = (
     "schema",
@@ -325,11 +392,15 @@ def _validate_population(
     directory: str | Path,
     *,
     expected_seed: int,
+    expected_generator_lineage: scale_data.ScaleGeneratorLineageBinding,
     split_counts: Mapping[str, int],
     role_for_index: Any,
 ) -> tuple[scale_data.ScaleEvalCorpus, dict[str, Any]]:
     source = Path(directory).expanduser().resolve()
-    corpus = scale_data.load_scale_eval_corpus(source)
+    corpus = scale_data.load_scale_eval_corpus(
+        source,
+        expected_generator_lineage=expected_generator_lineage,
+    )
     if (
         corpus.directory.resolve() != source
         or corpus.manifest_path.resolve().parent != source
@@ -368,6 +439,119 @@ def _validate_population(
         split_counts=split_counts,
         role_for_index=role_for_index,
     )
+
+
+def _validate_identity_firewalled_selection(
+    training: scale_data.ScaleEvalCorpus,
+    selection: scale_data.ScaleEvalCorpus,
+) -> None:
+    """Bind the replacement bytes to the append-only firewall amendment."""
+    accepted_manifest_sha256 = (
+        SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_MANIFEST_SHA256
+    )
+    accepted_raw_sha256 = SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_RAW_SHA256
+    if accepted_manifest_sha256 is None or accepted_raw_sha256 is None:
+        raise ValueError(
+            "identity-firewalled selection exact manifest/raw SHA-256 pins "
+            "are not bound"
+        )
+    for field, value in (
+        ("manifest", accepted_manifest_sha256),
+        ("raw", accepted_raw_sha256),
+    ):
+        if (
+            len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            raise ValueError(
+                f"identity-firewalled selection {field} SHA-256 pin is invalid"
+            )
+    if (
+        accepted_manifest_sha256
+        == SCALE_ORBIT_REJECTED_SELECTION_MANIFEST_SHA256
+        or accepted_raw_sha256 == SCALE_ORBIT_REJECTED_SELECTION_RAW_SHA256
+    ):
+        raise ValueError(
+            "identity-firewalled selection pins still name quarantined bytes"
+        )
+    try:
+        selection_relative = (
+            selection.directory.resolve().relative_to(REPO).as_posix()
+        )
+    except ValueError as error:
+        raise ValueError(
+            "identity-firewalled selection corpus is outside the repository"
+        ) from error
+    if (
+        training.audit.get("manifest_sha256")
+        != SCALE_ORBIT_TRAINING_MANIFEST_SHA256
+        or training.audit.get("raw_sha256")
+        != SCALE_ORBIT_TRAINING_RAW_SHA256
+        or selection_relative
+        != SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_DIRECTORY
+        or selection.audit.get("manifest_sha256")
+        != accepted_manifest_sha256
+        or selection.audit.get("raw_sha256") != accepted_raw_sha256
+    ):
+        raise ValueError(
+            "scale-orbit corpora do not match the frozen identity-firewall "
+            "recovery boundary"
+        )
+    generator = selection.manifest.get("generatorLineage")
+    held_out = selection.manifest.get("heldOutContract")
+    reference = selection.manifest.get("referenceCorpus")
+    exclusions = selection.manifest.get("scaleIdentityExclusionCorpora")
+    if (
+        not isinstance(generator, Mapping)
+        or generator.get("sourceSha256")
+        != SCALE_ORBIT_FIREWALL_GENERATOR_SOURCE_SHA256
+        or generator.get("bundleSha256")
+        != SCALE_ORBIT_FIREWALL_GENERATOR_BUNDLE_SHA256
+        or not isinstance(held_out, Mapping)
+        or held_out.get("referenceBound") is not True
+        or held_out.get("scaleIdentityExclusionCount") != 1
+        or not isinstance(reference, Mapping)
+        or not isinstance(exclusions, list)
+        or len(exclusions) != 1
+        or not isinstance(exclusions[0], Mapping)
+    ):
+        raise ValueError(
+            "adaptive selection lacks the frozen generator identity firewall"
+        )
+    if (
+        reference.get("manifest") != "corpus.json"
+        or reference.get("manifestSha256")
+        != SCALE_ORBIT_REFERENCE_MANIFEST_SHA256
+        or reference.get("rawSha256") != SCALE_ORBIT_REFERENCE_RAW_SHA256
+        or reference.get("count") != SCALE_ORBIT_REFERENCE_COUNT
+        or reference.get("corpusSeed") != SCALE_ORBIT_REFERENCE_SEED
+        or Path(str(reference.get("directory"))).resolve()
+        != (REPO / SCALE_ORBIT_REFERENCE_DIRECTORY).resolve()
+    ):
+        raise ValueError(
+            "adaptive selection reference corpus is not bound to the exact "
+            "seed-20260729 reference bytes"
+        )
+    exclusion = exclusions[0]
+    if (
+        exclusion.get("evalSeed") != SCALE_ORBIT_TRAINING_SEED
+        or exclusion.get("manifest") != "scale_eval.json"
+        or exclusion.get("manifestSha256")
+        != SCALE_ORBIT_TRAINING_MANIFEST_SHA256
+        or exclusion.get("rawSha256") != SCALE_ORBIT_TRAINING_RAW_SHA256
+        or exclusion.get("count")
+        != (
+            len(current_data.CURRENT_PROFILES)
+            * SCALE_ORBIT_REALIZATIONS_PER_PROFILE
+            * len(SCALE_ORBIT_EXPECTED_FACTORS)
+        )
+        or Path(str(exclusion.get("directory"))).resolve()
+        != training.directory.resolve()
+    ):
+        raise ValueError(
+            "adaptive selection identity exclusion is not bound to the exact "
+            "seed-20264101 training corpus"
+        )
 
 
 def _prefix_sha256(
@@ -562,6 +746,14 @@ def _verified_contract_hashes() -> dict[str, str]:
     observed = {
         "amendment_sha256":
             current_data.sha256_file(SCALE_ORBIT_AMENDMENT_PATH),
+        "identity_firewall_amendment_sha256":
+            current_data.sha256_file(
+                SCALE_ORBIT_IDENTITY_FIREWALL_AMENDMENT_PATH
+            ),
+        "identity_rejection_sha256":
+            current_data.sha256_file(SCALE_ORBIT_IDENTITY_REJECTION_PATH),
+        "identity_acceptance_sha256":
+            current_data.sha256_file(SCALE_ORBIT_IDENTITY_ACCEPTANCE_PATH),
         "parent_protocol_sha256":
             current_data.sha256_file(SCALE_ORBIT_PROTOCOL_PATH),
         "seed_registry_sha256":
@@ -569,14 +761,27 @@ def _verified_contract_hashes() -> dict[str, str]:
     }
     expected = {
         "amendment_sha256": SCALE_ORBIT_AMENDMENT_SHA256,
+        "identity_firewall_amendment_sha256":
+            SCALE_ORBIT_IDENTITY_FIREWALL_AMENDMENT_SHA256,
+        "identity_rejection_sha256":
+            SCALE_ORBIT_IDENTITY_REJECTION_SHA256,
+        "identity_acceptance_sha256":
+            SCALE_ORBIT_IDENTITY_ACCEPTANCE_SHA256,
         "parent_protocol_sha256": SCALE_ORBIT_PROTOCOL_SHA256,
         "seed_registry_sha256": SCALE_ORBIT_SEED_REGISTRY_SHA256,
     }
     if observed != expected:
         raise ValueError(
-            "v5 scale-orbit frozen amendment/protocol/registry hash changed"
+            "v5 scale-orbit frozen identity-firewall contract hash changed"
         )
-    return observed
+    return {
+        key: observed[key]
+        for key in (
+            "amendment_sha256",
+            "parent_protocol_sha256",
+            "seed_registry_sha256",
+        )
+    }
 
 
 def _repository_relative_path(path: Path) -> str:
@@ -741,12 +946,14 @@ def load_scale_orbit_training_corpus(
     training, training_audit = _validate_population(
         training_directory,
         expected_seed=SCALE_ORBIT_TRAINING_SEED,
+        expected_generator_lineage=SCALE_ORBIT_TRAINING_GENERATOR_LINEAGE,
         split_counts=SCALE_ORBIT_TRAINING_SPLIT_COUNTS,
         role_for_index=role_for_training_realization,
     )
     selection, selection_audit = _validate_population(
         adaptive_directory,
         expected_seed=SCALE_ORBIT_SELECTION_SEED,
+        expected_generator_lineage=SCALE_ORBIT_FIREWALL_GENERATOR_LINEAGE,
         split_counts=SCALE_ORBIT_SELECTION_SPLIT_COUNTS,
         role_for_index=_selection_role,
     )
@@ -794,6 +1001,7 @@ def load_scale_orbit_training_corpus(
         for role in current_data.ROLES
     }
     separation = _assert_cross_role_separation(combined_inventory)
+    _validate_identity_firewalled_selection(training, selection)
     expected_training_pairs = (
         len(current_data.CURRENT_PROFILES)
         * SCALE_ORBIT_REALIZATIONS_PER_PROFILE

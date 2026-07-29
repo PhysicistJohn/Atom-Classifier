@@ -208,21 +208,285 @@ class ScaleOrbitDataTests(unittest.TestCase):
             data.SCALE_ORBIT_SELECTION_SEED,
             marker=2,
         )
-        with mock.patch.object(
-            data.scale_data,
-            "load_scale_eval_corpus",
-            side_effect=[training, selection],
-        ) as loader:
+        with (
+            mock.patch.object(
+                data.scale_data,
+                "load_scale_eval_corpus",
+                side_effect=[training, selection],
+            ) as loader,
+            mock.patch.object(
+                data,
+                "_validate_identity_firewalled_selection",
+            ) as firewall,
+        ):
             result = data.load_scale_orbit_training_corpus(
                 training.directory,
                 selection_directory=selection.directory,
                 class_index=PUBLIC_CLASS_INDEX,
             )
+        firewall.assert_called_once_with(training, selection)
         self.assertEqual(
             [call.args[0] for call in loader.call_args_list],
             [training.directory.resolve(), selection.directory.resolve()],
         )
+        self.assertEqual(
+            [
+                call.kwargs["expected_generator_lineage"]
+                for call in loader.call_args_list
+            ],
+            [
+                data.SCALE_ORBIT_TRAINING_GENERATOR_LINEAGE,
+                data.SCALE_ORBIT_FIREWALL_GENERATOR_LINEAGE,
+            ],
+        )
         return result
+
+    def test_replacement_selection_is_bound_to_firewall_generator_and_training(
+        self,
+    ) -> None:
+        training = _fake_population(
+            data.SCALE_ORBIT_TRAINING_SEED,
+            marker=1,
+        )
+        selection = _fake_population(
+            data.SCALE_ORBIT_SELECTION_SEED,
+            marker=2,
+        )
+        selection.directory = (
+            data.REPO
+            / data.SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_DIRECTORY
+        )
+        selection.manifest_path = selection.directory / "scale_eval.json"
+        selection.raw_path = selection.directory / "scale_eval.f32"
+        training.audit["manifest_sha256"] = (
+            data.SCALE_ORBIT_TRAINING_MANIFEST_SHA256
+        )
+        training.audit["raw_sha256"] = data.SCALE_ORBIT_TRAINING_RAW_SHA256
+        selection.audit["manifest_sha256"] = (
+            data.SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_MANIFEST_SHA256
+        )
+        selection.audit["raw_sha256"] = (
+            data.SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_RAW_SHA256
+        )
+        selection.manifest.update(
+            {
+                "generatorLineage": {
+                    "sourceSha256":
+                        data.SCALE_ORBIT_FIREWALL_GENERATOR_SOURCE_SHA256,
+                    "bundleSha256":
+                        data.SCALE_ORBIT_FIREWALL_GENERATOR_BUNDLE_SHA256,
+                },
+                "heldOutContract": {
+                    "referenceBound": True,
+                    "scaleIdentityExclusionCount": 1,
+                },
+                "referenceCorpus": {
+                    "directory": str(
+                        (
+                            data.REPO / data.SCALE_ORBIT_REFERENCE_DIRECTORY
+                        ).resolve()
+                    ),
+                    "manifest": "corpus.json",
+                    "manifestSha256":
+                        data.SCALE_ORBIT_REFERENCE_MANIFEST_SHA256,
+                    "rawSha256": data.SCALE_ORBIT_REFERENCE_RAW_SHA256,
+                    "count": data.SCALE_ORBIT_REFERENCE_COUNT,
+                    "corpusSeed": data.SCALE_ORBIT_REFERENCE_SEED,
+                },
+                "scaleIdentityExclusionCorpora": [
+                    {
+                        "directory": str(training.directory.resolve()),
+                        "manifest": "scale_eval.json",
+                        "manifestSha256":
+                            data.SCALE_ORBIT_TRAINING_MANIFEST_SHA256,
+                        "rawSha256":
+                            data.SCALE_ORBIT_TRAINING_RAW_SHA256,
+                        "count": (
+                            len(TEST_PROFILES)
+                            * data.SCALE_ORBIT_REALIZATIONS_PER_PROFILE
+                            * len(data.SCALE_ORBIT_EXPECTED_FACTORS)
+                        ),
+                        "evalSeed": data.SCALE_ORBIT_TRAINING_SEED,
+                    }
+                ],
+            }
+        )
+        data._validate_identity_firewalled_selection(training, selection)
+
+        selection.manifest["referenceCorpus"]["rawSha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "reference corpus"):
+            data._validate_identity_firewalled_selection(
+                training,
+                selection,
+            )
+        selection.manifest["referenceCorpus"]["rawSha256"] = (
+            data.SCALE_ORBIT_REFERENCE_RAW_SHA256
+        )
+
+        selection.manifest["generatorLineage"]["sourceSha256"] = "0" * 64
+        with self.assertRaisesRegex(
+            ValueError,
+            "generator identity firewall",
+        ):
+            data._validate_identity_firewalled_selection(
+                training,
+                selection,
+            )
+
+    def test_replacement_selection_refuses_unbound_or_arbitrary_hashes(
+        self,
+    ) -> None:
+        training = _fake_population(
+            data.SCALE_ORBIT_TRAINING_SEED,
+            marker=1,
+        )
+        selection = _fake_population(
+            data.SCALE_ORBIT_SELECTION_SEED,
+            marker=2,
+        )
+        training.audit["manifest_sha256"] = (
+            data.SCALE_ORBIT_TRAINING_MANIFEST_SHA256
+        )
+        training.audit["raw_sha256"] = data.SCALE_ORBIT_TRAINING_RAW_SHA256
+        selection.directory = (
+            data.REPO
+            / data.SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_DIRECTORY
+        )
+        selection.manifest_path = selection.directory / "scale_eval.json"
+        selection.raw_path = selection.directory / "scale_eval.f32"
+        selection.audit["manifest_sha256"] = "3" * 64
+        selection.audit["raw_sha256"] = "4" * 64
+        selection.manifest.update(
+            {
+                "generatorLineage": {
+                    "sourceSha256":
+                        data.SCALE_ORBIT_FIREWALL_GENERATOR_SOURCE_SHA256,
+                    "bundleSha256":
+                        data.SCALE_ORBIT_FIREWALL_GENERATOR_BUNDLE_SHA256,
+                },
+                "heldOutContract": {
+                    "referenceBound": True,
+                    "scaleIdentityExclusionCount": 1,
+                },
+                "referenceCorpus": {
+                    "directory": str(
+                        (
+                            data.REPO / data.SCALE_ORBIT_REFERENCE_DIRECTORY
+                        ).resolve()
+                    ),
+                    "manifest": "corpus.json",
+                    "manifestSha256":
+                        data.SCALE_ORBIT_REFERENCE_MANIFEST_SHA256,
+                    "rawSha256": data.SCALE_ORBIT_REFERENCE_RAW_SHA256,
+                    "count": data.SCALE_ORBIT_REFERENCE_COUNT,
+                    "corpusSeed": data.SCALE_ORBIT_REFERENCE_SEED,
+                },
+                "scaleIdentityExclusionCorpora": [
+                    {
+                        "directory": str(training.directory.resolve()),
+                        "manifest": "scale_eval.json",
+                        "manifestSha256":
+                            data.SCALE_ORBIT_TRAINING_MANIFEST_SHA256,
+                        "rawSha256":
+                            data.SCALE_ORBIT_TRAINING_RAW_SHA256,
+                        "count": (
+                            len(TEST_PROFILES)
+                            * data.SCALE_ORBIT_REALIZATIONS_PER_PROFILE
+                            * len(data.SCALE_ORBIT_EXPECTED_FACTORS)
+                        ),
+                        "evalSeed": data.SCALE_ORBIT_TRAINING_SEED,
+                    }
+                ],
+            }
+        )
+
+        with (
+            mock.patch.object(
+                data,
+                "SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_MANIFEST_SHA256",
+                None,
+            ),
+            mock.patch.object(
+                data,
+                "SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_RAW_SHA256",
+                None,
+            ),
+            mock.patch.object(
+                data.scale_data,
+                "load_scale_eval_corpus",
+                side_effect=[training, selection],
+            ),
+            self.assertRaisesRegex(ValueError, "pins are not bound"),
+        ):
+            data.load_scale_orbit_training_corpus(
+                training.directory,
+                selection_directory=selection.directory,
+                class_index=PUBLIC_CLASS_INDEX,
+            )
+
+        with (
+            mock.patch.object(
+                data.scale_data,
+                "load_scale_eval_corpus",
+                side_effect=[training, selection],
+            ),
+            mock.patch.object(
+                data,
+                "SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_MANIFEST_SHA256",
+                "a" * 64,
+            ),
+            mock.patch.object(
+                data,
+                "SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_RAW_SHA256",
+                "b" * 64,
+            ),
+            self.assertRaisesRegex(ValueError, "recovery boundary"),
+        ):
+            data.load_scale_orbit_training_corpus(
+                training.directory,
+                selection_directory=selection.directory,
+                class_index=PUBLIC_CLASS_INDEX,
+            )
+
+    def test_append_only_acceptance_hash_and_exact_selection_pins(self) -> None:
+        self.assertEqual(
+            data.current_data.sha256_file(
+                data.SCALE_ORBIT_IDENTITY_ACCEPTANCE_PATH
+            ),
+            data.SCALE_ORBIT_IDENTITY_ACCEPTANCE_SHA256,
+        )
+        self.assertEqual(
+            data.SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_MANIFEST_SHA256,
+            "7a345bc109e46661427c2f81b46125fb48a00048e9b2b7da77505dc49135d998",
+        )
+        self.assertEqual(
+            data.SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_RAW_SHA256,
+            "53d4ab20faf031ed2aacd3017d55ada1622d7c51f85b200aa490f3d3854dc928",
+        )
+
+    def test_replacement_selection_refuses_quarantined_hash_pins(self) -> None:
+        training = _fake_population(
+            data.SCALE_ORBIT_TRAINING_SEED,
+            marker=1,
+        )
+        selection = _fake_population(
+            data.SCALE_ORBIT_SELECTION_SEED,
+            marker=2,
+        )
+        with (
+            mock.patch.object(
+                data,
+                "SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_MANIFEST_SHA256",
+                data.SCALE_ORBIT_REJECTED_SELECTION_MANIFEST_SHA256,
+            ),
+            mock.patch.object(
+                data,
+                "SCALE_ORBIT_IDENTITY_FIREWALLED_SELECTION_RAW_SHA256",
+                "b" * 64,
+            ),
+            self.assertRaisesRegex(ValueError, "quarantined bytes"),
+        ):
+            data._validate_identity_firewalled_selection(training, selection)
 
     def test_preregistered_split_boundaries_and_counts(self) -> None:
         self.assertEqual(data.role_for_training_realization(0), "train")

@@ -289,6 +289,12 @@ class ScaleOrbitFusionAssemblerTests(unittest.TestCase):
         )
         self.assertIn("v5/assemble_scale_orbit_fusion.py", hashes)
         self.assertIn("v5/run_scale_orbit_dev.py", hashes)
+        self.assertEqual(
+            hashes[
+                "v5/seed20262904_identity_firewall_acceptance.json"
+            ],
+            assembler.scale_orbit_data.SCALE_ORBIT_IDENTITY_ACCEPTANCE_SHA256,
+        )
 
 
 if __name__ == "__main__":

@@ -353,24 +353,43 @@ test('reviewed scale corpora contribute unioned identity exclusions', () => {
       receiverSeed: null,
       content: '2'.repeat(64),
     });
-    const merged = mergeIdentityExclusions([first, second]);
+    const reference = {
+      forbiddenPhases: new Map([
+        ['wifi-hr-dsss-11m', new Set([11])],
+      ]),
+      forbiddenChannelSeeds: new Set([100]),
+      forbiddenReceiverSeeds: new Set([200]),
+      forbiddenContentHashes: new Set(['0'.repeat(64)]),
+    };
+    const merged = mergeIdentityExclusions([reference, first, second]);
     assert.deepEqual(
       [...merged.forbiddenPhases.get('wifi-hr-dsss-11m')].sort(
         (left, right) => left - right,
       ),
-      [17, 23],
+      [11, 17, 23],
     );
     assert.deepEqual(
       [...merged.forbiddenChannelSeeds].sort((left, right) => left - right),
-      [101, 102],
+      [100, 101, 102],
     );
-    assert.deepEqual([...merged.forbiddenReceiverSeeds], [201]);
+    assert.deepEqual(
+      [...merged.forbiddenReceiverSeeds].sort((left, right) => left - right),
+      [200, 201],
+    );
     assert.deepEqual(
       [...merged.forbiddenContentHashes].sort(),
-      ['1'.repeat(64), '2'.repeat(64)],
+      ['0'.repeat(64), '1'.repeat(64), '2'.repeat(64)],
     );
     assert.equal(first.evalSeed, 20_264_101);
     assert.match(first.manifestSha256, /^[a-f0-9]{64}$/);
+    writeFileSync(
+      resolve(first.directory, 'scale_eval.f32'),
+      'post-manifest raw mutation',
+    );
+    assert.throws(
+      () => readScaleIdentityExclusionCorpus(first.directory),
+      /raw SHA-256 disagrees with its manifest/i,
+    );
     assert.equal(mergeIdentityExclusions([]), undefined);
   } finally {
     rmSync(root, { recursive: true, force: true });

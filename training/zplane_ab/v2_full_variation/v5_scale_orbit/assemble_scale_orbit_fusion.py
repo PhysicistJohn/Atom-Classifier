@@ -49,6 +49,7 @@ import run_scale_orbit_dev as branch_runner  # noqa: E402
 import scale_orbit_data  # noqa: E402
 import run_invariant_cnn_dev as device_runner  # noqa: E402
 import time_domain_invariant_patch_preprocess as td_preprocess  # noqa: E402
+import validate_identity_firewall_amendment as firewall_validator  # noqa: E402
 import validate_pretraining_amendment as amendment_validator  # noqa: E402
 from invariant_fusion import CenteredInvariantFusion  # noqa: E402
 from invariant_patch_cnn import (  # noqa: E402
@@ -965,6 +966,14 @@ def _source_hashes() -> dict[str, str]:
         "v5/seed_registry.json": amendment_validator.REGISTRY_PATH.resolve(),
         "v5/validate_pretraining_amendment.py":
             Path(amendment_validator.__file__).resolve(),
+        "v5/identity_firewall_amendment.json":
+            firewall_validator.AMENDMENT_PATH.resolve(),
+        "v5/seed20262904_identity_rejection.json":
+            firewall_validator.REJECTION_PATH.resolve(),
+        "v5/seed20262904_identity_firewall_acceptance.json":
+            scale_orbit_data.SCALE_ORBIT_IDENTITY_ACCEPTANCE_PATH.resolve(),
+        "v5/validate_identity_firewall_amendment.py":
+            Path(firewall_validator.__file__).resolve(),
         "v2/invariant_fusion.py": V2 / "invariant_fusion.py",
     }
     return {
@@ -1055,6 +1064,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     amendment_validation = (
         amendment_validator.validate_repository_amendment()
     )
+    identity_firewall_validation = firewall_validator.validate_repository()
     source_hashes_at_start = _source_hashes()
     expected_branch_sources_at_start = _expected_branch_source_hashes()
     output = reject_sensitive_path(args.output_dir, "output")
@@ -1386,6 +1396,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "device_resolved": str(device),
             "seed_inherited_from_matched_branches": seed,
             "pretraining_amendment_validation": amendment_validation,
+            "identity_firewall_amendment_validation":
+                identity_firewall_validation,
             "training_enrollment_corpus": str(current_dir),
             "adaptive_selection_corpus": str(selection_dir),
             "current_source_share_inherited_from_matched_branches":

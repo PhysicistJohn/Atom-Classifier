@@ -60,6 +60,17 @@ def _rows() -> tuple[list[scale_orbit_data.ScaleOrbitRowRef], np.ndarray]:
 
 
 class ScaleOrbitRunnerTests(unittest.TestCase):
+    def test_executed_source_paths_bind_identity_acceptance(self) -> None:
+        paths = runner._executed_source_paths()
+        self.assertEqual(
+            paths["v5/seed20262904_identity_firewall_acceptance.json"],
+            scale_orbit_data.SCALE_ORBIT_IDENTITY_ACCEPTANCE_PATH.resolve(),
+        )
+        self.assertEqual(
+            paths["v4/evaluate_current_scale.py"],
+            Path(scale_orbit_data.scale_data.__file__).resolve(),
+        )
+
     def test_checkpoint_score_is_scale_sensitive_and_fixed_width(self):
         common = {
             "historical_balanced": 0.98,

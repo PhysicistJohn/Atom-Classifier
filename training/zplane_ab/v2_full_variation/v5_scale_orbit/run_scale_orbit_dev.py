@@ -109,7 +109,15 @@ def _executed_source_paths() -> dict[str, Path]:
         "v5/scale_orbit_data.py": Path(scale_orbit_data.__file__).resolve(),
         "v5/trusted_geometry_canonicalizer.py":
             Path(geometry_canonicalizer.__file__).resolve(),
+        "v5/identity_firewall_amendment.json":
+            scale_orbit_data.SCALE_ORBIT_IDENTITY_FIREWALL_AMENDMENT_PATH.resolve(),
+        "v5/seed20262904_identity_rejection.json":
+            scale_orbit_data.SCALE_ORBIT_IDENTITY_REJECTION_PATH.resolve(),
+        "v5/seed20262904_identity_firewall_acceptance.json":
+            scale_orbit_data.SCALE_ORBIT_IDENTITY_ACCEPTANCE_PATH.resolve(),
         "v4/current_source_data.py": Path(corpus_data.__file__).resolve(),
+        "v4/evaluate_current_scale.py":
+            Path(scale_orbit_data.scale_data.__file__).resolve(),
         "v2/run_invariant_cnn_dev.py": Path(v3_runner.__file__).resolve(),
         "v3/time_domain_invariant_patch_preprocess.py":
             TRAINING / "time_domain_invariant_patch_preprocess.py",
