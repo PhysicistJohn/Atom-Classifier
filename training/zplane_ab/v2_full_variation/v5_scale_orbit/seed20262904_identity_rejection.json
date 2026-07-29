@@ -1,0 +1,104 @@
+{
+  "schema": "atomos.v5.scale-orbit.adaptive-corpus-identity-rejection",
+  "schema_version": 1,
+  "status": "rejected_before_any_model_training_or_inference",
+  "observed_at": "2026-07-29T05:04:51-07:00",
+  "lineage": "v5-scale-orbit",
+  "development_only": true,
+  "release_evidence": false,
+  "candidate_metrics_observed": false,
+  "model_training_started": false,
+  "model_inference_started": false,
+  "parent_amendment_sha256": "3e4098d0475477bf1ba26e79992ca17848c16dd77deb44b7562c4452544003fd",
+  "audit_attempt_commit": "7cbfbfbc57324b517f3e9315d790f2d3f0831529",
+  "loader_source_sha256": "df301679a788e45ae1e2c9c90d37377895559853b3c45ab79dfec12d22248f94",
+  "training_corpus": {
+    "eval_seed": 20264101,
+    "directory": "training/artifacts/signallab-current-scale-train-v5-seed20264101-r64",
+    "manifest_sha256": "c61bce0c32ae8728b0c7212da9dd59bc1689fb6dd370c2a27bf8650a7647a353",
+    "raw_sha256": "03df2b77e6d48cebb434626a17dfc3862f1d062dfbd7b59d9f35b9ce98eda080"
+  },
+  "rejected_adaptive_corpus": {
+    "eval_seed": 20262904,
+    "directory": "training/artifacts/signallab-current-scale-dev-v5-seed20262904-r64",
+    "manifest_sha256": "ba273ec50520b6416be40146cf595b147c7b767ad94655bec44482f7edaec750",
+    "raw_sha256": "14ae949ebcf9a56b13cddb4d9b7bcb3c725e36d15c39e8f56e311b905fe04be6",
+    "disposition": "quarantined_identity_invalid_never_fit_or_scored"
+  },
+  "failed_requirements": {
+    "enrollment_vs_selection": {
+      "content_sha256_collision_count": 4,
+      "runtime_prefix_sha256_collision_count": 12,
+      "cyclic_profile_and_phase_native_sample_collision_count": 1
+    },
+    "train_vs_selection": {
+      "content_sha256_collision_count": 0,
+      "runtime_prefix_sha256_collision_count": 0,
+      "cyclic_profile_and_phase_native_sample_collision_count": 8
+    },
+    "pair_id_collision_count": 0,
+    "receiver_realization_channel_seed_collision_count": 0,
+    "receiver_realization_seed_when_non_null_collision_count": 0
+  },
+  "collision_detail": {
+    "byte_identical_profile": "wifi-hr-dsss-11m",
+    "byte_identical_phase_native_sample": 670,
+    "training_role": "enrollment",
+    "training_realization_index": 54,
+    "adaptive_role": "selection",
+    "adaptive_realization_index": 45,
+    "colliding_valid_content_sha256": [
+      "5a38ce3979e884118f9daabfd75ca15891fd4e87df60c15d09d76fa1547e8c0d",
+      "73dfa5f6cc4569bb38a51992e16a785e317b7475a5af11504728de0a04732719",
+      "752991fd06b779f7ffb9132132d2d5b98c36e23fe292513a4c4440b5906058e6",
+      "b7993a292e8b059a78bc912492551d2c29cbf88b70df8d85f03b6d99a58e9a93"
+    ],
+    "all_cyclic_phase_collisions": [
+      [
+        "gsm-32qam-higher-symbol-rate-burst",
+        17647
+      ],
+      [
+        "lte-nbiot-guard-isolated-component",
+        16994
+      ],
+      [
+        "lte-ntm",
+        15729
+      ],
+      [
+        "wifi-hr-dsss-11m",
+        464
+      ],
+      [
+        "wifi-hr-dsss-11m",
+        670
+      ],
+      [
+        "wifi-ofdm-20m",
+        642
+      ],
+      [
+        "wifi-ofdm-20m",
+        729
+      ],
+      [
+        "wifi-ofdm-20m",
+        816
+      ],
+      [
+        "wifi6-he-tb",
+        6788
+      ]
+    ]
+  },
+  "recovery_constraint": {
+    "gate_or_collision_requirement_weakened": false,
+    "adaptive_seed_reassignment": false,
+    "replacement_eval_seed": 20262904,
+    "adaptive_reuse_allowed_by_seed_registry": true,
+    "replacement_must_exclude_every_seed20264101_phase_channel_receiver_content_and_runtime_prefix_identity": true,
+    "replacement_must_use_a_distinct_directory_and_publish_distinct_manifest_and_raw_hashes": true,
+    "replacement_must_pass_the_unchanged_composite_loader_before_training": true
+  }
+}
