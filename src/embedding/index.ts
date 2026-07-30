@@ -18,3 +18,6 @@ export * from './recover.js';
 export * from './time-domain-asset-status-v3.js';
 export * from './time-domain-classifier-v3.js';
 export * from './time-domain-dual-fusion-classifier-v3.js';
+export * from './time-domain-profile-routing-v4.js';
+export * from './time-domain-profile-bank-classifier-v4.js';
+export * from './time-domain-profile-bank-openset-v4.js';
