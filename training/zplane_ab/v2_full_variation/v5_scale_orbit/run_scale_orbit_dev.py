@@ -120,10 +120,30 @@ HARD_VIEW_ADAPTATION_SHA256 = (
 HARD_VIEW_PREREGISTRATION_COMMIT = (
     "64e6799a8bf3d38bbbed62d2ae5006c60f79c936"
 )
-RUN_CONFIGURATION_SCHEMA = "v5-scale-orbit-development-training-v3"
+ATTEMPT_3_MISS_REPORT_PATH = (
+    HERE / "scale_consistency_adaptation_attempt_3_miss_report.json"
+)
+ATTEMPT_3_MISS_REPORT_SHA256 = (
+    "1401442dfe97f0fbe0967fe6ea926876345304d7f6dcaaf0004a623f2e4c58e0"
+)
+ALL_FOUR_ADAPTATION_PATH = (
+    HERE / "scale_consistency_adaptation_attempt_4.json"
+)
+ALL_FOUR_ADAPTATION_SHA256 = (
+    "9b4ad11257a5e1ab6b1bfb4a8c6c459ef7822ca47165a1cde5243d127a4ea74e"
+)
+ALL_FOUR_PREREGISTRATION_COMMIT = (
+    "758ed199367562279f9d154c051de397a2879629"
+)
+RUN_CONFIGURATION_SCHEMA = "v5-scale-orbit-development-training-v4"
 SUPERVISED_PAIR_WEIGHT = 0.2
 SUPERVISED_PAIR_RNG_XOR = 0x5CA1E
 SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT = 31
+SUPERVISED_PAIR_VIEWS_PER_PROFILE = 4
+SUPERVISED_PAIR_VIEW_COUNT = (
+    SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT
+    * SUPERVISED_PAIR_VIEWS_PER_PROFILE
+)
 SUPERVISED_PAIR_PUBLIC_CLASS_ORDER = (
     "am",
     "bluetooth",
@@ -207,33 +227,43 @@ SUPERVISED_PAIR_PROFILE_CLASS_INDICES = (
     6, 6, 6, 6, 6,
 )
 SUPERVISED_PAIR_TARGET_CONSTRUCTION = (
-    "repeat(profile_public_class_indices, 2)"
+    "repeat(profile_public_class_indices, 4)"
 )
 SUPERVISED_PAIR_TARGET_SHA256 = (
-    "838de46075dac50b6c58dee9c29fd4149711cb74bcda692b8f9edd8913b25927"
+    "f5e20b198bae039295f76093c16c9b375089f656ddb3dbfafcf2a2981428458f"
 )
 SUPERVISED_PAIR_PAIR_CONTRACT = (
     "each episode independently selects one seed20264101 current train "
-    "identity uniformly within each of the literal 31 current profiles, then "
-    "selects two distinct physical-scale views uniformly without replacement"
+    "identity uniformly within each of the literal 31 current profiles; after "
+    "each identity draw consume validate and discard the legacy "
+    "choice(4,size=2,replace=False), then emit all four physical-scale views "
+    "in exact canonical order [1,1.25,1.5,2]"
 )
 SUPERVISED_PAIR_LOSS_CONTRACT = (
     "episodic_cross_entropy_plus_0.2_times_mean_over_31_literal_profiles_of_"
-    "maximum_over_two_contiguous_scale_view_supervised_public_class_cross_"
+    "maximum_over_all_four_contiguous_scale_view_supervised_public_class_cross_"
     "entropy_against_detached_current_episode_source_mixed_prototypes_and_"
     "detached_logit_scale"
 )
 SUPERVISED_PAIR_PER_VIEW_REDUCTION = "none"
-SUPERVISED_PAIR_PER_VIEW_LOSS_SHAPE = (31, 2)
+SUPERVISED_PAIR_PER_VIEW_LOSS_SHAPE = (31, 4)
 SUPERVISED_PAIR_WITHIN_PROFILE_REDUCTION = (
-    "maximum_over_exactly_two_contiguous_scale_view_losses"
+    "maximum_over_exactly_four_contiguous_scale_view_losses"
 )
 SUPERVISED_PAIR_ACROSS_PROFILE_REDUCTION = (
     "arithmetic_mean_over_31_literal_profile_hard_losses"
 )
 SUPERVISED_PAIR_ACROSS_PROFILE_MEAN_DENOMINATOR = 31
 SUPERVISED_PAIR_TRAINING_REDUCTION = (
-    "mean_over_31_profile_hard_view_losses"
+    "mean_over_31_profile_all_four_hard_view_losses"
+)
+SUPERVISED_PAIR_COMPATIBILITY_DRAW_CONTRACT = (
+    "after_each_identity_draw_consume_validate_and_discard_"
+    "rng.choice(4,size=2,replace=False)"
+)
+SUPERVISED_PAIR_EMISSION_CONTRACT = (
+    "emit_all_four_selected_identity_views_in_exact_scale_order_"
+    "[1,1.25,1.5,2]"
 )
 
 
@@ -306,7 +336,7 @@ def _supervised_pair_profile_class_indices(
 def _supervised_pair_target_sha256(
     profile_class_indices: Sequence[int],
 ) -> str:
-    """Hash the profile-contiguous `repeat(labels, 2)` target vector."""
+    """Hash the profile-contiguous `repeat(labels, 4)` target vector."""
     indices = np.asarray(profile_class_indices)
     if (
         indices.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,)
@@ -317,7 +347,10 @@ def _supervised_pair_target_sha256(
             "supervised-pair profile class indices must be 31 non-negative "
             "integers"
         )
-    targets = np.repeat(indices.astype(np.int64, copy=False), 2)
+    targets = np.repeat(
+        indices.astype(np.int64, copy=False),
+        SUPERVISED_PAIR_VIEWS_PER_PROFILE,
+    )
     observed = corpus_data.sha256_json(targets.tolist())
     if (
         tuple(int(value) for value in indices)
@@ -329,7 +362,7 @@ def _supervised_pair_target_sha256(
 
 
 def _supervised_pair_reduction_metadata() -> dict[str, Any]:
-    """Return the exact attempt-3 hard-view reduction description."""
+    """Return the exact attempt-4 all-four hard-view reduction."""
     return {
         "per_view_reduction": SUPERVISED_PAIR_PER_VIEW_REDUCTION,
         "per_view_loss_shape_before_profile_reduction":
@@ -342,6 +375,23 @@ def _supervised_pair_reduction_metadata() -> dict[str, Any]:
             SUPERVISED_PAIR_ACROSS_PROFILE_MEAN_DENOMINATOR,
         "maximum_is_not_taken_over_profiles_classes_or_batch_episodes":
             True,
+    }
+
+
+def _supervised_pair_sampling_metadata() -> dict[str, Any]:
+    """Return the exact all-four emission and legacy-RNG contract."""
+    return {
+        "views_per_selected_profile_identity":
+            SUPERVISED_PAIR_VIEWS_PER_PROFILE,
+        "views_per_episode": SUPERVISED_PAIR_VIEW_COUNT,
+        "physical_scale_emission_order": list(
+            scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS
+        ),
+        "legacy_compatibility_draw":
+            SUPERVISED_PAIR_COMPATIBILITY_DRAW_CONTRACT,
+        "legacy_compatibility_draw_values_used_for_emission": False,
+        "pair_rng_identity_trajectory_preserved_from_attempt_3": True,
+        "emission_contract": SUPERVISED_PAIR_EMISSION_CONTRACT,
     }
 
 
@@ -366,7 +416,7 @@ def _read_bound_adaptation_document(
 
 
 def _validate_supervised_pair_adaptation_source() -> dict[str, Any]:
-    """Bind the complete append-only chain through attempt-3 preregistration."""
+    """Bind the complete append-only chain through attempt-4 preregistration."""
     attempt_1, attempt_1_sha256 = _read_bound_adaptation_document(
         ATTEMPT_1_ADAPTATION_PATH,
         ATTEMPT_1_ADAPTATION_SHA256,
@@ -393,6 +443,18 @@ def _validate_supervised_pair_adaptation_source() -> dict[str, Any]:
         HARD_VIEW_ADAPTATION_PATH,
         HARD_VIEW_ADAPTATION_SHA256,
         name="attempt-3 hard-view supervised-pair intent",
+    )
+    attempt_3_miss, attempt_3_miss_sha256 = (
+        _read_bound_adaptation_document(
+            ATTEMPT_3_MISS_REPORT_PATH,
+            ATTEMPT_3_MISS_REPORT_SHA256,
+            name="attempt-3 miss report",
+        )
+    )
+    attempt_4, attempt_4_sha256 = _read_bound_adaptation_document(
+        ALL_FOUR_ADAPTATION_PATH,
+        ALL_FOUR_ADAPTATION_SHA256,
+        name="attempt-4 all-four hard-view intent",
     )
     if (
         attempt_1.get("adaptation_attempt") != 1
@@ -538,7 +600,17 @@ def _validate_supervised_pair_adaptation_source() -> dict[str, Any]:
     attempt_3_no_other_change = attempt_3.get(
         "no_other_change_contract"
     )
-    expected_reduction = _supervised_pair_reduction_metadata()
+    expected_attempt_3_reduction = {
+        "per_view_reduction": "none",
+        "per_view_loss_shape_before_profile_reduction": [31, 2],
+        "within_profile_reduction":
+            "maximum_over_exactly_two_contiguous_scale_view_losses",
+        "across_profile_reduction":
+            "arithmetic_mean_over_31_literal_profile_hard_losses",
+        "across_profile_mean_denominator": 31,
+        "maximum_is_not_taken_over_profiles_classes_or_batch_episodes":
+            True,
+    }
     if (
         attempt_2_miss.get("schema")
         != "atomos.v5.scale-orbit.adaptation-attempt-miss-report"
@@ -626,7 +698,7 @@ def _validate_supervised_pair_adaptation_source() -> dict[str, Any]:
         or not isinstance(attempt_3_cross_entropy, Mapping)
         or any(
             attempt_3_cross_entropy.get(key) != value
-            for key, value in expected_reduction.items()
+            for key, value in expected_attempt_3_reduction.items()
         )
         or not isinstance(attempt_3_no_other_change, Mapping)
         or not attempt_3_no_other_change
@@ -641,13 +713,258 @@ def _validate_supervised_pair_adaptation_source() -> dict[str, Any]:
             "attempt-3 hard-view intent no longer matches the implemented "
             "loss or inherited fitting firewall"
         )
+
+    attempt_3_miss_gates = attempt_3_miss.get("full_gate_assessment")
+    attempt_4_parent_bindings = attempt_4.get("parent_bindings")
+    attempt_4_change = attempt_4.get("predeclared_change")
+    attempt_4_identity = (
+        attempt_4_change.get(
+            "identity_sampling_inherited_exactly_from_attempt_3"
+        )
+        if isinstance(attempt_4_change, Mapping)
+        else None
+    )
+    attempt_4_rng = (
+        attempt_4_change.get("legacy_pair_rng_trajectory_preservation")
+        if isinstance(attempt_4_change, Mapping)
+        else None
+    )
+    attempt_4_emission = (
+        attempt_4_change.get("all_four_view_emission")
+        if isinstance(attempt_4_change, Mapping)
+        else None
+    )
+    attempt_4_phase = (
+        attempt_4_change.get("phase_augmentation")
+        if isinstance(attempt_4_change, Mapping)
+        else None
+    )
+    attempt_4_bn = (
+        attempt_4_change.get(
+            "batch_norm_stat_firewall_inherited_exactly_from_attempt_3"
+        )
+        if isinstance(attempt_4_change, Mapping)
+        else None
+    )
+    attempt_4_auxiliary = (
+        attempt_4_change.get("supervised_pair_auxiliary")
+        if isinstance(attempt_4_change, Mapping)
+        else None
+    )
+    attempt_4_cross_entropy = (
+        attempt_4_auxiliary.get("cross_entropy")
+        if isinstance(attempt_4_auxiliary, Mapping)
+        else None
+    )
+    attempt_4_prototypes = (
+        attempt_4_auxiliary.get("public_class_prototypes")
+        if isinstance(attempt_4_auxiliary, Mapping)
+        else None
+    )
+    attempt_4_logits = (
+        attempt_4_auxiliary.get("logits")
+        if isinstance(attempt_4_auxiliary, Mapping)
+        else None
+    )
+    attempt_4_no_other_change = attempt_4.get(
+        "no_other_change_contract"
+    )
+    attempt_4_fitting = attempt_4.get("fitting_firewall")
+    expected_attempt_4_reduction = _supervised_pair_reduction_metadata()
+    expected_operation_order = [
+        (
+            "draw one identity index uniformly using "
+            "rng.integers(0, len(entries))"
+        ),
+        (
+            "call rng.choice(4, size=2, replace=false) exactly as "
+            "attempt 3"
+        ),
+        (
+            "validate that the compatibility draw has shape [2] and "
+            "distinct indices"
+        ),
+        (
+            "discard both compatibility-draw values without using them to "
+            "choose emitted views"
+        ),
+        (
+            "emit all four selected-identity view positions in frozen "
+            "scale-factor order"
+        ),
+    ]
+    if (
+        attempt_3_miss.get("schema")
+        != "atomos.v5.scale-orbit.adaptation-attempt-miss-report"
+        or attempt_3_miss.get("schema_version") != 3
+        or attempt_3_miss.get("adaptation_attempt") != 3
+        or attempt_3_miss.get("development_only") is not True
+        or attempt_3_miss.get("release_evidence") is not False
+        or not isinstance(attempt_3_miss_gates, Mapping)
+        or attempt_3_miss_gates.get("known_21_gate_status")
+        != "not_evaluated"
+        or attempt_3_miss_gates.get(
+            "known_plus_novelty_27_gate_status"
+        )
+        != "not_evaluated"
+        or attempt_3_miss.get("outcome", {}).get(
+            "attempt_3_selected_as_final_candidate"
+        )
+        is not False
+        or attempt_3_miss.get("outcome", {}).get(
+            "attempt_3_retained_as_parent_for_attempt_4"
+        )
+        is not True
+    ):
+        raise RuntimeError("attempt-3 miss evidence changed")
+    if (
+        attempt_4.get("schema")
+        != (
+            "atomos.v5.scale-orbit.post-score-all-four-hard-view-supervised-"
+            "pair-adaptation-intent"
+        )
+        or attempt_4.get("status")
+        != (
+            "frozen_before_attempt_4_trainer_or_assembler_change_training_"
+            "or_inference"
+        )
+        or attempt_4.get("adaptation_attempt") != 4
+        or attempt_4.get("development_only") is not True
+        or attempt_4.get("release_evidence") is not False
+        or not isinstance(attempt_4_parent_bindings, Mapping)
+        or attempt_4_parent_bindings.get("attempt_3_intent_sha256")
+        != attempt_3_sha256
+        or attempt_4_parent_bindings.get("attempt_3_miss_report_sha256")
+        != attempt_3_miss_sha256
+        or not isinstance(attempt_4_change, Mapping)
+        or attempt_4_change.get("only_changed_axis")
+        != "supervised_pair_views_per_selected_profile_identity"
+        or attempt_4_change.get(
+            "attempt_3_two_sampled_views_replaced_by_all_four_ordered_views"
+        )
+        is not True
+        or not isinstance(attempt_4_identity, Mapping)
+        or attempt_4_identity.get("population_seed")
+        != scale_orbit_data.SCALE_ORBIT_TRAINING_SEED
+        or attempt_4_identity.get("literal_profile_count")
+        != SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT
+        or attempt_4_identity.get("identities_per_profile_addressable")
+        != scale_orbit_data.SCALE_ORBIT_TRAINING_SPLIT_COUNTS["train"]
+        or not isinstance(attempt_4_rng, Mapping)
+        or attempt_4_rng.get("pair_rng_seed_for_seed20260740")
+        != (20_260_740 ^ SUPERVISED_PAIR_RNG_XOR)
+        or attempt_4_rng.get("per_profile_operation_order")
+        != expected_operation_order
+        or attempt_4_rng.get(
+            "compatibility_draw_values_are_never_used_for_positions_scales_"
+            "targets_logits_loss_or_metadata_other_than_audit"
+        )
+        is not True
+        or attempt_4_rng.get(
+            "compatibility_draw_preserves_attempt_3_pair_rng_call_count_order_"
+            "and_identity_trajectory"
+        )
+        is not True
+        or not isinstance(attempt_4_emission, Mapping)
+        or attempt_4_emission.get(
+            "physical_scale_factors_in_exact_emission_order"
+        )
+        != list(scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS)
+        or attempt_4_emission.get("positions_shape")
+        != [
+            SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
+            SUPERVISED_PAIR_VIEWS_PER_PROFILE,
+        ]
+        or attempt_4_emission.get("views_per_episode")
+        != SUPERVISED_PAIR_VIEW_COUNT
+        or attempt_4_emission.get(
+            "no_scale_view_is_sampled_dropped_repeated_or_reordered"
+        )
+        is not True
+        or not isinstance(attempt_4_phase, Mapping)
+        or attempt_4_phase.get("independent_phase_draw_count_per_episode")
+        != SUPERVISED_PAIR_VIEW_COUNT
+        or not isinstance(attempt_4_bn, Mapping)
+        or attempt_4_bn.get(
+            "auxiliary_forward_uses_batch_norm_eval_mode"
+        )
+        is not True
+        or attempt_4_bn.get("dropout_remains_live_during_auxiliary_forward")
+        is not True
+        or not isinstance(attempt_4_auxiliary, Mapping)
+        or attempt_4_auxiliary.get("paired_embedding_count")
+        != SUPERVISED_PAIR_VIEW_COUNT
+        or attempt_4_auxiliary.get("paired_logits_shape")
+        != [SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 4, 7]
+        or attempt_4_auxiliary.get("paired_targets_shape")
+        != [SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 4]
+        or attempt_4_auxiliary.get("target_construction_symbolic")
+        != SUPERVISED_PAIR_TARGET_CONSTRUCTION
+        or attempt_4_auxiliary.get("paired_targets_sha256")
+        != SUPERVISED_PAIR_TARGET_SHA256
+        or attempt_4_auxiliary.get("auxiliary_coefficient")
+        != SUPERVISED_PAIR_WEIGHT
+        or not isinstance(attempt_4_prototypes, Mapping)
+        or attempt_4_prototypes.get("detached_for_auxiliary") is not True
+        or not isinstance(attempt_4_logits, Mapping)
+        or attempt_4_logits.get(
+            "logit_scale_detached_for_auxiliary"
+        )
+        is not True
+        or not isinstance(attempt_4_cross_entropy, Mapping)
+        or any(
+            attempt_4_cross_entropy.get(key) != value
+            for key, value in expected_attempt_4_reduction.items()
+        )
+        or not isinstance(attempt_4_no_other_change, Mapping)
+        or not attempt_4_no_other_change
+        or any(
+            value is not False
+            for value in attempt_4_no_other_change.values()
+        )
+        or not isinstance(attempt_4_fitting, Mapping)
+        or attempt_4_fitting.get(
+            "supervised_views_from_seed20264101_current_train_role_only"
+        )
+        is not True
+        or any(
+            attempt_4_fitting.get(key) != 0
+            for key in (
+                "seed20264101_enrollment_rows_used_for_supervised_auxiliary",
+                (
+                    "seed20262904_selection_rows_used_for_any_gradient_or_"
+                    "optimizer_step"
+                ),
+                (
+                    "seed20262904_selection_rows_used_for_weight_center_or_"
+                    "feature_moment_fit"
+                ),
+                (
+                    "seed20262904_selection_rows_used_for_persistent_"
+                    "prototype_fit"
+                ),
+                (
+                    "seed20262904_selection_rows_used_for_open_set_threshold_"
+                    "or_rank_fit"
+                ),
+                (
+                    "sealed_rows_used_for_any_fit_checkpoint_or_candidate_"
+                    "selection"
+                ),
+            )
+        )
+    ):
+        raise RuntimeError(
+            "attempt-4 all-four intent no longer matches the implemented "
+            "sampling, loss, or fitting firewall"
+        )
     return {
-        "path": str(HARD_VIEW_ADAPTATION_PATH),
-        "sha256": attempt_3_sha256,
-        "status": attempt_3["status"],
-        "adaptation_attempt": 3,
+        "path": str(ALL_FOUR_ADAPTATION_PATH),
+        "sha256": attempt_4_sha256,
+        "status": attempt_4["status"],
+        "adaptation_attempt": 4,
         "preregistration_commit":
-            HARD_VIEW_PREREGISTRATION_COMMIT,
+            ALL_FOUR_PREREGISTRATION_COMMIT,
         "attempt_1_intent_path": str(ATTEMPT_1_ADAPTATION_PATH),
         "attempt_1_intent_sha256": attempt_1_sha256,
         "attempt_1_miss_report_path": str(ATTEMPT_1_MISS_REPORT_PATH),
@@ -656,6 +973,10 @@ def _validate_supervised_pair_adaptation_source() -> dict[str, Any]:
         "attempt_2_intent_sha256": attempt_2_sha256,
         "attempt_2_miss_report_path": str(ATTEMPT_2_MISS_REPORT_PATH),
         "attempt_2_miss_report_sha256": attempt_2_miss_sha256,
+        "attempt_3_intent_path": str(HARD_VIEW_ADAPTATION_PATH),
+        "attempt_3_intent_sha256": attempt_3_sha256,
+        "attempt_3_miss_report_path": str(ATTEMPT_3_MISS_REPORT_PATH),
+        "attempt_3_miss_report_sha256": attempt_3_miss_sha256,
     }
 
 
@@ -676,7 +997,7 @@ def _validate_supervised_pair_weight(value: Any) -> float:
 
 
 def _validate_adaptation_run_configuration(args: argparse.Namespace) -> None:
-    """Reject any run that differs from frozen hard-view attempt 3."""
+    """Reject any run that differs from frozen all-four attempt 4."""
     _validate_supervised_pair_weight(args.supervised_pair_weight)
     expected = {
         "seed": 20_260_740,
@@ -704,16 +1025,16 @@ def _validate_adaptation_run_configuration(args: argparse.Namespace) -> None:
     ]
     if changed:
         raise ValueError(
-            "hard-view attempt 3 configuration differs from the frozen "
+            "all-four attempt 4 configuration differs from the frozen "
             f"baseline for: {', '.join(changed)}"
         )
     if _source_share_fraction(args.current_source_share) != Fraction(1, 3):
         raise ValueError(
-            "hard-view attempt 3 requires current_source_share=1/3"
+            "all-four attempt 4 requires current_source_share=1/3"
         )
     if getattr(args, "encoder", None) not in {"real", "complex"}:
         raise ValueError(
-            "hard-view attempt 3 encoder must be real or complex"
+            "all-four attempt 4 encoder must be real or complex"
         )
 
 
@@ -740,6 +1061,10 @@ def _executed_source_paths() -> dict[str, Path]:
             ATTEMPT_2_MISS_REPORT_PATH.resolve(),
         "v5/scale_consistency_adaptation_attempt_3.json":
             HARD_VIEW_ADAPTATION_PATH.resolve(),
+        "v5/scale_consistency_adaptation_attempt_3_miss_report.json":
+            ATTEMPT_3_MISS_REPORT_PATH.resolve(),
+        "v5/scale_consistency_adaptation_attempt_4.json":
+            ALL_FOUR_ADAPTATION_PATH.resolve(),
         "v4/current_source_data.py": Path(corpus_data.__file__).resolve(),
         "v4/evaluate_current_scale.py":
             Path(scale_orbit_data.scale_data.__file__).resolve(),
@@ -975,7 +1300,7 @@ def _validate_supervised_pair_pool(
     training_view_count: int,
     classes: Sequence[str],
 ) -> dict[str, Any]:
-    """Validate the exact train-only population inherited by attempt 3."""
+    """Validate the exact train-only population inherited by attempt 4."""
     profile_class_indices = _supervised_pair_profile_class_indices(classes)
     if (
         len(SUPERVISED_PAIR_PROFILES)
@@ -1111,7 +1436,7 @@ def _validate_supervised_pair_pool(
             "state is never passed to supervised-pair sampling"
         ),
         "pairs_per_episode": SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
-        "views_per_episode": SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2,
+        **_supervised_pair_sampling_metadata(),
         "fitting_firewall": {
             "seed20264101_train_identities_addressable": len(identities),
             "seed20264101_enrollment_rows_addressable": 0,
@@ -1125,13 +1450,17 @@ def _sample_supervised_pairs(
     pool: Mapping[str, Sequence[SupervisedPairIdentity]],
     rng: np.random.Generator,
 ) -> dict[str, Any]:
-    """Sample one identity and two distinct scales for every frozen profile."""
+    """Select one identity/profile and emit all four ordered scale views."""
     if not isinstance(rng, np.random.Generator):
         raise TypeError("supervised-pair RNG must be numpy.Generator")
-    pair_positions: list[tuple[int, int]] = []
+    pair_positions: list[tuple[int, ...]] = []
     identities: list[str] = []
-    selected_scales: list[tuple[float, float]] = []
+    selected_scales: list[tuple[float, ...]] = []
     profile_class_indices: list[int] = []
+    expected_scales = tuple(
+        float(value)
+        for value in scale_orbit_data.SCALE_ORBIT_EXPECTED_FACTORS
+    )
     for profile_position, profile in enumerate(SUPERVISED_PAIR_PROFILES):
         entries = tuple(pool.get(profile, ()))
         if not entries:
@@ -1155,28 +1484,35 @@ def _sample_supervised_pairs(
             raise ValueError(
                 "supervised-pair sampler encountered an invalid mapped entry"
             )
-        scale_indices = np.asarray(
+        if (
+            tuple(float(value) for value in entry.scale_factors)
+            != expected_scales
+            or len(entry.view_positions)
+            != SUPERVISED_PAIR_VIEWS_PER_PROFILE
+            or len(set(entry.view_positions))
+            != SUPERVISED_PAIR_VIEWS_PER_PROFILE
+        ):
+            raise ValueError(
+                "supervised-pair sampler encountered a non-canonical "
+                "four-view identity"
+            )
+        compatibility_scale_indices = np.asarray(
             rng.choice(len(entry.scale_factors), size=2, replace=False),
             dtype=np.int64,
         )
         if (
-            scale_indices.shape != (2,)
-            or int(scale_indices[0]) == int(scale_indices[1])
+            compatibility_scale_indices.shape != (2,)
+            or int(compatibility_scale_indices[0])
+            == int(compatibility_scale_indices[1])
         ):
             raise AssertionError(
-                "supervised-pair sampler reused one physical scale"
+                "legacy compatibility scale draw changed shape or replacement"
             )
         pair_positions.append(
-            (
-                int(entry.view_positions[int(scale_indices[0])]),
-                int(entry.view_positions[int(scale_indices[1])]),
-            )
+            tuple(int(position) for position in entry.view_positions)
         )
         selected_scales.append(
-            (
-                float(entry.scale_factors[int(scale_indices[0])]),
-                float(entry.scale_factors[int(scale_indices[1])]),
-            )
+            tuple(float(scale) for scale in entry.scale_factors)
         )
         identities.append(entry.identity)
         profile_class_indices.append(entry.public_class_index)
@@ -1185,15 +1521,30 @@ def _sample_supervised_pairs(
     labels_array = np.asarray(profile_class_indices, dtype=np.int64)
     if (
         positions_array.shape
-        != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 2)
+        != (
+            SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
+            SUPERVISED_PAIR_VIEWS_PER_PROFILE,
+        )
         or scales_array.shape
-        != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 2)
+        != (
+            SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
+            SUPERVISED_PAIR_VIEWS_PER_PROFILE,
+        )
         or labels_array.shape
         != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,)
         or tuple(labels_array.tolist())
         != SUPERVISED_PAIR_PROFILE_CLASS_INDICES
-        or np.any(positions_array[:, 0] == positions_array[:, 1])
-        or np.any(scales_array[:, 0] == scales_array[:, 1])
+        or any(
+            len(set(row.tolist())) != SUPERVISED_PAIR_VIEWS_PER_PROFILE
+            for row in positions_array
+        )
+        or not np.array_equal(
+            scales_array,
+            np.tile(
+                np.asarray(expected_scales, dtype=np.float64),
+                (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 1),
+            ),
+        )
     ):
         raise AssertionError("supervised-pair batch changed shape or labels")
     return {
@@ -1256,19 +1607,19 @@ def _auxiliary_batch_norm_eval(net: torch.nn.Module):
 def _hard_view_supervised_pair_reduction(
     per_view_cross_entropy: torch.Tensor,
 ) -> torch.Tensor:
-    """Reduce 62 view losses by max within profile, then mean over profiles."""
-    expected_view_count = SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2
+    """Reduce 124 view losses by max within profile, then mean profiles."""
+    expected_view_count = SUPERVISED_PAIR_VIEW_COUNT
     if (
         per_view_cross_entropy.ndim != 1
         or per_view_cross_entropy.shape != (expected_view_count,)
         or not torch.isfinite(per_view_cross_entropy).all()
     ):
         raise ValueError(
-            "per-view supervised-pair cross entropy must be 62 finite losses"
+            "per-view supervised-pair cross entropy must be 124 finite losses"
         )
     profile_view_losses = per_view_cross_entropy.reshape(
         SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
-        2,
+        SUPERVISED_PAIR_VIEWS_PER_PROFILE,
     )
     hard_profile_losses = torch.amax(profile_view_losses, dim=1)
     loss = hard_profile_losses.mean()
@@ -1290,11 +1641,14 @@ def _supervised_pair_cross_entropy_for_pairs(
     *,
     phase_augmentation: bool,
 ) -> torch.Tensor:
-    """Return the mean per-profile hard-view CE for 31 scale pairs."""
+    """Return mean per-profile max CE across all four canonical scales."""
     positions = np.asarray(pair_positions, dtype=np.int64)
     labels = np.asarray(profile_class_indices, dtype=np.int64)
-    if positions.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT, 2):
-        raise ValueError("supervised-pair positions must have shape [31,2]")
+    if positions.shape != (
+        SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,
+        SUPERVISED_PAIR_VIEWS_PER_PROFILE,
+    ):
+        raise ValueError("supervised-pair positions must have shape [31,4]")
     if (
         labels.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT,)
         or tuple(labels.tolist()) != SUPERVISED_PAIR_PROFILE_CLASS_INDICES
@@ -1304,8 +1658,13 @@ def _supervised_pair_cross_entropy_for_pairs(
         raise ValueError(
             "supervised-pair labels must equal the frozen profile class map"
         )
-    if np.any(positions[:, 0] == positions[:, 1]):
-        raise ValueError("supervised pairs must use distinct views")
+    if any(
+        len(set(row.tolist())) != SUPERVISED_PAIR_VIEWS_PER_PROFILE
+        for row in positions
+    ):
+        raise ValueError(
+            "each supervised profile identity must use four distinct views"
+        )
     if (
         np.any(positions < 0)
         or np.any(positions >= len(data["xtr"]))
@@ -1316,7 +1675,7 @@ def _supervised_pair_cross_entropy_for_pairs(
         )
     if phase_augmentation is not True:
         raise ValueError(
-            "phase augmentation must remain enabled for both paired views"
+            "phase augmentation must remain enabled for all four views"
         )
     if (
         prototypes.ndim != 2
@@ -1333,10 +1692,10 @@ def _supervised_pair_cross_entropy_for_pairs(
     ):
         raise ValueError("episode logit scale must be a finite scalar")
     flattened = positions.reshape(-1)
-    targets = np.repeat(labels, 2)
+    targets = np.repeat(labels, SUPERVISED_PAIR_VIEWS_PER_PROFILE)
     if (
-        flattened.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2,)
-        or targets.shape != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2,)
+        flattened.shape != (SUPERVISED_PAIR_VIEW_COUNT,)
+        or targets.shape != (SUPERVISED_PAIR_VIEW_COUNT,)
         or corpus_data.sha256_json(targets.tolist())
         != SUPERVISED_PAIR_TARGET_SHA256
     ):
@@ -1355,11 +1714,11 @@ def _supervised_pair_cross_entropy_for_pairs(
     if (
         paired_embeddings.ndim != 2
         or paired_embeddings.shape
-        != (SUPERVISED_PAIR_EXPECTED_PROFILE_COUNT * 2, prototypes.shape[1])
+        != (SUPERVISED_PAIR_VIEW_COUNT, prototypes.shape[1])
         or not torch.isfinite(paired_embeddings).all()
     ):
         raise ValueError(
-            "paired embeddings must be finite [62, embedding_dim]"
+            "paired embeddings must be finite [124, embedding_dim]"
         )
     # Detachment is deliberately inside this helper. The auxiliary may update
     # the encoder through paired_embeddings, but cannot update episodic support
