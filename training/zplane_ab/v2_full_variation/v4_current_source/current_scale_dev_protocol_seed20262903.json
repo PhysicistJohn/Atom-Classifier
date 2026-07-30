@@ -1,0 +1,93 @@
+{
+  "schema": "atomos.v4.current-service-scale-development-protocol",
+  "schema_version": 1,
+  "status": "precommitted_before_generation_or_scoring",
+  "development_only": true,
+  "release_evidence": false,
+  "candidate_scope": {
+    "prototype_source": "current",
+    "acquisition_route": "signal-lab exact selected profile in the frozen 31-profile inventory",
+    "effective_runtime_rule": "fixed causal first 4096 samples for every valid sample count at least 4096",
+    "excluded_claims": [
+      "historical physical-SDR route length invariance",
+      "untagged route length invariance",
+      "field performance",
+      "SOTA performance"
+    ]
+  },
+  "generation": {
+    "output_relative_path": "training/artifacts/signallab-current-scale-dev-v3-seed20262903-r24",
+    "reference_corpus_relative_path": "training/artifacts/signallab-current-94171ba-lineage-v1-seed20260729-n288-s16384",
+    "reference_manifest_relative_path": "training/artifacts/signallab-current-94171ba-lineage-v1-seed20260729-n288-s16384/corpus.json",
+    "reference_manifest_sha256": "5b72b98e7275d408e1e47c9922de756aec6fd48f69eedbc1593ab7c484271bea",
+    "reference_raw_relative_path": "training/artifacts/signallab-current-94171ba-lineage-v1-seed20260729-n288-s16384/corpus.f32",
+    "reference_raw_sha256": "61ae9300c20af4e296cbb68e36239ae66c3272bb84e20e11d648fb71ca95d8d2",
+    "eval_seed": 20262903,
+    "realizations_per_profile": 24,
+    "profiles": 31,
+    "scale_factors": [
+      1.0,
+      1.25,
+      1.5,
+      2.0
+    ],
+    "physical_scale_semantics": "service-requested output sample-rate ratio; no evaluator-side array resampling",
+    "service_path": [
+      "AtomizerMeasurementService.selectProfile",
+      "AtomizerMeasurementService.configureChannel",
+      "MeasurementServiceContinuation(v2)",
+      "AtomizerMeasurementService.acquireIq",
+      "complexIqMeasurementSchema.parse"
+    ],
+    "low_level_waveform_synthesizer_calls": 0,
+    "frequency_transform_calls": 0,
+    "capture_bandwidth_rule": "2 * abs(nativeCarrierOffsetHz) + signalBandwidthHz at every scale factor",
+    "pre_impairment_prefix_admission_rule": "every service-clean scale cell has a finite, non-constant 4,096-sample prefix with centered complex RMS >= 0.0001 before receiver impairment",
+    "scale_family_content_uniqueness_rule": "all four published valid-content SHA-256 values are pairwise distinct before publication",
+    "post_hoc_array_resampling": false,
+    "expected_raw_rows": 2976,
+    "expected_profile_legal_cells": 370,
+    "expected_profile_legal_observations": 8880,
+    "generator_source_relative_path": "tools/generate-current-signallab-scale-eval.ts",
+    "generator_source_sha256": "1078576469a2679e567d09f71f4def8c8bc3a62873de0eb84e53f6fbaa785caf",
+    "generator_bundle_relative_path": ".artifacts/current-scale-eval-generator/generate-current-signallab-scale-eval.js",
+    "generator_bundle_sha256": "af2656c2e57b01f20466414c46a9e1c633286477277d0b8a4fc67463bec4089c",
+    "signal_lab_git_commit": "94171baf31bfa62150d4e9684e1fe33e5a343dc0",
+    "signal_lab_git_tree": "ccda4401748953bb6705776694b29b571d4c684d"
+  },
+  "fit_firewall": {
+    "training_rows_used": 0,
+    "enrollment_rows_used": 0,
+    "threshold_or_rank_calibration_rows_used": 0,
+    "candidate_selection_after_scoring": false,
+    "held_scale_seed_20262902_read": false,
+    "reserved_validation_seeds_20263002_20263003_read": false,
+    "candidate_bytes_and_executed_source_frozen_before_first_score": true,
+    "score_ledger_relative_path": "training/artifacts/v4-current-source-scale-dev-seed20262903.score.ledger.json",
+    "score_ledger_rule": "atomically create once before first model inference; a present ledger forbids every redraw",
+    "generation_binding_rule": "before scoring, create a separate immutable score intent binding this protocol SHA-256, generated scale_eval.json SHA-256, generated scale_eval.f32 SHA-256, final schema-5 classifier SHA-256, final schema-5 policy SHA-256, and executed-source hashes",
+    "rule": "score one frozen candidate once; any failed gate blocks fresh design/confirmation and sealed validation"
+  },
+  "gates": {
+    "exact_profile_length_scale_key_and_count_coverage": true,
+    "exact_eligible_pair_and_observation_coverage": true,
+    "pooled_closed_accuracy_floor": 0.95,
+    "every_global_observation_length_scale_closed_accuracy_floor": 0.90,
+    "worst_global_observation_length_scale_present_class_balanced_accuracy_floor": 0.85,
+    "pooled_profile_balanced_accuracy_floor": 0.90,
+    "worst_source_profile_pooled_closed_accuracy_floor": 0.70,
+    "worst_source_profile_observation_length_scale_closed_accuracy_floor": 0.50,
+    "wifi_hr_dsss_worst_legal_cell_accuracy_floor": 0.95,
+    "known_abstention_damage_given_closed_head_correct_pooled_ceiling": 0.12,
+    "known_abstention_damage_given_closed_head_correct_worst_observation_length_ceiling": 0.12,
+    "known_abstention_damage_given_closed_head_correct_worst_supported_profile_cell_ceiling": 0.12,
+    "known_abstention_damage_given_closed_head_correct_worst_supported_true_class_cell_ceiling": 0.12,
+    "cell_gate_minimum_closed_head_correct_rows": 20,
+    "causal_prefix_outcome_agreement_across_observation_lengths_floor": 1.0,
+    "causal_prefix_outcome_agreement_across_observation_lengths_every_source_profile_floor": 1.0,
+    "physical_scale_outcome_agreement_pooled_floor": 0.95,
+    "physical_scale_outcome_agreement_every_observation_length_floor": 0.95,
+    "length_scale_outcome_agreement_pooled_floor": 0.95,
+    "length_scale_outcome_agreement_every_source_profile_floor": 0.95
+  }
+}
