@@ -1,229 +1,526 @@
-# Atom-Classifier handoff
+# Atom-Classifier handoff — v7 / DACS line
 
-Written 2026-07-28 at commit `644218b`, branch `ship/corrected-corpus-classifier`
-(pushed to `origin`). Repo: `/Users/johnelliott/PersonalGitHub/Atom-Classifier`.
-Run `pwd` before doing anything — an environment banner has previously named the
-wrong directory.
+**Written:** 2026-07-31, late evening. Repo:
+`/Users/johnelliott/PersonalGitHub/Atom-Classifier`, branch
+`ship/corrected-corpus-classifier`. Run `pwd` before doing anything — an
+environment banner has previously named the wrong directory.
 
-The full session-by-session record, including every correction and retraction,
-is preserved in `HANDOFF-HISTORY.md` (1,751 lines) and in the git log. This
-document is the current state only. Where they disagree, this document wins.
+**Read this whole file before touching anything.** Several mistakes
+documented here cost hours today and are easy to repeat.
 
 ---
 
-## 1. Where this stands, in five sentences
+## ⚠ FIRST FIVE MINUTES — do these before anything else
 
-A v3 length- and scale-invariant RF classifier exists, is fully ported to the
-browser with Python-anchored parity, and beats the frozen v2 model on every
-identically-measured axis. Three one-shot sealed release runs have been spent
-(seeds 20260731, 20260733, 20260734); each scored 21–22 of 23 gates, and every
-axis that sank the v2 release has passed on all three independent draws. The
-sole remaining failure is five-shot balanced accuracy at N4096, a high-variance
-statistic whose three sealed draws span 0.823–0.850 around a 0.84 floor. The
-defined next step (v3.3) swaps in the already-trained 8k-regularised fusion
-weights, which raise five-shot genuinely, then spends seed 20260735. **The
-owner has not yet authorized seed 20260735 — do not spend it without an
-explicit go.**
+**1. NOTHING FROM THE v7 LINE IS COMMITTED.** As of this handoff,
+`git status` shows the entire v7 workstream as *untracked*:
+`training/zplane_ab/v2_full_variation/v7_probe/` (the MLX trainer, model,
+parity harnesses, torch trainer edits), `docs/mlx-port-plan.md`,
+`docs/paper/`, the `tools/` corpus scripts, and the v6 harnesses under
+`v5_scale_orbit/`. Worse, **`training/artifacts/` is gitignored**
+(`.gitignore:18`), so every checkpoint and all evidence in
+`training/artifacts/mlx-g2/` — including `g4_bf16.safetensors`, the only
+complete trained model — exists **only as working-tree files with no git
+history**. A `git clean -fd` or a careless checkout erases a full day of
+work and the only good checkpoint.
+→ **Ask the owner whether to commit the code**, and until then do not run
+any destructive git command. Consider copying `training/artifacts/mlx-g2/`
+(≈40 MB excluding the corpus) somewhere safe first.
 
-## 2. Non-negotiable rules
+**2. Verify the machine state matches this document:**
+```bash
+cd /Users/johnelliott/PersonalGitHub/Atom-Classifier && pwd && \
+  ls training/artifacts/mlx-g2/g4_bf16.safetensors && \
+  du -sh training/artifacts/longdwell-production-corpus && \
+  ps aux | grep "[P]ython" | grep -v Claude
+```
+Expect: the checkpoint present, an 80 GB corpus, and — depending on timing —
+possibly a corpus-generation process still running (see §6).
 
-1. **Fit on TRAINING only. Thresholds/ranks on ENROLLMENT only. Selection is
-   scored, never fit.** The historical corrected test half is consumed.
-2. **Sealed suites are one-shot.** Seeds 20260729 (v2), 20260731, 20260733,
-   20260734 are consumed. Never re-run, tune against, or debug on them. Their
-   `RELEASE_EVALUATION.json` files are immutable evidence.
-3. **Do not weaken a gate after seeing a result.** One owner redeclaration
-   exists (§5); it was made provably before generation. No second redeclaration
-   of five-shot — that decision is recorded and stands.
-4. **Novelty seed ledger** (all in code, enforced by refusals):
-   spent: 20260938–41 (design), 20260942/3 (validated v3.0), 20260944/5
-   (validated v3.1, a frozen FAIL), 20260946 (v3.2 design), 20260947/8 (v3.2
-   validation). Clean: **20260949+**. Fitting-only band: 20261000–1999
-   (20261001 used).
-5. **Release seeds:** next unused is **20260735**. Note 20260730/20260732 are
-   dev *model* seeds — never use them as release seeds (namespace collision).
-6. Do not claim field/SOTA performance. Evidence is synthetic, internal, vs a
-   fresh same-data incumbent. No real SDR captures exist in this repo.
+**3. Confirm the honest numbers reproduce** (≈2 min, no training):
+```bash
+.venv-training/bin/python training/artifacts/mlx-g2/g5_offset_reeval.py
+```
+Should land on the §4 table. If it does not, stop and find out why before
+building on anything here.
 
-## 3. The candidate (v3.2, exactly what sealed runs #2 and #3 measured)
+### Two workstreams exist in this repo — do not confuse them
 
-All under `training/zplane_ab/v2_full_variation/` (`V2/`) and its
-`artifacts/invariant_patch/v3_scale/` (`V3/`).
+| line | doc | state |
+|---|---|---|
+| **v3 release** (browser-shipped invariant-patch classifier, sealed release seeds) | **`HANDOFF-v3-release.md`** | paused awaiting an owner-authorized seed spend |
+| **v7 / DACS** (this document) | this file | active |
 
-| component | location |
+**⚠ The v3 non-negotiables still bind.** In particular: sealed release suites
+are one-shot; seeds 20260729/20260731/20260733/20260734 are consumed; the
+next release seed 20260735 **must not be spent without explicit owner
+authorization**; never write into `src/embedding/assets/` (that is the LIVE
+v2 browser model). Read `HANDOFF-v3-release.md` §2 before any release-shaped
+action. The v7 work below does not touch those artifacts.
+
+Deep history for the v3 line: `HANDOFF-HISTORY.md` (1,751 lines).
+
+---
+
+## 0. TL;DR — v7 state in five lines
+
+1. The v7 model (DACS) works. Best honest measurement: **balanced accuracy
+   0.902 / 0.950 / 0.995** at 1 / 2.5 / 10 ms dwell; min-cell recall
+   **0.223 / 0.583 / 0.979** (mean of 5 eval seeds, full 3,264-row split).
+2. Training moved from **PyTorch-MPS to MLX**. Validated through gate G4
+   (G0/G1/G2/G2b/G4 all pass). ~2.3× faster than fp32 torch, and unlike
+   torch it neither deadlocks nor thrashes. **bf16 is the production config.**
+3. A **measurement bug** was found and fixed: the eval protocol aliased the
+   GSM burst raster. Every number produced before the fix — including all of
+   the paper's — is optimistic.
+4. A **corpus defect** was then found: 22 of 34 profiles contain exactly ONE
+   bit-identical clean waveform across all rows. **This is the current top
+   priority** and the reason a regeneration is planned.
+5. The paper is typeset but its Experiments numbers are contaminated and
+   unreproducible. The owner explicitly deprioritized it: *"Forget about the
+   paper — do what is right to train the model."*
+
+---
+
+## 1. The v7 project
+
+**Repos:** `Atom-Classifier` (model, training, corpora, paper) and
+`Atom-SignalLab` (TypeScript standards-derived RF waveform synthesis).
+
+**Task:** classify raw I/Q into 7 classes (`am, bluetooth, cw, dsss, fm,
+gsm, ofdm`) spanning 34 waveform configurations ("profiles").
+
+**The scientific core — don't lose it:** burst protocols are defined by
+rhythms measured in *milliseconds* (GSM's 4.615 ms TDMA frame, Bluetooth's
+625 µs slots, BLE's ~30 ms advertising grid), while classifiers are
+conventionally trained on windows fixed in *samples*, spanning microseconds.
+The window physically cannot contain the discriminating structure. Diagnosed
+as an **evidence problem, not a modeling problem**: with the model frozen,
+duration-complete data moved 7-class balanced accuracy 0.503 → 0.954 at 1 ms;
+with the data frozen, no model-side lever (architecture swap, 3× budget,
+worst-case reweighting) came close.
+
+The owner's framing, which shaped the design: *"Time is just another axis —
+empty slices are not a mistake."* Silence between bursts is class-conditional
+evidence, not noise to discard. Hence the paper's line: **"sometimes the
+signal is the noise."**
+
+**DACS** (Dwell-Adaptive Classification from duration-complete Synthesis):
+one weight-shared, fully-convolutional-in-time network reading a capture at
+**any** dwell, with three heads:
+
+- **prototype head** — knows the class (episodic; keeps enrollment/open-set
+  viable)
+- **masked denoising autoencoder** — knows the channel. Target is the *exact
+  clean reference* from paired synthesis (not a corruption of the input), so
+  silences are graded targets: the net must know where the rhythm's rests fall.
+- **confidence head** — knows itself (BCE vs realized correctness), driving
+  the dwell policy: answer at 1 ms if confident, else escalate 2.5 → 10 ms.
+
+---
+
+## 2. Where everything lives
+
+### Code
+| Path | What |
 |---|---|
-| fusion (4k multilength, both branches) | `V3/v3_fusion_multilength_seed20260730` |
-| runtime bundle (closed-set, self-verified 0-error) | `V3/v3_runtime_bundle_seed20260730` — manifest sha `bfd972bf…` |
-| stage-1 noise prefilter (0.01 budget, 7-coef logistic/length) | `V3/noise_prefilter_fit20261001_budget001/bundles` |
-| stage-2 + composite policy (frozen, q95 on composite) | `V3/staged_validate_composite_budget001_seed20260730` |
+| `training/zplane_ab/v2_full_variation/v7_probe/v7_trainer.py` | torch-MPS trainer (reference for semantics) |
+| `.../v7_probe/v7_trainer_mlx.py` | **MLX trainer — production** |
+| `.../v7_probe/v7_model_mlx.py` | MLX model + primitives (1,573,028 params, matches torch) |
+| `.../v7_probe/mlx_parity/convert.py` | torch `.pt` ↔ MLX safetensors, bitwise-verified both ways |
+| `.../v7_probe/mlx_parity/test_unit_parity.py` | G0 harness (32 checks) |
+| `.../v7_probe/mlx_parity/test_forward_parity.py` | G1 harness (13 checks) |
+| `.../v7_probe/mlx_parity/gen_torch_fixtures.py` + `fixtures/` | torch ground truth for G0 |
+| `.../v7_probe/eval_confusion.py` | torch-side confusion matrices (not yet ported; usable via convert.py) |
+| `tools/generate-longdwell-probe-corpus.mjs` | corpus stage 1 (native clean synthesis via SignalLab) |
+| `tools/longdwell_probe_stage2.py` | corpus stage 2 (resample to 20 Msps + seeded impairments) |
+| `tools/production_corpus_plan.json` | the 34-profile plan |
 
-Pipeline: raw I/Q → FFT-free autocorrelation pose estimate → dimensionless
-resample to 16×64 patches → **stage-1 noise gate** (pose-degeneracy features;
-captures longer than 16384 are gated on their first 16384 samples — the
-causal-prefix rule) → real + complex patch CNNs (52,896 + 55,936 params) →
-centered 0.5/0.5 fusion → nearest prototype (7 classes) → **stage-2**
-composite open-set score `max(stage2_rank, stage1_score_rank)`, threshold q95
-on enrollment survivors. Architecture contract: the rejector **gates before
-classification** (`additive_only: false`) — recorded machine-readably in every
-artifact and required in any release claim.
+### Data
+`training/artifacts/longdwell-production-corpus/` — **80 GB**. 8,704 rows
+(34 profiles × 256), each 400,000 samples = 20 ms at 20 Msps. `noisy.npy` +
+`clean.npy` are row-aligned pairs; `manifest.json` records per-row role,
+class, profile, `startSampleIndex`, and the impairments actually applied.
+Split: 5,440 train / 3,264 eval (96 eval rows per profile).
+**Known defect — see §6.**
 
-## 4. The three sealed runs
+### Checkpoints
+- `training/artifacts/mlx-g2/g4_bf16.safetensors` — **the good one.** MLX
+  bf16, episode 3000, complete run. Sidecar `.json` carries config, episode,
+  both RNG `bit_generator` states, optimizer state, eval history, param hash.
+- `training/artifacts/mlx-g2/step0.{safetensors,pt}` — the torch step-0 init,
+  exported so MLX runs start from *identical* weights.
+- `.../v7_probe/v7_ab_recon_on.ep{1000,2000}.pt` — torch, abandoned A/B run.
 
-| seed | result | failing gate(s) | values |
+### Evidence
+- `training/artifacts/mlx-g2/` — the whole night: G2 four-config matrix
+  (`g2_mlx_{a,b,c,d}.json`), G4 result + log, confusion matrices
+  (`g4_confusion.{json,png,py}`), the aliasing investigation
+  (`subsample_bias_test.{py,json}`), the corrected re-eval
+  (`g5_offset_reeval.{py,json,log}`), memory probes, all driver scripts.
+- `docs/mlx-port-plan.md` — reviewed port plan, gates, and a **differences
+  ledger** (every way MLX deliberately does not match torch).
+- `docs/paper/` — paper, figures, versioned PDFs (v6…v12).
+
+---
+
+## 3. The MLX port
+
+### Why we left PyTorch-MPS
+Two reproducible failures, both diagnosed by stack-sampling:
+
+1. **Deterministic deadlock.** 2 of 2 runs wedged in the *first training step
+   after an eval*, 100% of samples in
+   `MPSStream::copy_and_sync → waitUntilCompleted`. Mitigated (not cured) by
+   `gc.collect()` + `torch.mps.synchronize()` + `torch.mps.empty_cache()`
+   after each eval — that patch is in `v7_trainer.py` and did stop it.
+2. **Throughput collapse.** The 11 GB training RAM cache kept being
+   compressed out by macOS (episodes touch ~1% of it, so it "looks cold"),
+   taking pace 0.6 → 12 s/ep. Mitigated with `mlock` (also in
+   `v7_trainer.py`). Even then torch degraded, because it does synchronous
+   host↔GPU copies per episode — **the copy layer MLX does not have.**
+
+### Gate results
+- **G0 — 32/32.** Spectrogram ~5e-6, GroupNorm 1.4e-6, cdist², losses, AdamW
+  5-step trajectory 6e-8, full 3000-step realized-LR sequence to 3e-10
+  (including across save/restore).
+- **G1 — 13/13.** On the real ep-2000 checkpoint: **100.0000% argmax
+  agreement** over all 3,264 eval rows, confusion matrices cell-for-cell
+  identical, converter bitwise on all 44 tensors.
+- **G2 — precision matrix** (300 episodes each, full corpus):
+
+  | config | avg ms/ep | vs fp32 | accuracy drift | skipped steps |
+  |---|---|---|---|---|
+  | fp32-strict (`--no-tf32`) | 2,184 | 1.00× | anchor | 0 |
+  | TF32 (default) | 1,726 | 1.27× | ≤0.007 | 0 |
+  | **bf16 (`--dtype bf16`)** | **946** | **2.31×** | ≤0.011 | **0** |
+  | fp16 (`--dtype fp16`) | 944 | — | **never trained** | **299/300** |
+
+  fp16 produces non-finite losses immediately; the `mx.isfinite` guard
+  skipped essentially every step (0.143 accuracy = 1/7 = untrained). bf16 is
+  the same speed with fp32-range exponent. **Use bf16, never fp16.**
+- **G2b — resume parity, byte-exact.** 200 eps + checkpoint + resume + 100
+  yields a draw-tuple stream byte-identical to a straight 300-episode run.
+- **G4 — full 3,000-episode replication.** 53.5 min, 1,032 ms/ep, 0 skipped
+  steps, 30.8 GB peak. **The first complete v7 training run that has ever
+  finished** (torch never got past ep 2000).
+- **G5 — outstanding.** Port `eval_confusion.py` (or keep it on torch via
+  `convert.py`) and wire the Optuna harness to the MLX trainer.
+
+### MLX operational facts you must know
+- **TF32 is ON by default on this M5 Max** and silently degrades fp32
+  matmuls (2.7e-2 vs fp64 truth, versus 4.6e-6 with `MLX_ENABLE_TF32=0`).
+  Production keeps it on **by explicit owner directive** (21% faster,
+  validated at gate level). **Parity harnesses must set
+  `MLX_ENABLE_TF32=0` before importing mlx**, or they cannot distinguish a
+  porting bug from precision noise. `--no-tf32` exists for bisection.
+- **Memory.** The T=6249 (10 ms) training signature originally peaked at
+  58.8 GB and swapped; fixed to **25.06 GB** with `--ckpt-blocks 3
+  --batch-chunks 5` (activation checkpointing on the first 3 encoder blocks
+  + 5-way batch chunking). Both are mathematically exact — loss bit-identical
+  before/after (2.7324 both). **Always pass these for full-corpus runs.**
+- **Compile:** exactly **6** signatures (3 dwells × aux/no-aux). Warmup runs
+  on a deep-copied throwaway state, then asserts the real params' hash and
+  optimizer step counters are unchanged before episode 0. A 7th signature
+  aborts the run.
+- The corpus is held resident as MLX arrays, wired with
+  `mx.set_wired_limit(~22 GB)` (corpus only, **not** activations) — this
+  replaces `mlock`. `set_memory_limit` throttles, it does **not** raise; the
+  leak guard is an explicit watchdog against the measured warmup peak.
+
+---
+
+## 4. THE HONEST NUMBERS (use these, not the paper's)
+
+`g4_bf16.safetensors` (MLX bf16, ep 3000), full 3,264-row split, corrected
+protocol, **mean of 5 offset seeds** (`mlx-g2/g5_offset_reeval.json`):
+
+| dwell | balanced accuracy | min-cell recall | errors (of 3264) |
 |---|---|---|---|
-| 20260731 (v3.0 policy) | 22/23 | known FUR | 0.1024 vs 0.10 |
-| 20260733 (v3.2 composite) | 21/23 | FUR, five-shot | 0.1108 vs 0.10; 0.8449 vs 0.85 |
-| 20260734 (v3.2, redeclared gates) | 22/23 | five-shot | 0.8228 vs 0.84 (FUR **passed**: 0.1070 vs 0.12) |
+| 1 ms | **0.9020 ± 0.0026** | **0.2229 ± 0.0281** | ~494 |
+| 2.5 ms | **0.9500 ± 0.0024** | **0.5833 ± 0.0338** | ~238 |
+| 10 ms | **0.9947 ± 0.0005** | **0.9792 ± 0.0000** | ~11 |
 
-Established across all three draws: physical-scale balanced/cosine/agreement,
-chirp AUROC + recall, noise AUROC + recall, N4096 clean, closed-set, length
-invariance gates all PASS — i.e. everything that failed the v2 sealed release
-is fixed and replicated. Also measured: enrollment-calibrated operating points
-realise ~1.5–1.7× their dev rates on sealed populations (both policies, both
-runs) — budget for this when setting any operating point.
+Escalation at 1 ms: answers 100% of captures at accuracy **0.849**. The
+confidence head is **uncalibrated** — a known, disclosed gap. Calibration on
+held-out data is required before the escalation *curve* can be claimed; only
+the *mechanism* is claimed.
 
-Five-shot sealed draws: 0.8503, 0.8449, 0.8228 → mean 0.839, sd ≈ 0.014. It is
-a high-variance **measurement** (5-row support draws at the shortest prefix),
-not a stable model property; the same model scored 0.866–0.875 at the other
-three lengths in run #3. Do not estimate its "true rate" from fewer than
-several draws — that error was made and is documented in
-`HANDOFF-HISTORY.md` §29.
+**Per-class recall, 1 ms:** am 1.000, bluetooth 0.994, cw 0.988, dsss 0.990,
+fm 0.983, **gsm 0.404**, ofdm 0.956. GSM is the whole story — at 1 ms the
+burst is genuinely absent most of the time.
 
-## 5. The owner gate redeclaration (already in force)
+**Confusion structure** (`g4_confusion.png`): at 1 ms, **377 of 672 GSM rows
+are called Bluetooth** — exactly the predicted failure (frame timing vs hop
+timing, both invisible in a sub-millisecond window). At 10 ms that confusion
+is **zero**.
 
-Declared by the owner 2026-07-28, provably before seed 20260734 was generated
-(the evaluator refuses an intent lacking the block):
+**Error nesting — the cleanest escalation evidence:** errors 404 → 210 → 9
+across dwells; 10 ms **fixes 396** of the 1 ms errors and **creates 1**.
+Jaccard(E₁ₘₛ, E₁₀ₘₛ) = 0.0198. Listening longer is nearly pure gain.
 
-- `open_known_false_unknown_worst_length`: ceiling **0.10 → 0.12**
-- `five_shot_worst_length_balanced`: floor **0.85 → 0.84**
+---
 
-Implemented as `V3_GATE_REDECLARATION` in
-`V2/v3_scale/evaluate_v3_release_suite.py`, layered on the still-imported v2
-`GATE_FLOORS` so the other 15 gates cannot drift. Each re-levelled gate carries
-the owner rationale verbatim. **Any release claim must state both levels and
-the v2 levels they replace.** These levels stand; do not touch them.
+## 5. The measurement bug (FIXED — understand it before trusting old numbers)
 
-## 6. Next step: the v3.3 cycle (defined, not started, awaiting owner go)
+Eval rows inside a profile are a fixed-stride slide across one long capture
+(GSM: `startSampleIndex = 26000·j`), and the GSM burst timeline has period
+78,000 = 3 × 26,000. Therefore:
 
-Goal: raise five-shot genuinely instead of moving the bar.
+- `eval_rows[::3]` (the mid-run subsample) **locked onto a single burst
+  phase** — the one where a burst always lands inside the first millisecond.
+  GSM 1 ms recall: **0.9955 on `[::3]` vs 0.4390 on the full split.** The
+  other two stride phases give min-cell 0.000.
+- Worse, because every eval window started at capture **offset 0**, even the
+  *full* split only ever sampled **three** discrete burst phases.
 
-1. **Weights:** swap the fusion branches to the 8k-regularised runs
-   (`V3/timecorr_{real,complex}_ml8000reg_seed20260730` — dropout 0.35, wd
-   5e-4). Measured on dev: five-shot +0.012, closed +0.017 vs current weights;
-   all six open-set gates passed dev under the old policy. Assemble with
-   `V2/v3_scale/assemble_v3_fusion.py`, neutral `--branch-weight 0.5`.
-2. **Re-validate the composite policy** on the new fusion:
-   `V2/v3_scale/fit_v3_openset_staged.py --role design` on seed **20260949**,
-   then a single `--role validate` on **20260950 20260951** (prefix lengths
-   4096 8192 16384 32768). All gates must pass.
-3. **Export a fresh runtime bundle** (`export_v3_fusion_runtime.py`) and
-   re-run `measure_v3_remaining_gates.py` for the dev closed-set numbers.
-4. **Refresh preflight pins** (`preflight_v3_release.py`): new candidate
-   hashes, new staged artifact, launcher fixture for seed 20260735 via
-   `evaluate_v3_release_suite.py --print-expected-protocol 20260735`, launcher
-   consumed-seed map gains 20260734. Preflight must print GO.
-5. **Ask the owner**, then spend seed 20260735: generation command is printed
-   by preflight (env `RELEASE_EVALUATION_PROTOCOL=v3`,
-   `RELEASE_TARGET_PER_CLASS=192`, isolated `SIGNALLAB_ROOT` below), then
-   `evaluate_v3_release_suite.py --release-root … --device cpu`, once.
+**Training was never affected** (it draws a fresh random offset per row per
+episode). This was purely a measurement bug.
 
-Expected margins if dev numbers transfer at the measured 1.5–1.7× shift:
-five-shot mean ≈ 0.855–0.86 vs floor 0.84; FUR ≈ 0.10–0.11 vs ceiling 0.12.
+**The fix**, in *both* trainers inside a byte-identical shared block
+(`# --- BEGIN/END SHARED EVAL PROTOCOL`, with a `diff` guard documented in
+the source):
 
-## 7. After a passing sealed run: the ship path (all mapped, nothing hidden)
+- mid-run subsample → seeded **random** subset (same size, drawn once at
+  startup so all checkpoints of a run score the same rows)
+- eval windows → per-row seeded **random** offsets for query **and**
+  prototype rows, drawn in `[0, row_samples − max_dwell]` so one offset is
+  valid at every dwell and **windows nest** (10 ms strictly extends 2.5 ms
+  extends 1 ms — escalation semantics preserved exactly)
+- flags `--eval-offset-mode {random,zero}`,
+  `--eval-subsample-mode {random,stride}`, `--eval-offset-seed`; the plan is
+  hashed into the result JSON
 
-1. The full v3 TS runtime already exists and is green:
-   `src/embedding/time-domain-{geometry,invariant-patch-preprocess,encoder,fusion,classifier,openset}-v3.ts`,
-   216+ tests, parity vs Python fixtures at ≤1.8e-7 (tolerance 1e-6). Browser
-   weights staging: `src/embedding/assets-v3-staging/` (+ the openset staging
-   under `V2/artifacts/staging/time_domain_v3_openset/`). A v3.3 pass requires
-   regenerating the weight JSONs and parity fixtures from the new bundle
-   (exporters exist: `export_v3_browser_weights.py`,
-   `export_v3_openset_browser_assets.py`).
-2. **Deploy mechanism (verified via wrangler):** the live site is the
-   `atomizer` Cloudflare Worker (`atomizer.radio-lab.app` /
-   `signal.radio-lab.app`), account `0883c2d43b859db59430203a69b6707a`.
-   Atomizer's renderer dynamic-imports this repo **by relative path** —
-   `../Atom-Atomizer/apps/desktop/src/renderer/embedding-classifier-runtime.ts`
-   lines ~118–136 import `Atom-Classifier/src/embedding/index.js` and
-   `src/embedding/assets/*.json` — and the build bakes them into the worker
-   bundle. Shipping = point that file at the v3 runtime + assets, rebuild
-   Atomizer, `wrangler deploy`.
-3. `src/embedding/assets/` is the LIVE v2 model
-   (`embedding-weights.json` sha starts `4c566a17`) — untouched all session.
-   **Never write there** until a sealed run passes and the owner says ship.
+Burst-phase coverage went **3 → 668+**. Training streams re-verified
+byte-exact against pre-fix references after the change.
 
-## 8. Footguns (each has already cost time or nearly cost data)
+---
 
-1. `tools/generate-signallab-iq-corpus.ts` **truncates 3.67 GB at import**
-   (top-level `openSync(…, 'w')`, no main guard). The dev corpora are
-   `chmod a-w` as protection. Release generation does NOT use it directly —
-   use the launcher only.
-2. `training/train_signallab.py` writes straight into the **live**
-   `src/embedding/assets/`. Never run it directly.
-3. MPS cannot backward through boolean-masked complex tensors; mask the real
-   loss instead.
-4. Apple Accelerate numpy raises **spurious IEEE flags on clean float64
-   matmuls**; under the house `PYTHONWARNINGS=error` this aborts healthy code.
-   Use the `noise_prefilter._dot` pattern (narrow `np.errstate` + explicit
-   finiteness check) for any new linear algebra.
-5. The isolated release source is a git **archive** (no `.git`) at
-   `/private/tmp/atomos-release-source-final.RvbW7V/Atom-SignalLab` — a temp
-   path; preflight verifies its digests. If it vanishes, rebuild from the
-   pinned commits in `HANDOFF-HISTORY.md` §6.
-6. Node pins: v22.23.1, npm/npx 10.9.8, PATH
-   `/Users/johnelliott/.nvm/versions/node/v22.23.1/bin`. Python:
-   `.venv-training/bin/python`, always `PYTHONWARNINGS=error`, PYTHONPATH
-   `training:training/zplane_ab:training/zplane_ab/v2_full_variation:training/zplane_ab/v2_full_variation/v3_scale`.
+## 6. TOP PRIORITY — corpus content diversity
 
-## 9. Measurement traps that burned this project (condensed; full list in HISTORY)
+**Defect:** 27 of 34 profiles realize fewer than 10 distinct phases across
+their 96 eval rows; **22 realize exactly one** — all 96 clean waveforms
+bit-identical (SHA-256 collapses to one hash; pairwise relative RMS
+difference exactly 0.0).
 
-- **A hard-coded constant smuggles the training distribution into an
-  "independent" probe.** Sweep every constant an OOD test hard-codes.
-- **An absent measurement that still writes a file looks finished.** Check the
-  value exists, not just the file (an `isinstance` fallthrough once nulled the
-  primary metric of an entire campaign while writing 17 KB reports).
-- **Cross-budget and cross-protocol comparisons are confounds.** 700-vs-4000
-  episode and dev-vs-sealed comparisons each produced a false conclusion here.
-- **Never rank on a statistic that floors** (worst-of hid the best length
-  response in the project).
-- **Flat-at-chance is not invariance** — any invariance test needs a
-  matched-condition validity floor.
-- **n=2 is not an error bar** (see five-shot, §4).
-- **Read the control before the headline**: absolute tap scores once pointed
-  at exactly the wrong attachment layer because two taps were handed the
-  answer as input.
+**Root cause:** rows are placed by fixed stride into an index-pure generator
+timeline, and the 20 ms row length is an exact integer multiple of the
+LTE/NR 10 ms radio frame at every native rate used (30.72 / 15.36 / 1.92 /
+122.88 Msps): stride = 2 × period → gcd = period → 1 phase.
 
-## 10. Verification quick-reference
+**What it costs the model:** training already randomizes window offsets per
+episode, so *phase* diversity within a row was never the training problem.
+The problem is **content** — each profile contributes essentially one
+payload/scheduling realization, varied only by per-row impairments. That is
+a memorization risk and a generalization ceiling.
+
+**What escaped, and why:** Bluetooth Classic and BLE have real diversity (26
+and 66 distinct onsets) **because their generators already use randomness**
+(keyed-hash slot utilization, the spec's random advDelay). The owner's rule
+— *"Randomness everywhere is the rule of ML"* — is the principle to apply
+everywhere else.
+
+**Nuance:** LTE/NR ETM waveforms are *standards-defined*. Content repetition
+is arguably correct there and random phase is the only meaningful variation.
+The plan classifies each profile: (A) content is seed-variable, (B)
+standards-fixed, (C) should vary but no knob exists.
+
+**Also found:** `bluetooth-le-advertising-longdwell` has 29 of 96 eval rows
+with no packet. Before calling it a bug, check the physics — a 20 ms window
+on a ~30 ms advertising grid *should* be empty about a third of the time.
+This may be correct, and is arguably the thesis in miniature.
+
+### In flight at handoff time
+Workflow `w2k35buao`, three agents:
+1. **toolchain-capability** — make the generator runnable (`Atom-SignalLab`
+   is at detached HEAD `02846e2`, which predates the longdwell profile names;
+   no tsx/ts-node installed) and audit per-profile content-variation knobs.
+2. **memorization-audit** — quantify the cost: per-profile train-vs-eval
+   accuracy, diversity-vs-recall correlation, and whether the corpus can
+   answer the generalization question at all.
+3. **regen-plan-proof** — update the generator for seeded random offsets
+   **and** per-row content seeds, generate a real 34-profile × 8-row slice,
+   and prove 8/8 distinct realizations before committing to a multi-hour
+   rebuild. Writes `docs/corpus-regen-runbook.md`.
+
+**Reading its results (it was launched in a session that has now ended).**
+The workflow's own summary is gone with that session, but its journal
+survives on disk — one `{"type":"result",...}` line per completed agent,
+each containing that agent's full structured return value:
 
 ```bash
-# Everything Python (currently 725/725):
-cd /Users/johnelliott/PersonalGitHub/Atom-Classifier && \
-PYTHONWARNINGS=error PYTHONPATH=training:training/zplane_ab:training/zplane_ab/v2_full_variation:training/zplane_ab/v2_full_variation/v3_scale \
-.venv-training/bin/python -m unittest discover -s training/zplane_ab/v2_full_variation/v3_scale
+python3 -c "
+import json
+p='/Users/johnelliott/.claude/projects/-Users-johnelliott-PersonalGitHub/6179ba93-fb7a-4112-b70b-19540b0f4fce/subagents/workflows/wf_2f843779-d86/journal.jsonl'
+for line in open(p):
+    d=json.loads(line)
+    if d.get('type')=='result': print(json.dumps(d, indent=1)[:4000])
+"
+```
+
+**If the journal is incomplete or the workflow never finished**, the work is
+not lost — it is fully specified in §6 above and its deliverables are
+checkable on disk:
+- `tools/generate-longdwell-probe-corpus.mjs` — does it now draw seeded
+  random offsets *and* per-row content seeds? (`git diff`/read it; it was
+  untracked at handoff, so compare against the behavior described in §6)
+- `docs/corpus-regen-runbook.md` — **did not exist at handoff time.** If it
+  is absent, the proof phase did not complete; redo it from §6's plan
+  before regenerating anything.
+- `Atom-SignalLab` git state — was it moved off detached HEAD `02846e2` to a
+  ref containing the longdwell profiles, and was a TS loader installed? If
+  `node tools/generate-longdwell-probe-corpus.mjs` still cannot import
+  SignalLab, that is where to start.
+
+### Plan after that
+1. Regenerate into a **new directory** — never delete the existing corpus
+   (80 GB, and it is the baseline everything so far was measured against).
+2. Retrain v7 MLX bf16 on the new corpus, same seed, same protocol.
+3. Compare against the §4 baseline. **Same architecture, same trainer,
+   better data — that comparison is the experiment that says what the
+   diversity was worth.**
+
+---
+
+## 7. The paper (deprioritized; here is its true state)
+
+`docs/paper/v7_paper.tex`, 5 pages, compiles with `~/.local/bin/tectonic`.
+Latest PDF `v7_paper_v12.pdf`. Author: John Elliott, Independent Researcher,
+`JohnElliott@journalcorrespondence.com`. Figures: `fig_spectrograms.png`,
+`fig_dae_breakdown.png` (**owner-approved: "Figure 3 is great"**),
+`fig_architecture.png` (regenerate via `make_fig_architecture.py`), plus
+inline pgfplots.
+
+**The problem:** every quantity in the "Full system" paragraph traces to a
+single mid-run log line at episode 1000 — `eval_rows[::3]`, 1,088 rows, the
+luckiest of three burst phases. That log was **overwritten** by a `>`
+redirect on restart, no result JSON was ever written (the run wedged), and
+the identical-weights rerun disagreed (0.951/0.781 vs the paper's
+0.909/0.448). The paper also argues its estimator-floor case on n=96 cells
+while those min-cell figures were computed on n=32 (1088/34).
+
+**If resumed:** replace Experiments with the §4 numbers (reproducible, with
+error bars, and they tell the story *better* — GSM recall 0.404 → 0.701 →
+0.997 across dwells is the empty-window thesis measured directly) and
+disclose the aliasing as a methods finding. Do not try to reproduce the old
+numbers; they are gone.
+
+---
+
+## 8. Landmines from today
+
+- **CPU% ≠ progress.** The torch wedge spun at 90% CPU making zero progress.
+  Use `sample <pid> 3 -file out.txt` plus CPU-time accrual over a window.
+- **A monitor that greps only for success is silent through a crash.** The
+  first stall monitor cried wolf because slow-but-alive looks like dead; the
+  working version requires log silence **and** frozen CPU.
+- **Workflow agents can die of context exhaustion at the reporting step.**
+  The G2 agent did 113 log-heavy tool calls and had nothing left to file its
+  structured report — the workflow "failed" though the work was on disk.
+  Keep log-heavy agents narrow, or have them write files and report paths.
+- **zsh does not word-split `$(...)`** — `kill $PIDS` fails. Use `| xargs kill`.
+- **`pgrep -f` counts wrapper shells.** Use `ps aux | grep "[P]ython …"`.
+- **`>` redirects destroy evidence** (that is how the paper's source log
+  died). Use `>>` for anything that might be rerun.
+- **/tmp scratchpads do not survive a reboot** — archive to
+  `training/artifacts/` as you go.
+- **Never regenerate 80 GB on an unverified fix.** The prior agent could not
+  even run the generator. Prove on a small slice first.
+
+---
+
+## 9. Open tasks
+
+| # | Task | State |
+|---|---|---|
+| 12 | v7 production Optuna study + held-out confirmation | pending (blocked on corpus) |
+| 13 | MLX port G0–G5 | G0/G1/G2/G2b/G4 pass; **G5 remains** |
+| 14 | **Corpus regeneration with content + phase diversity** | in flight — **top priority** |
+| — | Paper rewrite with corrected numbers | deprioritized by owner |
+| — | v3 release line (`HANDOFF-v3-release.md`) | paused; needs owner authorization to spend seed 20260735 |
+
+### Upstream contributions (the owner explicitly wants these)
+1. **PyTorch MPS**: the post-eval `copy_and_sync → waitUntilCompleted`
+   deadlock — 2/2 reproductions with stack samples and a known mitigation.
+   Needs a minimal reproducer to file.
+2. **MLX**: TF32-on-by-default on M5 — not a bug, but we have measured error
+   data (2.7e-2 vs 4.6e-6), a discoverability case, and a possible request
+   for a programmatic toggle (env-var only today).
+3. **MLX**: tall-skinny NHWC conv memory/perf findings from the per-block
+   probes (`probe_final_{before,after}.log`); any complex64 or framing/STFT
+   gaps hit during the port.
+
+---
+
+## 10. How to run things
+
+```bash
+# Production training (MLX, bf16) — ~53 min for 3000 episodes
+.venv-training/bin/python \
+  training/zplane_ab/v2_full_variation/v7_probe/v7_trainer_mlx.py \
+  --episodes 3000 --eval-every 1000 --recon-weight 0.3 --seed 20260740 \
+  --dtype bf16 --ckpt-blocks 3 --batch-chunks 5 --log-every 100 \
+  --init-checkpoint training/artifacts/mlx-g2/step0.safetensors \
+  --save-checkpoint <out>.safetensors --out <out>.json
 ```
 
 ```bash
-# TypeScript (currently 216+ passing):
-cd /Users/johnelliott/PersonalGitHub/Atom-Classifier && \
-PATH=/Users/johnelliott/.nvm/versions/node/v22.23.1/bin:$PATH npx vitest run
+# Parity harnesses (they set MLX_ENABLE_TF32=0 themselves — do not remove that)
+.venv-training/bin/python training/zplane_ab/v2_full_variation/v7_probe/mlx_parity/test_unit_parity.py
 ```
 
 ```bash
-# Preflight (GO/NO-GO, prints the generation command; never spends a seed):
-cd /Users/johnelliott/PersonalGitHub/Atom-Classifier && \
-PYTHONWARNINGS=error PYTHONPATH=training:training/zplane_ab:training/zplane_ab/v2_full_variation:training/zplane_ab/v2_full_variation/v3_scale \
-.venv-training/bin/python training/zplane_ab/v2_full_variation/v3_scale/preflight_v3_release.py
+# Re-evaluate any checkpoint under the corrected protocol, 5 seeds
+.venv-training/bin/python training/artifacts/mlx-g2/g5_offset_reeval.py
 ```
 
-Note: preflight currently pins the **v3.2** candidate and the seed-20260734
-fixture; step 4 of §6 re-pins it for v3.3. It will correctly report NO-GO for
-a v3.3 candidate until then.
+Environment: `.venv-training` (Python 3.14), torch 2.13.0, mlx 0.32.0.
+Node at `~/.local/node/bin`; tectonic at `~/.local/bin/tectonic`.
+Machine: Apple M5 Max, 48 GB unified memory.
 
-## 11. One sentence of orientation
+---
 
-The science is done and replicated; what remains is one high-variance statistic
-to clear with honestly better weights, one seed spend the owner must authorize,
-and a mapped, mechanical ship path — resist any shortcut that trades the
-evidence discipline for speed, because every failure in HISTORY came from
-exactly that trade.
+## 11. Working with this owner
+
+- Wants **evidence, not reassurance** — every claim carries a number or a
+  measurement. They caught the eval-aliasing bug themselves by noticing three
+  dwell accuracies were suspiciously close. Take their skepticism seriously
+  and go verify; it has been right.
+- Prefers CLI over dashboards, and honest bad news early.
+- Impatient with idle time, fine with long runs that are visibly progressing.
+  Report status with real numbers when asked.
+- Explicitly asked to be told when something is worth **contributing
+  upstream**.
+- Do not narrate every restart — but never silently paper over a failure
+  either. Say what broke, what it cost, and what changed as a result.
+
+---
+
+## 11b. What I would do first, in order
+
+1. **Protect the work** (§ FIRST FIVE MINUTES): ask about committing; back up
+   `training/artifacts/mlx-g2/`.
+2. **Recover the in-flight workflow's results** from the journal path in §6
+   and determine whether the generator fix + proof slice actually landed.
+3. **If the proof did not land:** redo it — generator gets seeded random
+   offsets + per-row content seeds, then a real 34-profile × 8-row slice with
+   the pass criterion "every seed-variable profile shows 8/8 distinct
+   clean-waveform hashes." Do **not** regenerate 80 GB before that passes.
+4. **If it did land:** run the full regeneration into a *new* directory
+   (overnight; the runbook has the wall-time estimate), verify diversity with
+   the runbook's script, then retrain MLX bf16 with the §10 command and
+   compare to §4. That comparison is the point of the whole exercise.
+5. **Then G5** (task 13): port `eval_confusion.py` and wire the Optuna
+   harness, which unblocks task 12 (the production study).
+
+Anything the owner asks for takes precedence over this list — especially if
+they redirect away from the corpus. They have been consistently right about
+priorities today.
+
+## 12. One sentence of orientation
+
+The architecture is validated and the training stack is finally fast and
+reliable; what remains is to give the model data as diverse as the physics it
+claims to model — fix the corpus, retrain, and measure against §4 — and to
+resist the temptation to quote any number that a random re-measurement
+would not reproduce.

@@ -1,0 +1,206 @@
+[
+ {
+  "profile": "cw",
+  "cls": "cw",
+  "fs": 20000000,
+  "bw": 2000
+ },
+ {
+  "profile": "am",
+  "cls": "am",
+  "fs": 20000000,
+  "bw": 52000
+ },
+ {
+  "profile": "fm",
+  "cls": "fm",
+  "fs": 20000000,
+  "bw": 200000
+ },
+ {
+  "profile": "gsm-900-loaded-bcch",
+  "cls": "gsm",
+  "fs": 1300000,
+  "bw": 200000
+ },
+ {
+  "profile": "gsm-normal-burst",
+  "cls": "gsm",
+  "fs": 1300000,
+  "bw": 200000
+ },
+ {
+  "profile": "gsm-qpsk-higher-symbol-rate-burst",
+  "cls": "gsm",
+  "fs": 1300000,
+  "bw": 325000
+ },
+ {
+  "profile": "gsm-aqpsk-normal-burst",
+  "cls": "gsm",
+  "fs": 1300000,
+  "bw": 250000
+ },
+ {
+  "profile": "gsm-8psk-normal-burst",
+  "cls": "gsm",
+  "fs": 1300000,
+  "bw": 250000
+ },
+ {
+  "profile": "gsm-16qam-higher-symbol-rate-burst",
+  "cls": "gsm",
+  "fs": 1300000,
+  "bw": 325000
+ },
+ {
+  "profile": "gsm-32qam-higher-symbol-rate-burst",
+  "cls": "gsm",
+  "fs": 1300000,
+  "bw": 325000
+ },
+ {
+  "profile": "lte-band3-fdd-20m",
+  "cls": "ofdm",
+  "fs": 30720000,
+  "bw": 20000000
+ },
+ {
+  "profile": "lte-band38-tdd-10m",
+  "cls": "ofdm",
+  "fs": 15360000,
+  "bw": 10000000
+ },
+ {
+  "profile": "lte-etm1.1",
+  "cls": "ofdm",
+  "fs": 15360000,
+  "bw": 10000000
+ },
+ {
+  "profile": "lte-etm3.1",
+  "cls": "ofdm",
+  "fs": 15360000,
+  "bw": 10000000
+ },
+ {
+  "profile": "lte-etm3.1a",
+  "cls": "ofdm",
+  "fs": 15360000,
+  "bw": 10000000
+ },
+ {
+  "profile": "lte-etm3.1b",
+  "cls": "ofdm",
+  "fs": 15360000,
+  "bw": 10000000
+ },
+ {
+  "profile": "lte-ntm",
+  "cls": "ofdm",
+  "fs": 1920000,
+  "bw": 180000
+ },
+ {
+  "profile": "lte-nbiot-guard-isolated-component",
+  "cls": "ofdm",
+  "fs": 1920000,
+  "bw": 180000
+ },
+ {
+  "profile": "lte-nbiot-inband-isolated-component",
+  "cls": "ofdm",
+  "fs": 1920000,
+  "bw": 180000
+ },
+ {
+  "profile": "nr-n3-fdd-20m",
+  "cls": "ofdm",
+  "fs": 30720000,
+  "bw": 20000000
+ },
+ {
+  "profile": "nr-n78-tdd-100m",
+  "cls": "ofdm",
+  "fs": 122880000,
+  "bw": 100000000
+ },
+ {
+  "profile": "nr-fr1-tm1.1",
+  "cls": "ofdm",
+  "fs": 30720000,
+  "bw": 20000000
+ },
+ {
+  "profile": "nr-fr1-tm3.1",
+  "cls": "ofdm",
+  "fs": 30720000,
+  "bw": 20000000
+ },
+ {
+  "profile": "nr-fr1-tm3.1a",
+  "cls": "ofdm",
+  "fs": 30720000,
+  "bw": 20000000
+ },
+ {
+  "profile": "nr-fr1-tm3.1b",
+  "cls": "ofdm",
+  "fs": 30720000,
+  "bw": 20000000
+ },
+ {
+  "profile": "nr-nbiot-inband-isolated-component",
+  "cls": "ofdm",
+  "fs": 1920000,
+  "bw": 180000
+ },
+ {
+  "profile": "wifi-hr-dsss-11m",
+  "cls": "dsss",
+  "fs": 11000000,
+  "bw": 11000000
+ },
+ {
+  "profile": "wifi-ofdm-20m",
+  "cls": "ofdm",
+  "fs": 20000000,
+  "bw": 20000000
+ },
+ {
+  "profile": "wifi6-he-su",
+  "cls": "ofdm",
+  "fs": 20000000,
+  "bw": 20000000
+ },
+ {
+  "profile": "wifi6-he-er-su",
+  "cls": "ofdm",
+  "fs": 20000000,
+  "bw": 20000000
+ },
+ {
+  "profile": "wifi6-he-mu",
+  "cls": "ofdm",
+  "fs": 20000000,
+  "bw": 20000000
+ },
+ {
+  "profile": "wifi6-he-tb",
+  "cls": "ofdm",
+  "fs": 20000000,
+  "bw": 20000000
+ },
+ {
+  "profile": "bluetooth-classic-connected-longdwell",
+  "cls": "bluetooth",
+  "fs": 80000000,
+  "bw": 79000000
+ },
+ {
+  "profile": "bluetooth-le-advertising-longdwell",
+  "cls": "bluetooth",
+  "fs": 80000000,
+  "bw": 79000000
+ }
+]

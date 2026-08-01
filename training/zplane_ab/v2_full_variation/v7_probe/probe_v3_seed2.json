@@ -1,0 +1,216 @@
+{
+  "schema": "v7-probe-v3-longdwell-v1",
+  "corpus": "/Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/longdwell-probe-corpus",
+  "episodes": 6000,
+  "seed": 20260741,
+  "wall_s": 5253.486494832992,
+  "history": [
+    {
+      "episode": 1500,
+      "1ms": {
+        "balanced_accuracy": 0.9492234169653525,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 0.8703703703703703,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.7741935483870968,
+          "ofdm": 1.0
+        }
+      },
+      "2.5ms": {
+        "balanced_accuracy": 0.9690037305244678,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 0.9166666666666666,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.8663594470046083,
+          "ofdm": 1.0
+        }
+      },
+      "10ms": {
+        "balanced_accuracy": 0.9993386243386243,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 0.9953703703703703,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 1.0,
+          "ofdm": 1.0
+        }
+      }
+    },
+    {
+      "episode": 3000,
+      "1ms": {
+        "balanced_accuracy": 0.9511953526930484,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 0.8657407407407407,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.7926267281105991,
+          "ofdm": 1.0
+        }
+      },
+      "2.5ms": {
+        "balanced_accuracy": 0.9716278984712164,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 0.9027777777777778,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.8986175115207373,
+          "ofdm": 1.0
+        }
+      },
+      "10ms": {
+        "balanced_accuracy": 1.0,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 1.0,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 1.0,
+          "ofdm": 1.0
+        }
+      }
+    },
+    {
+      "episode": 4500,
+      "1ms": {
+        "balanced_accuracy": 0.9531642406066368,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 0.8564814814814815,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.815668202764977,
+          "ofdm": 1.0
+        }
+      },
+      "2.5ms": {
+        "balanced_accuracy": 0.9722862263184844,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 0.9027777777777778,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.9032258064516129,
+          "ofdm": 1.0
+        }
+      },
+      "10ms": {
+        "balanced_accuracy": 1.0,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 1.0,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 1.0,
+          "ofdm": 1.0
+        }
+      }
+    },
+    {
+      "episode": 6000,
+      "1ms": {
+        "balanced_accuracy": 0.958424767756565,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 0.8472222222222222,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.8617511520737328,
+          "ofdm": 1.0
+        }
+      },
+      "2.5ms": {
+        "balanced_accuracy": 0.9722862263184844,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 0.9027777777777778,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 0.9032258064516129,
+          "ofdm": 1.0
+        }
+      },
+      "10ms": {
+        "balanced_accuracy": 1.0,
+        "per_class": {
+          "am": 1.0,
+          "bluetooth": 1.0,
+          "cw": 1.0,
+          "dsss": 1.0,
+          "fm": 1.0,
+          "gsm": 1.0,
+          "ofdm": 1.0
+        }
+      }
+    }
+  ],
+  "final": {
+    "episode": 6000,
+    "1ms": {
+      "balanced_accuracy": 0.958424767756565,
+      "per_class": {
+        "am": 1.0,
+        "bluetooth": 0.8472222222222222,
+        "cw": 1.0,
+        "dsss": 1.0,
+        "fm": 1.0,
+        "gsm": 0.8617511520737328,
+        "ofdm": 1.0
+      }
+    },
+    "2.5ms": {
+      "balanced_accuracy": 0.9722862263184844,
+      "per_class": {
+        "am": 1.0,
+        "bluetooth": 0.9027777777777778,
+        "cw": 1.0,
+        "dsss": 1.0,
+        "fm": 1.0,
+        "gsm": 0.9032258064516129,
+        "ofdm": 1.0
+      }
+    },
+    "10ms": {
+      "balanced_accuracy": 1.0,
+      "per_class": {
+        "am": 1.0,
+        "bluetooth": 1.0,
+        "cw": 1.0,
+        "dsss": 1.0,
+        "fm": 1.0,
+        "gsm": 1.0,
+        "ofdm": 1.0
+      }
+    }
+  },
+  "old_corpus_reference": {
+    "probe_v2_balanced_4096": 0.5032,
+    "probe_v2_balanced_16384": 0.6817,
+    "probe_v2_gsm_16384": 0.6948,
+    "probe_v2_bt_16384": 0.8022,
+    "patch_best_balanced_4096": 0.7434
+  },
+  "success_criteria": {
+    "primary": "gsm AND bluetooth recall >= 0.85 at 10ms",
+    "secondary": "balanced@1ms >= 0.50",
+    "tertiary": "monotone recall vs duration for gsm/bt/dsss"
+  }
+}

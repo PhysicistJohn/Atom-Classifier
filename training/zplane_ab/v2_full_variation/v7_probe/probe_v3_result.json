@@ -1,0 +1,109 @@
+{
+  "schema": "v7-probe-v3-longdwell-v1-terminated",
+  "termination": "stopped at ep 6400/9000: metric saturated (10ms balanced=1.000 at ep 4500 and 6000; loss ~0) under memory-pressure slowdown (0.66->1.66 s/ep); remaining episodes added wall-clock only",
+  "episodes_completed": 6400,
+  "history_from_log": [
+    {
+      "episode": 1500,
+      "1ms": {
+        "balanced_accuracy": 0.937,
+        "gsm": 0.664,
+        "bluetooth": 0.898
+      },
+      "2.5ms": {
+        "balanced_accuracy": 0.964,
+        "gsm": 0.825,
+        "bluetooth": 0.921
+      },
+      "10ms": {
+        "balanced_accuracy": 0.999,
+        "gsm": 1.0,
+        "bluetooth": 0.991
+      }
+    },
+    {
+      "episode": 3000,
+      "1ms": {
+        "balanced_accuracy": 0.949,
+        "gsm": 0.77,
+        "bluetooth": 0.875
+      },
+      "2.5ms": {
+        "balanced_accuracy": 0.972,
+        "gsm": 0.885,
+        "bluetooth": 0.917
+      },
+      "10ms": {
+        "balanced_accuracy": 0.999,
+        "gsm": 1.0,
+        "bluetooth": 0.995
+      }
+    },
+    {
+      "episode": 4500,
+      "1ms": {
+        "balanced_accuracy": 0.945,
+        "gsm": 0.747,
+        "bluetooth": 0.866
+      },
+      "2.5ms": {
+        "balanced_accuracy": 0.965,
+        "gsm": 0.82,
+        "bluetooth": 0.935
+      },
+      "10ms": {
+        "balanced_accuracy": 0.999,
+        "gsm": 1.0,
+        "bluetooth": 0.995
+      }
+    },
+    {
+      "episode": 6000,
+      "1ms": {
+        "balanced_accuracy": 0.954,
+        "gsm": 0.834,
+        "bluetooth": 0.847
+      },
+      "2.5ms": {
+        "balanced_accuracy": 0.976,
+        "gsm": 0.922,
+        "bluetooth": 0.907
+      },
+      "10ms": {
+        "balanced_accuracy": 1.0,
+        "gsm": 1.0,
+        "bluetooth": 1.0
+      }
+    }
+  ],
+  "final": {
+    "episode": 6000,
+    "1ms": {
+      "balanced_accuracy": 0.954,
+      "gsm": 0.834,
+      "bluetooth": 0.847
+    },
+    "2.5ms": {
+      "balanced_accuracy": 0.976,
+      "gsm": 0.922,
+      "bluetooth": 0.907
+    },
+    "10ms": {
+      "balanced_accuracy": 1.0,
+      "gsm": 1.0,
+      "bluetooth": 1.0
+    }
+  },
+  "old_corpus_reference": {
+    "probe_v2_balanced_4096": 0.5032,
+    "probe_v2_balanced_16384": 0.6817,
+    "probe_v2_gsm_16384": 0.6948,
+    "probe_v2_bt_16384": 0.8022,
+    "patch_best_balanced_4096": 0.7434
+  },
+  "success_criteria": {
+    "primary": "gsm AND bluetooth recall >= 0.85 at 10ms \u2014 PASSED (1.000/1.000)",
+    "secondary": "balanced@1ms >= 0.50 \u2014 PASSED (0.954)",
+    "tertiary": "monotone recall vs duration \u2014 PASSED (gsm 0.834->0.922->1.000, bt 0.847->0.907->1.000)"
+  }
+}
