@@ -5,6 +5,40 @@
 `ship/corrected-corpus-classifier`. Run `pwd` before doing anything — an
 environment banner has previously named the wrong directory.
 
+## 2026-08-01 takeover addendum — diagnostic proof complete, not promotable
+
+The original handoff below is historical context. Current evidence is:
+
+- All 17 class-C profiles now have isolated seeded corpus-content paths. A
+  real 34-profile × 8-row × 20 ms stage-1 diagnostic passed with 272 rows,
+  936,678,400 bytes, no content deficits, and 8/8 seeds, fixed-phase probes,
+  realizations, and row hashes for every class-C profile. It is preserved at
+  `training/artifacts/longdwell-corpus-v2-diagnostic-34x8-20260801/`.
+- The proof was generated twice from the same source state. The native capture
+  is byte-identical both times (`c6d23de...`), and the manifests match after
+  excluding only `generatedAt` and `elapsedSeconds`.
+- `MIN_ACTIVE_SAMPLES=0` is deliberate: natural 20 ms Bluetooth LE silence is
+  retained and reported rather than redrawn away. The proof has 4 zero LE
+  windows and 5 distinct raw LE hashes; the verifier permits this one
+  unconditioned case and rejects silent rows elsewhere or in a conditioned
+  run.
+- The proof records both repository revisions and `workingTreeClean: false`.
+  It is diagnostic only: do not stage 2, train, or call it reproducible until
+  both repositories have owner-authorized clean commits and a fresh proof has
+  been generated from those commits.
+- Full validation passed before this addendum: Atom-SignalLab 79 test files /
+  614 tests (12 skipped), Atom-Classifier 38 files / 341 tests (8 skipped),
+  both typechecks, the focused content suite, and the verifier's synthetic
+  allowed/rejected-silence cases. The G4 checkpoint was re-evaluated safely
+  into a separate artifact and matches the corrected five-seed metrics.
+- `Atom-SignalLab` `stash@{0}` remains intact and its tracked patch matches
+  the current restored tracked patch byte-for-byte. Do not reset, clean, or
+  drop that stash.
+
+No production regeneration, stage 2, or training was run during this
+takeover. The associated source and documentation changes were later committed
+only after owner authorization.
+
 **Read this whole file before touching anything.** Several mistakes
 documented here cost hours today and are easy to repeat.
 

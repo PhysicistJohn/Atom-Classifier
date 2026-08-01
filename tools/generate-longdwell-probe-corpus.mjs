@@ -90,11 +90,13 @@
  *   DRY_RUN_ROWS=<n>            rows to print (default 8)
  */
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const ATOM_CLASSIFIER = resolve(HERE, '..');
 const SIGNAL_LAB = resolve(HERE, '../../Atom-SignalLab');
 const OUT_DIR = process.env.OUT_DIR
   ? resolve(process.env.OUT_DIR)
@@ -129,6 +131,34 @@ const MIN_ACTIVE_SAMPLES = Number(process.env.MIN_ACTIVE_SAMPLES ?? 0);
 const MAX_OFFSET_REDRAWS = Number(process.env.MAX_OFFSET_REDRAWS ?? 64);
 const DRY_RUN = process.env.DRY_RUN === '1';
 const DRY_RUN_ROWS = Number(process.env.DRY_RUN_ROWS ?? 8);
+
+/**
+ * A corpus is only reproducible when the two source repos which formed it are
+ * identified and clean. Keep this local and non-fatal so a diagnostic run in a
+ * handoff worktree is explicitly marked instead of being silently promoted.
+ */
+function gitSourceProvenance(repoPath) {
+  try {
+    const revision = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: repoPath,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    const status = execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
+      cwd: repoPath,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return Object.freeze({ revision, workingTreeClean: status.length === 0 });
+  } catch {
+    return Object.freeze({ revision: null, workingTreeClean: null });
+  }
+}
+
+const SOURCE_PROVENANCE = Object.freeze({
+  atomClassifier: gitSourceProvenance(ATOM_CLASSIFIER),
+  atomSignalLab: gitSourceProvenance(SIGNAL_LAB),
+});
 
 if (OFFSET_MODE !== 'random' && OFFSET_MODE !== 'stride') {
   throw new Error(`OFFSET_MODE must be 'random' or 'stride', got ${OFFSET_MODE}`);
@@ -388,6 +418,10 @@ const CORPUS_CONTENT_CAPABILITIES = Object.freeze({
   'wifi6-he-er-su': Object.freeze({ recipe: 'wlan-corpus-content-v1' }),
   'wifi6-he-mu': Object.freeze({ recipe: 'wlan-corpus-content-v1' }),
   'wifi6-he-tb': Object.freeze({ recipe: 'wlan-corpus-content-v1' }),
+  'lte-band3-fdd-20m': Object.freeze({ recipe: 'operational-carrier-content-v1' }),
+  'lte-band38-tdd-10m': Object.freeze({ recipe: 'operational-carrier-content-v1' }),
+  'nr-n3-fdd-20m': Object.freeze({ recipe: 'operational-carrier-content-v1' }),
+  'nr-n78-tdd-100m': Object.freeze({ recipe: 'operational-carrier-content-v1' }),
 });
 
 function corpusContentCapability(profile) {
@@ -419,6 +453,11 @@ const synthesizeWlanCorpusContentIq = DRY_RUN
   : (await import(pathToFileURL(join(SIGNAL_LAB, 'src/wlan-corpus-iq.ts')).href))
     .synthesizeWlanCorpusContentIq;
 
+const synthesizeOperationalCarrierCorpusIq = DRY_RUN
+  ? null
+  : (await import(pathToFileURL(join(SIGNAL_LAB, 'src/operational-carrier-iq.ts')).href))
+    .synthesizeOperationalCarrierCorpusIq;
+
 /** Select the corpus-only generator when, and only when, a declared capability exists. */
 function synthesizeCorpusChunk(spec, sampleCount, startSampleIndex, contentSeed, contentRowIndex) {
   const capability = corpusContentCapability(spec.profile);
@@ -445,6 +484,20 @@ function synthesizeCorpusChunk(spec, sampleCount, startSampleIndex, contentSeed,
         throw new Error(`${spec.profile} declares a WLAN corpus-content capability but its SignalLab generator is unavailable`);
       }
       return synthesizeWlanCorpusContentIq({
+        profile: spec.profile,
+        sampleRateHz: spec.fs,
+        bandwidthHz: spec.bw,
+        sampleCount,
+        startSampleIndex,
+        contentSeed,
+        contentRowIndex,
+      });
+    }
+    if (capability.recipe === 'operational-carrier-content-v1') {
+      if (synthesizeOperationalCarrierCorpusIq === null) {
+        throw new Error(`${spec.profile} declares an operational-carrier corpus-content capability but its SignalLab generator is unavailable`);
+      }
+      return synthesizeOperationalCarrierCorpusIq({
         profile: spec.profile,
         sampleRateHz: spec.fs,
         bandwidthHz: spec.bw,
@@ -754,6 +807,7 @@ if (DRY_RUN) {
     allowPhaseOnlyAcknowledged: ALLOW_PHASE_ONLY,
     contentDeficitProfiles: CONTENT_DEFICIT_PROFILES,
     minActiveSamples: MIN_ACTIVE_SAMPLES,
+    sourceProvenance: SOURCE_PROVENANCE,
     nativeBytes: [...DRAW_PLAN.values()]
       .reduce((total, plan) => total + plan.samplesPerRow * 8 * ROWS_PER_PROFILE, 0),
     profiles: Object.fromEntries([...DRAW_PLAN]
@@ -1046,6 +1100,7 @@ writeFileSync(join(OUT_DIR, 'manifest_stage1.json'), JSON.stringify({
       + 'reported through items[].activeFraction and diversity[profile].zeroRows',
   allowPhaseOnlyAcknowledged: ALLOW_PHASE_ONLY,
   contentDeficitProfiles: CONTENT_DEFICIT_PROFILES,
+  sourceProvenance: SOURCE_PROVENANCE,
   elapsedSeconds: (Date.now() - startedAt) / 1000,
   diversity: Object.fromEntries(PLAN.map((spec) => [spec.profile, summarize(spec.profile)])),
   note: 'clean native-rate captures; stage 2 resamples to a common rate and '

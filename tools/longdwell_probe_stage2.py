@@ -126,10 +126,21 @@ def main() -> None:
         manifest_rows.append({
             **{k: row[k] for k in ("profile", "cls", "sampleRateHz",
                                     "startSampleIndex")},
-            # Phase provenance, when stage 1 randomized row offsets. Absent for
-            # stride-mode (pre-2026-07-31) manifests, so readers must .get().
-            **{k: row[k] for k in ("offsetJitter", "offsetDrawIndex")
-               if k in row},
+            # Diversity provenance from stage 1. Every one of these is absent
+            # from a stride-mode (pre-2026-07-31) manifest and most are absent
+            # from a stage1-v1 manifest, so they are copied only when present
+            # and readers must treat them as optional.
+            #
+            # contentSha256 is the row's FIXED-PHASE content hash. It is
+            # content evidence only for contentClass 'A'; for 'B' and 'C' the
+            # generator holds exactly one content realization and a differing
+            # hash means a differing time origin, nothing more. Read
+            # manifest_stage1.json's diversity block before quoting it.
+            **{k: row[k] for k in (
+                "offsetJitter", "offsetDrawIndex", "offsetRedraws",
+                "carrierPhaseDraw", "carrierPhaseRadians",
+                "contentClass", "contentPolicy", "contentSha256",
+            ) if k in row},
             "row": index,
             "role": "eval" if (index % stage1["rowsPerProfile"]) < EVAL_PER_PROFILE else "train",
             "impairments": params,
@@ -144,8 +155,18 @@ def main() -> None:
         "durationMs": stage1["durationMs"],
         "hasCleanPairs": True,
         "impairmentSeed": SEED,
-        **{k: stage1[k] for k in ("offsetMode", "offsetSeed", "offsetSpacing")
-           if k in stage1},
+        # Stage-1 provenance, forwarded verbatim. `diversity` is the per-profile
+        # record of what actually varies row to row and what does NOT: it is the
+        # only place the corpus states, per profile, how many content
+        # realizations it holds. Do not report accuracy from this corpus without
+        # it.
+        **{k: stage1[k] for k in (
+            "planSource", "offsetMode", "offsetSeed", "offsetSpacing",
+            "phaseMode", "contentSpanRows", "minActiveSamples",
+            "offsetRejectionPolicy", "allowPhaseOnlyAcknowledged",
+            "contentDeficitProfiles", "sourceProvenance", "diversity",
+        ) if k in stage1},
+        "stage1Schema": stage1.get("schema"),
         "rows": manifest_rows,
     }, indent=1))
     print(f"stage2 complete: {len(rows)} rows x {out_len} samples "

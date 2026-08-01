@@ -19,26 +19,27 @@ actually more diverse.
 `tools/generate-longdwell-probe-corpus.mjs` now defaults to the committed
 34-profile plan and 256 rows per profile (8,704 rows). Its seeded offset plan
 prevents phase aliasing: every row gets a reproducible, non-overlapping native
-start coordinate. Seven GERAN profiles now have a corpus-only seeded-content
-path; the full plan still fails closed because four operational-content profiles
-remain unsupported. A diagnostic invocation that includes any unsupported
-profile must set `ALLOW_PHASE_ONLY=1` explicitly.
+start coordinate. All 17 operational-content profiles now have a corpus-only
+seeded-content path. `ALLOW_PHASE_ONLY=1` remains an explicit diagnostic
+escape hatch for a future unsupported profile; it is neither required nor
+appropriate for the 34-profile proof or production invocation.
 
 That is necessary, but it is not complete content diversity. The public
 SignalLab synthesis API accepts only `startSampleIndex`; corpus-only generators
 are deliberately separate so fixed catalog provenance remains intact.
-`geran-corpus-iq.ts` is implemented and has a restricted 7-profile × 8-row
-proof. The replacement production corpus remains prohibited until every
-remaining operational-content profile has the same level of evidence.
+Dedicated 8-row proofs exist for the GERAN, Wi-Fi, and operational LTE/NR
+families. The remaining evidence step is the combined 34-profile × 8-row proof
+slice below. The replacement production corpus remains prohibited until that
+slice is inspected successfully.
 
 The 17 operational-content profiles are:
 
-- 7 GERAN profiles — seeded corpus-only path implemented; not sufficient to
-  unblock the full plan by itself.
-- LTE Band 3 FDD and Band 38 TDD — unsupported blocker.
-- NR n3 FDD and n78 TDD — unsupported blocker.
-- All 6 Wi-Fi profiles — seeded corpus-only path implemented; not sufficient
-  to unblock the full plan by themselves.
+- 7 GERAN profiles — seeded corpus-only path, including two exact
+  libosmocore xCCH fixtures plus chunking and geometry tests.
+- LTE Band 3 FDD and Band 38 TDD — seeded PDSCH-only corpus path.
+- NR n3 FDD and n78 TDD — seeded PDSCH-only corpus path, preserving inactive
+  TDD intervals.
+- All 6 Wi-Fi profiles — seeded corpus-only path with fixed PHY geometry.
 
 The 15 standards-fixed or analytic profiles may vary phase only. The two
 Bluetooth long-dwell profiles have index-driven timing/channel diversity, but
@@ -50,9 +51,8 @@ must be stated explicitly in any experiment report.
 
 ## Required software gate
 
-Before the complete proof slice, add and test an explicit corpus-only
-content-variation path for every remaining blocker. Each path must have all of
-these properties:
+Before treating the complete proof slice as reproducible evidence, each
+corpus-only path must have all of these properties:
 
 1. The default catalog path remains byte-identical and continues to pass its
    independent-oracle suites.
@@ -63,7 +63,9 @@ these properties:
 4. Split and whole-window synthesis remain byte-identical for the same seed,
    profile, and absolute coordinates.
 5. The source revision containing the long-dwell profiles and variation path is
-   committed before generating a corpus intended to be reproducible.
+   committed before generating a corpus intended to be reproducible. A slice
+   made from an uncommitted worktree is diagnostic evidence only and must not
+   be promoted as a reproducible corpus.
 
 The implementation boundary and per-family requirements are in
 `docs/corpus-content-variation-design.md`.
@@ -83,7 +85,11 @@ npm run generate:longdwell-probe-corpus
 ```
 
 The native stage-1 slice is about 0.94 GB. Do not run stage 2 or training if
-the content gate is absent or any expected distinct-content hash collides.
+the content gate is absent, any expected distinct-content hash collides, or the
+source revision has not been committed for a proof intended to be retained.
+The stage-1 manifest records `sourceProvenance` for both Atom-Classifier and
+Atom-SignalLab; both exact revisions must be present and both
+`workingTreeClean` flags must be `true` before the proof is promotable.
 
 Inspect the stage-1 evidence without loading the whole slice into memory:
 
@@ -128,13 +134,15 @@ clean/noisy arrays, manifest provenance, and the diversity report. Then train
 MLX bf16 with the established v7 configuration and compare to the corrected
 section-4 baseline; do not compare against the invalid pre-aliasing numbers.
 
-## Measured slice, and what the production run costs
+## Historical pre-content slice and production cost
 
-Everything in this section was measured on 2026-08-01 from a real 34-profile
-x 8-row x 20 ms slice generated with the commands in "Proof slice" above
-(`ALLOW_PHASE_ONLY=1`, `MIN_ACTIVE_SAMPLES=1024`). The production figures are
-that run extrapolated x32 and are labelled as extrapolations, not as
-measurements.
+Everything in this section was measured on 2026-08-01 from a pre-content
+34-profile x 8-row x 20 ms diagnostic slice
+(`ALLOW_PHASE_ONLY=1`, `MIN_ACTIVE_SAMPLES=1024`). It remains useful for
+capacity planning only: it is not evidence for the current content-diversity
+gate, and its positive active-sample threshold conditioned away natural silent
+Bluetooth LE rows. The production figures are that run extrapolated x32 and
+are labelled as extrapolations, not as measurements.
 
 ### Wall time
 
@@ -180,25 +188,34 @@ in this runbook deletes anything.
 
 ### Determinism gate
 
+Run this only after the two source worktrees are clean and committed. It uses
+new temporary directories and preserves every result for inspection; it does
+not delete or overwrite a prior corpus. `MIN_ACTIVE_SAMPLES=0` is explicit so
+the check covers the unconditioned Bluetooth LE policy used by production.
+
 ```bash
 cd /Users/johnelliott/PersonalGitHub/Atom-Classifier
 for seed in 20260731 20260731 987654321; do
-  rm -rf /tmp/regen-det
-  ALLOW_PHASE_ONLY=1 OFFSET_SEED=$seed OUT_DIR=/tmp/regen-det \
+  run_dir="$(mktemp -d /private/tmp/longdwell-determinism.XXXXXX)"
+  OFFSET_SEED=$seed OUT_DIR="$run_dir" \
     ROWS_PER_PROFILE=8 PLAN_JSON=tools/production_corpus_plan.json \
-    MIN_ACTIVE_SAMPLES=1024 \
-    npm run generate:longdwell-probe-corpus > /dev/null
-  shasum -a 256 /tmp/regen-det/clean_native.f32
+    MIN_ACTIVE_SAMPLES=0 \
+    npm run generate:longdwell-probe-corpus >"$run_dir/generator.log"
+  shasum -a 256 "$run_dir/clean_native.f32"
 done
 ```
 
-The first two hashes must match and the third must differ. Measured: seed
-20260731 twice gave `44a42a40b790...`, seed 987654321 gave `5865ab2d1fd5...`,
-and zero of the 34 profiles shared a single row hash between the two seeds.
-Stage 2 is deterministic too: two runs over the same stage-1 slice produced
-byte-identical `clean.npy` (`a542385eeedf...`) and `noisy.npy`
-(`a5832ea8e77b...`). `manifest_stage1.json` is byte-identical across same-seed
-runs apart from `generatedAt` and `elapsedSeconds`.
+The first two hashes must match and the third must differ. Compare
+`manifest_stage1.json` after excluding `generatedAt` and `elapsedSeconds`;
+all other fields must match for the same source state. Do not require every
+raw row hash to be unique in this unconditioned gate: natural all-zero BLE
+windows share one raw hash and are reported explicitly.
+
+The previously recorded `44a42a40b790...` / `5865ab2d1fd5...` values came
+from the historical conditioned, phase-only diagnostic and are not current
+acceptance hashes. The historical stage-2 array comparison remains capacity
+evidence only; rerun it after the clean-source stage-1 proof before treating
+a new production corpus as reproducible.
 
 ## Verification when it finishes
 
@@ -225,14 +242,18 @@ CORPUS_DIR=training/artifacts/longdwell-production-corpus ROWS=32 \
 
 `tools/verify-longdwell-corpus.py` asserts: `clean.npy`/`noisy.npy` shape and
 dtype agree with both manifests; `clean_native.f32` is exactly `totalBytes`;
-96 eval and 160 train rows per profile; every profile's row hashes are all
-distinct with zero silent rows; class-A profiles realize one content
-realization per row; class-B and declared-deficit profiles report exactly 1;
+96 eval and 160 train rows per profile; every active row hash is distinct;
+only unconditioned Bluetooth LE may retain its one repeated all-zero hash;
+class-A profiles realize one observed content realization per active row (plus
+the one retained-silence realization when applicable); class-B and
+declared-deficit profiles report exactly 1;
 `offsetMode` and `phaseMode` are both `random`; the provenance fields needed to
 reproduce the corpus are present; and a 32-row spot re-read of `clean.npy` is
 stable and finite. Declared deficits are printed as `NOTE` lines, never
-swallowed. Measured on the proof slice: PASS, 34 profiles, 10 declared
-deficits, 272 rows.
+swallowed. Natural fully silent Bluetooth LE rows are permitted only when
+reported, not hidden by redraws. The historical pre-content diagnostic slice
+passed structurally with 10 declared deficits and 272 rows; it is not the
+current content proof.
 
 `tools/measure-corpus-diversity.py` reports, per profile: distinct SHA-256
 (rows as stored), distinct burst-onset patterns (phase-invariant, sensitive to
