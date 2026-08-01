@@ -1,0 +1,43 @@
+mlx 0.32.0  device=Device(gpu, 0)  TF32 ON (matmul rel err 7.69e-04)  dtype=bf16
+wired limit 22 GB
+train 5440  eval 3264  profiles 34
+resident corpus: eval 10.44 GB c64, train 8.70 GB + clean 1.09 GB fp16 in 26s (peak-active 33 MB)
+memory throttle: active 20.24 GB + 22 GB budget
+params: 1,573,028
+loaded /Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/mlx-g2/step0.safetensors (torch) at ep 0; optimizer moments start fresh
+warmup: 6/6 signatures in 6.7s; params untouched (ac13b6317c59f3d1...), steps (0, 0); peaks noaux@20000=24.0GB aux@20000=25.8GB noaux@50000=29.6GB aux@50000=29.6GB noaux@200000=31.8GB aux@200000=32.9GB
+ep 100/3000 loss=0.4633 ce=0.2001 recon=0.7698 (966 ms/ep)
+ep 200/3000 loss=0.4999 ce=0.2599 recon=0.7372 (1060 ms/ep)
+ep 300/3000 loss=0.4991 ce=0.2633 recon=0.7156 (1066 ms/ep)
+ep 400/3000 loss=0.5491 ce=0.2803 recon=0.7333 (1094 ms/ep)
+ep 500/3000 loss=0.6373 ce=0.3884 recon=0.7594 (1059 ms/ep)
+ep 600/3000 loss=0.6449 ce=0.3989 recon=0.7036 (1038 ms/ep)
+ep 700/3000 loss=0.2573 ce=0.0418 recon=0.7085 (1046 ms/ep)
+ep 800/3000 loss=0.4155 ce=0.1824 recon=0.7288 (1063 ms/ep)
+ep 900/3000 loss=0.2783 ce=0.0615 recon=0.7132 (1046 ms/ep)
+ep 1000/3000 loss=0.2625 ce=0.0296 recon=0.7558 (1042 ms/ep)
+[eval ep 1000] 1ms: bal=0.980 minCell=0.844 | 2.5ms: bal=0.984 minCell=0.906 | 10ms: bal=0.978 minCell=0.906 | esc@1ms: 1.00 answered @acc 0.978 (8.9s, 1088 rows)
+ep 1100/3000 loss=0.4381 ce=0.2067 recon=0.7149 (1055 ms/ep)
+ep 1200/3000 loss=0.3885 ce=0.1483 recon=0.7524 (1044 ms/ep)
+ep 1300/3000 loss=0.3206 ce=0.0921 recon=0.7396 (1033 ms/ep)
+ep 1400/3000 loss=0.2528 ce=0.0270 recon=0.7298 (1026 ms/ep)
+ep 1500/3000 loss=0.2543 ce=0.0257 recon=0.7532 (1014 ms/ep)
+ep 1600/3000 loss=0.4468 ce=0.1976 recon=0.7273 (1009 ms/ep)
+ep 1700/3000 loss=0.5055 ce=0.2654 recon=0.7111 (1002 ms/ep)
+ep 1800/3000 loss=0.3250 ce=0.0858 recon=0.7658 (991 ms/ep)
+ep 1900/3000 loss=0.2723 ce=0.0464 recon=0.7268 (987 ms/ep)
+ep 2000/3000 loss=0.3998 ce=0.1641 recon=0.7483 (986 ms/ep)
+[eval ep 2000] 1ms: bal=0.990 minCell=0.938 | 2.5ms: bal=0.989 minCell=0.938 | 10ms: bal=0.989 minCell=0.875 | esc@1ms: 1.00 answered @acc 0.994 (10.3s, 1088 rows)
+ep 2100/3000 loss=0.3256 ce=0.0922 recon=0.7596 (993 ms/ep)
+ep 2200/3000 loss=0.3762 ce=0.1452 recon=0.7227 (993 ms/ep)
+ep 2300/3000 loss=0.2271 ce=0.0163 recon=0.6993 (995 ms/ep)
+ep 2400/3000 loss=0.3707 ce=0.1249 recon=0.7763 (997 ms/ep)
+ep 2500/3000 loss=0.2090 ce=0.0056 recon=0.6727 (1011 ms/ep)
+ep 2600/3000 loss=0.4267 ce=0.1799 recon=0.7100 (1029 ms/ep)
+ep 2700/3000 loss=0.3522 ce=0.1200 recon=0.7361 (1037 ms/ep)
+ep 2800/3000 loss=0.3252 ce=0.0858 recon=0.7698 (1045 ms/ep)
+ep 2900/3000 loss=0.2437 ce=0.0221 recon=0.7342 (1052 ms/ep)
+ep 3000/3000 loss=0.2030 ce=0.0071 recon=0.6466 (1057 ms/ep)
+[eval ep 3000] 1ms: bal=0.912 minCell=0.323 | 2.5ms: bal=0.955 minCell=0.646 | 10ms: bal=0.996 minCell=0.979 | esc@1ms: 1.00 answered @acc 0.876 (39.1s, 3264 rows)
+checkpoint /Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/mlx-g2/g4_bf16.safetensors (+sidecar .json) at ep 3000
+wrote /Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/mlx-g2/g4_bf16.json

@@ -1,0 +1,102 @@
+mlx 0.32.0  device=Device(gpu, 0)  TF32 ON (rel err 7.69e-04)  dtype=bf16
+train 5440  eval 3264  rowSamples 400000  maxDwell 200000
+eval plans (torch == MLX verified):
+  offset0          sha 4697ae057c222410 offsets [0, 0] mean 0
+  seed20260740     sha 610161b993ebe637 offsets [72, 199842] mean 100126
+  seed20260741     sha 7b3ea7e13a02303e offsets [9, 199892] mean 99013
+  seed20260742     sha 29c102b7f8e44282 offsets [144, 199918] mean 99511
+  seed20260743     sha 55cd81da7c9428af offsets [3, 199979] mean 101175
+  seed20260744     sha f609924563eeee5f offsets [2, 199971] mean 99008
+  mixedProtoZero   sha 610161b993ebe637 offsets [72, 199842] mean 100126
+distinct GSM burst phases sampled (of 672 gsm rows): offset0=3  seed20260740=670  seed20260741=669  seed20260742=669  seed20260743=668  seed20260744=671  mixedProtoZero=670
+resident: eval 10.44 GB c64 + train 8.70 GB fp16 in 16s
+checkpoint g4_bf16.safetensors kind=native episode=3000 sidecar hash match=True
+  [offset0] 40s  1ms bal=0.9116 minCell=0.3229  2.5ms bal=0.9549 minCell=0.6458  10ms bal=0.9962 minCell=0.9792
+  [seed20260740] 44s  1ms bal=0.9011 minCell=0.1875  2.5ms bal=0.9474 minCell=0.5312  10ms bal=0.9947 minCell=0.9792
+  [seed20260741] 45s  1ms bal=0.9064 minCell=0.1979  2.5ms bal=0.9501 minCell=0.5938  10ms bal=0.9945 minCell=0.9792
+  [seed20260742] 44s  1ms bal=0.8996 minCell=0.2396  2.5ms bal=0.9526 minCell=0.5833  10ms bal=0.9950 minCell=0.9792
+  [seed20260743] 41s  1ms bal=0.9017 minCell=0.2396  2.5ms bal=0.9520 minCell=0.6250  10ms bal=0.9954 minCell=0.9792
+  [seed20260744] 44s  1ms bal=0.9013 minCell=0.2500  2.5ms bal=0.9476 minCell=0.5833  10ms bal=0.9939 minCell=0.9792
+  [mixedProtoZero] 40s  1ms bal=0.9040 minCell=0.1875  2.5ms bal=0.9510 minCell=0.5521  10ms bal=0.9946 minCell=0.9792
+
+============================================================================================
+FULL SPLIT (3264 rows), final G4 bf16 ep3000 weights
+============================================================================================
+config               1ms bal    1ms minCell   1ms err   2.5ms bal  2.5ms minCell 2.5ms err    10ms bal   10ms minCell  10ms err
+offset0               0.9116         0.3229       404      0.9549         0.6458       210      0.9962         0.9792         9
+seed20260740          0.9011         0.1875       508      0.9474         0.5312       252      0.9947         0.9792        11
+seed20260741          0.9064         0.1979       475      0.9501         0.5938       240      0.9945         0.9792        13
+seed20260742          0.8996         0.2396       492      0.9526         0.5833       229      0.9950         0.9792         9
+seed20260743          0.9017         0.2396       503      0.9520         0.6250       223      0.9954         0.9792        11
+seed20260744          0.9013         0.2500       493      0.9476         0.5833       248      0.9939         0.9792        12
+mixedProtoZero        0.9040         0.1875       486      0.9510         0.5521       242      0.9946         0.9792        12
+
+CORRECTED (5 offset seeds): mean [min, max]  vs  legacy offset0
+  balanced accuracy:
+    1ms    corrected 0.9020 [0.8996, 0.9064]  (+/-0.003401)   offset0 0.9116
+    2.5ms  corrected 0.9500 [0.9474, 0.9526]  (+/-0.002586)   offset0 0.9549
+    10ms   corrected 0.9947 [0.9939, 0.9954]  (+/-0.000744)   offset0 0.9962
+  min-cell recall:
+    1ms    corrected 0.2229 [0.1875, 0.2500]  (+/-0.03125)   offset0 0.3229
+    2.5ms  corrected 0.5833 [0.5312, 0.6250]  (+/-0.04688)   offset0 0.6458
+    10ms   corrected 0.9792 [0.9792, 0.9792]  (+/-0)   offset0 0.9792
+  error count:
+    1ms    corrected 494 [475, 508]  (+/-16.5)   offset0 404
+    2.5ms  corrected 238 [223, 252]  (+/-14.5)   offset0 210
+    10ms   corrected 11 [9, 13]  (+/-2)   offset0 9
+
+PER-CLASS RECALL (offset0 vs corrected mean [min, max]):
+  1ms:
+    am         offset0 1.0000   corrected 1.0000 [1.0000, 1.0000]   d +0.0000
+    bluetooth  offset0 0.9948   corrected 0.9938 [0.9844, 1.0000]   d -0.0010
+    cw         offset0 0.9896   corrected 0.9875 [0.9792, 1.0000]   d -0.0021
+    dsss       offset0 0.9792   corrected 0.9896 [0.9896, 0.9896]   d +0.0104
+    fm         offset0 0.9896   corrected 0.9833 [0.9792, 0.9896]   d -0.0062
+    gsm        offset0 0.4390   corrected 0.4042 [0.3914, 0.4226]   d -0.0348
+    ofdm       offset0 0.9891   corrected 0.9560 [0.9519, 0.9588]   d -0.0331
+  2.5ms:
+    am         offset0 1.0000   corrected 1.0000 [1.0000, 1.0000]   d +0.0000
+    bluetooth  offset0 1.0000   corrected 0.9990 [0.9948, 1.0000]   d -0.0010
+    cw         offset0 1.0000   corrected 0.9938 [0.9896, 1.0000]   d -0.0062
+    dsss       offset0 0.9896   corrected 0.9833 [0.9792, 0.9896]   d -0.0062
+    fm         offset0 0.9896   corrected 0.9896 [0.9896, 0.9896]   d +0.0000
+    gsm        offset0 0.7128   corrected 0.7009 [0.6801, 0.7217]   d -0.0119
+    ofdm       offset0 0.9926   corrected 0.9831 [0.9812, 0.9851]   d -0.0094
+  10ms:
+    am         offset0 1.0000   corrected 1.0000 [1.0000, 1.0000]   d +0.0000
+    bluetooth  offset0 1.0000   corrected 0.9979 [0.9948, 1.0000]   d -0.0021
+    cw         offset0 1.0000   corrected 1.0000 [1.0000, 1.0000]   d +0.0000
+    dsss       offset0 0.9896   corrected 0.9812 [0.9792, 0.9896]   d -0.0083
+    fm         offset0 0.9896   corrected 0.9896 [0.9896, 0.9896]   d +0.0000
+    gsm        offset0 0.9970   corrected 0.9973 [0.9970, 0.9985]   d +0.0003
+    ofdm       offset0 0.9975   corrected 0.9969 [0.9960, 0.9975]   d -0.0006
+
+PER-CLASS ERROR COUNTS (offset0 -> corrected seed20260740), n per class:
+  1ms: am=0->0/96  bluetooth=1->1/192  cw=1->0/96  dsss=2->1/96  fm=1->2/96  gsm=377->409/672  ofdm=22->95/2016
+  2.5ms: am=0->0/96  bluetooth=0->0/192  cw=0->0/96  dsss=1->2/96  fm=1->1/96  gsm=193->215/672  ofdm=15->34/2016
+  10ms: am=0->0/96  bluetooth=0->0/192  cw=0->0/96  dsss=1->2/96  fm=1->1/96  gsm=2->2/672  ofdm=5->6/2016
+
+WORST PROFILES:
+  1ms:
+    offset0          gsm-32qam-higher-symbol-rate-burst=0.323  gsm-aqpsk-normal-burst=0.344  gsm-8psk-normal-burst=0.344  gsm-16qam-higher-symbol-rate-burst=0.344  gsm-normal-burst=0.354
+    seed20260740     gsm-aqpsk-normal-burst=0.188  gsm-qpsk-higher-symbol-rate-burst=0.271  gsm-32qam-higher-symbol-rate-burst=0.292  gsm-16qam-higher-symbol-rate-burst=0.302  gsm-normal-burst=0.333
+    mixedProtoZero   gsm-aqpsk-normal-burst=0.188  gsm-qpsk-higher-symbol-rate-burst=0.312  gsm-32qam-higher-symbol-rate-burst=0.323  gsm-16qam-higher-symbol-rate-burst=0.344  gsm-normal-burst=0.354
+  2.5ms:
+    offset0          gsm-32qam-higher-symbol-rate-burst=0.646  gsm-normal-burst=0.667  gsm-aqpsk-normal-burst=0.667  gsm-8psk-normal-burst=0.667  gsm-16qam-higher-symbol-rate-burst=0.667
+    seed20260740     gsm-qpsk-higher-symbol-rate-burst=0.531  gsm-normal-burst=0.604  gsm-32qam-higher-symbol-rate-burst=0.604  gsm-8psk-normal-burst=0.656  gsm-16qam-higher-symbol-rate-burst=0.677
+    mixedProtoZero   gsm-qpsk-higher-symbol-rate-burst=0.552  gsm-normal-burst=0.604  gsm-32qam-higher-symbol-rate-burst=0.656  gsm-8psk-normal-burst=0.667  gsm-aqpsk-normal-burst=0.688
+  10ms:
+    offset0          nr-n78-tdd-100m=0.979  fm=0.990  gsm-16qam-higher-symbol-rate-burst=0.990  gsm-32qam-higher-symbol-rate-burst=0.990  lte-etm3.1a=0.990
+    seed20260740     gsm-32qam-higher-symbol-rate-burst=0.979  nr-n78-tdd-100m=0.979  wifi-hr-dsss-11m=0.979  fm=0.990  lte-band3-fdd-20m=0.990
+    mixedProtoZero   gsm-32qam-higher-symbol-rate-burst=0.979  lte-etm3.1a=0.979  nr-n78-tdd-100m=0.979  wifi-hr-dsss-11m=0.979  fm=0.990
+
+ESCALATION @1ms (answered frac / answered acc):
+  offset0          1.000 / 0.8765
+  seed20260740     1.000 / 0.8444
+  seed20260741     1.000 / 0.8545
+  seed20260742     1.000 / 0.8492
+  seed20260743     1.000 / 0.8458
+  seed20260744     1.000 / 0.8490
+  mixedProtoZero   1.000 / 0.8511
+
+wrote /Users/johnelliott/PersonalGitHub/Atom-Classifier/training/artifacts/mlx-g2/g5_offset_reeval.json (317s total)

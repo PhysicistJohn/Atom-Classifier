@@ -1,0 +1,20 @@
+mlx 0.32.0  device=Device(gpu, 0)  TF32 ON (matmul rel err 7.69e-04)  dtype=fp32
+wired limit 22 GB
+train 14  eval 7  profiles 34  [REDUCED corpus]
+resident corpus: eval 0.02 GB c64, train 0.02 GB + clean 0.00 GB fp16 in 0s (peak-active 0 MB)
+params: 1,573,028
+[probe-memory] dtype=fp32 ckpt_blocks@10ms=0 batch_chunks@10ms=1 mem_limit=0GB B=70 T=6249  baseline active 0.19 GB
+  block      peak-delta    act-delta  shape
+  stem           8.31GB       2.77GB  (70, 6249, 33, 48)
+  d1             4.28GB       1.43GB  (70, 3125, 17, 96)
+  d2             2.14GB       0.71GB  (70, 1563, 17, 96)
+  d3             1.14GB       0.38GB  (70, 782, 9, 192)
+  d4             0.57GB       0.19GB  (70, 391, 9, 192)
+  d5             0.16GB       0.16GB  (70, 196, 5, 192)
+  head          -0.10GB      -0.10GB  (2,)
+  dec.u1         1.09GB       0.08GB  (70, 195, 8, 192)
+  dec.u2         2.61GB       0.17GB  (70, 390, 16, 96)
+  dec.u3         4.85GB       0.69GB  (70, 1561, 33, 48)
+  dec.out        0.04GB       0.04GB  (70, 1561, 33, 3)
+  train-step eager   : peak 51.28 GB (delta 51.08 GB)  loss 2.7324
+  train-step compiled: peak 58.80 GB (delta 58.61 GB)  loss 2.7324  [target < 26 GB fp32 @ ckpt=0 chunks=1]

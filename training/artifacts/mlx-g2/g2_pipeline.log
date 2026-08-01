@@ -1,0 +1,18 @@
+[pipeline] waiting for torch baseline result...
+[pipeline] === MLX config a start 21:03:20 ===
+[pipeline] === MLX config a exit 0 21:15:59 ===
+[pipeline] DRAWS torch-vs-mlx(a) first50: BYTE-EXACT
+[pipeline] === MLX config b start 21:15:59 ===
+[pipeline] === MLX config b exit 0 21:25:47 ===
+[pipeline] === MLX config c start 21:25:47 ===
+[pipeline] === MLX config c exit 0 21:31:22 ===
+[pipeline] === MLX config d start 21:31:22 ===
+[pipeline] === MLX config d exit 0 21:37:01 ===
+[pipeline] === torch baseline (demoted) start 21:37:01 ===
+[pipeline] WINNER config: c (bf16; anchor=mlx-fp32, torch baseline waived)
+[pipeline] === G2b 200-stop start 21:45:17 ===
+[pipeline] === G2b 200-stop exit 0 ===
+[pipeline] === G2b resume start 21:55:59 ===
+[pipeline] === G2b resume exit 0 ===
+[pipeline] G2B DRAWS straight-vs-(200+resume+100): BYTE-EXACT
+[pipeline] === G4 3000-ep bf16 start 21:58:23 ===
