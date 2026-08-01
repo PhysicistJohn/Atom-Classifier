@@ -330,6 +330,103 @@ with no packet. Before calling it a bug, check the physics — a 20 ms window
 on a ~30 ms advertising grid *should* be empty about a third of the time.
 This may be correct, and is arguably the thesis in miniature.
 
+### ⚠ ADDENDUM — the workflow finished after the handoff was written. Read this
+### before acting on §6; it corrects numbers stated above.
+
+**Corrected diversity measurement.** The "22 profiles bit-identical / GSM has
+3 phases" figures above came from an eval-rows-only hash audit and a
+mislabeled log line. Independently re-measured over all 8,704 rows, and more
+importantly **phase-invariantly** (bit-hashing under-counts: FM's 256 rows
+are all bit-distinct yet pairwise |ρ| = 1.00000 — the same waveform times a
+global complex scalar, which the impairment stage randomizes anyway):
+
+- **20 of 34 profiles have exactly ONE content realization** (all AM, CW, FM,
+  LTE, NR, and wifi-ofdm-20m profiles).
+- GSM has **12** realizations for 2 profiles, 3 for the other 5.
+- The corpus holds **905 distinct 20 ms realizations across 8,704 rows
+  (10.4%)**.
+- **95.006% of eval rows duplicate a train row's clean waveform** in the same
+  profile. Only **163 of 3,264 eval rows (5.0%) carry genuinely held-out
+  content, and all 163 are bluetooth.**
+- The split is **blocked, not interleaved** (rows 0–95 eval, 96–255 train per
+  profile), which is why the only generator with real content variation ends
+  up with fully disjoint train/eval content.
+
+**Memorization result (the reassuring part):** there is **no train/eval gap**
+— balanced train 0.9079/0.9528/0.9990 vs eval 0.9024/0.9501/0.9947 (gaps
+−0.006/−0.003/−0.004), measured on the frozen G4 checkpoint with independent
+offset plans so no prototype row is ever scored on the window it donated.
+But the held-out-content test is at ceiling on both sides and covers one
+class, so **the corpus cannot answer whether the model generalizes across
+content for 6 of its 7 classes.** That is the finding that justifies
+regeneration — not a demonstrated failure.
+
+**Data-quality defect (new, real):** **80 of 256
+`bluetooth-le-advertising-longdwell` rows are EXACTLY ZERO** in `clean.npy`
+(51 train / 29 eval) — ~31% of the BLE class is pure silence labelled
+`bluetooth`, and the model scores 1.000 on all of them at every dwell. It is
+classifying noise-only rows as bluetooth. Decide deliberately whether that is
+physics worth keeping (a 20 ms window on a 30 ms advertising grid *is* often
+empty) or a labelling bug — but do not leave it undecided.
+
+**Capability audit — this changes the plan.** `synthesizeAnalyticComplexIq`
+has **no seed/payload/hop/scheduling parameter on its public surface**;
+`startSampleIndex` is the only reachable degree of freedom. Classification:
+- **(A) content variable — 2 profiles**: the two Bluetooth longdwell ones
+  (keyed-hash occupancy/hop/phase, aperiodic timeline). Payload *bits* still
+  never change — a qualified DH1 / ADV_NONCONN_IND vector is replayed.
+- **(B) standards-fixed — 15 profiles**: LTE/NR test models (E-TM inputs are
+  all-zero *by definition*; NR-TM data is spec-mandated PN23) plus cw/am/fm
+  closed-form stimuli. **Repetition is correct here**; random phase is the
+  only meaningful variation.
+- **(C) should vary, no knob — 17 profiles**: all 7 GSM (the `seed` parameter
+  is **unreachable dead code** — `isGeranFixedCatalogProfile` is tested first
+  and the two profile sets are identical), plus wifi/DSSS.
+
+**Toolchain is fixed and proven.** No tsx/ts-node needed: node v24.18.1
+strips TS natively; the only gap was NodeNext `.js`→`.ts` specifier
+resolution, solved by `tools/ts-source-resolve-hook.mjs` plus
+`--experimental-transform-types`. Run it via
+`npm run generate:longdwell-probe-corpus` (added to package.json). Verified
+end-to-end producing real IQ.
+
+**🔴 SignalLab work is at risk — act on this first.** The longdwell feature
+was **never committed**: it lived only in `stash@{0}` of `Atom-SignalLab`
+("On main: atomizer-check-sandbox-drift-1785548628"). The agent moved off
+detached HEAD `02846e2` to `main` and used `git stash apply --index` (not
+`pop`), so the stash still exists as a backup — but the repo now has 18
+modified + 2 untracked files, uncommitted, holding
+`src/bluetooth-long-dwell-iq.ts` (342 lines, 8/8 tests passing) and its test
+file. **Commit that work in Atom-SignalLab.** A separate concurrent session
+also landed untracked GERAN corpus generators there
+(`src/geran-corpus-iq.ts`, `src/corpus-content-prng.ts`,
+`src/geran-xcch-corpus-codec.ts`).
+
+**Proof slice PASSED, and `docs/corpus-regen-runbook.md` now exists.** A real
+34-profile × 8-row slice generated in 16 s (stage 1) + 6 s (stage 2). The
+generator now makes three seeded per-row draws — time origin (stratified,
+without replacement inside the profile's *measured* realization space),
+carrier phase, and content where a knob exists — all recorded per row, with
+the cyclic ceiling **asserted at runtime** (synthesize at k and k+period,
+require identical hashes) rather than assumed. GSM went 3 → 8 distinct
+realizations per 8 rows.
+
+**Two unresolved decisions the next agent must make:**
+1. `MIN_ACTIVE_SAMPLES` default. One agent set 1024 (rejects/redraws silent
+   rows; BLE then 8/8 distinct), a concurrent one set 0 (keeps the natural
+   silent rate; BLE 5/8 distinct, 3 silent). Both measurements are in the
+   runbook. This is the same question as the BLE-silence defect above.
+2. **Two sessions edited `tools/generate-longdwell-probe-corpus.mjs` and the
+   runbook concurrently.** The edits were merged, not clobbered, but
+   **re-read both files and re-run the proof slice before trusting them.**
+
+Also note: the proof used 8 rows/profile, so every "distinct" count saturates
+at 8. It cannot detect birthday collisions that only appear at 256 rows —
+notably `wifi-ofdm-20m`, whose time-origin space is 1,000 samples and must
+supply 256 distinct draws. The without-replacement drawer makes that exact by
+construction and records `offsetSpaceExhausted`, but it is asserted, not
+measured at production scale.
+
 ### In flight at handoff time
 Workflow `w2k35buao`, three agents:
 1. **toolchain-capability** — make the generator runnable (`Atom-SignalLab`

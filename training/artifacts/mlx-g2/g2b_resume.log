@@ -1,0 +1,30 @@
+mlx 0.32.0  device=Device(gpu, 0)  TF32 ON (matmul rel err 7.69e-04)  dtype=bf16
+wired limit 22 GB
+train 5440  eval 3264  profiles 34
+resident corpus: eval 10.44 GB c64, train 8.70 GB + clean 1.09 GB fp16 in 21s (peak-active 33 MB)
+memory throttle: active 20.24 GB + 22 GB budget
+params: 1,573,028
+resumed /private/tmp/claude-501/-Users-johnelliott-PersonalGitHub/6179ba93-fb7a-4112-b70b-19540b0f4fce/scratchpad/g2b_ck200.safetensors at ep 200 (native stream continuation; optimizer state restored, steps=200/200)
+warmup: 6/6 signatures in 6.4s; params untouched (b6e34313cf749467...), steps (200, 200); peaks noaux@20000=23.4GB aux@20000=26.1GB noaux@50000=27.3GB aux@50000=27.6GB noaux@200000=31.4GB aux@200000=32.6GB
+ep 250/300 loss=0.7774 ce=0.5238 recon=0.7466 (1036 ms/ep)
+ep 300/300 loss=0.4194 ce=0.1818 recon=0.7122 (976 ms/ep)
+[eval ep 300] 1ms: bal=0.872 minCell=0.062 | 2.5ms: bal=0.921 minCell=0.125 | 10ms: bal=0.962 minCell=0.135 | esc@1ms: 1.00 answered @acc 0.757 (17.6s, 3264 rows)
+wrote /private/tmp/claude-501/-Users-johnelliott-PersonalGitHub/6179ba93-fb7a-4112-b70b-19540b0f4fce/scratchpad/g2_mlx_g2bres.json
+      143.24 real         8.53 user       109.20 sys
+         21709832192  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              401276  page reclaims
+             1839930  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 562  voluntary context switches
+              803356  involuntary context switches
+       1423543939293  instructions retired
+        501170101260  cycles elapsed
+         36776197600  peak memory footprint

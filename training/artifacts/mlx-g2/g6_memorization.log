@@ -1,0 +1,27 @@
+mlx 0.32.0 device=Device(gpu, 0) TF32 ON (7.69e-04) bf16
+train 5440 eval 3264 protoRows 448 rowSamples 400000 maxDwell 200000
+ckpt g4_bf16.safetensors kind=native ep=3000 hashOK=True
+train fp16 cache 8.70 GB in 10s
+
+[seed 20260740] evalPlan 610161b993eb trainQueryPlan 13593ea3411f
+  proto rows whose query offset == proto offset: 0/448
+  query stores 13.93 GB in 21s
+  1ms    raw acc  eval=0.8444  train=0.8467
+  2.5ms  raw acc  eval=0.9228  train=0.9228
+  10ms   raw acc  eval=0.9966  train=0.9989
+
+[seed 20260741] evalPlan 7b3ea7e13a02 trainQueryPlan e0f3aff7e1cd
+  proto rows whose query offset == proto offset: 0/448
+  query stores 13.93 GB in 20s
+  1ms    raw acc  eval=0.8545  train=0.8529
+  2.5ms  raw acc  eval=0.9265  train=0.9349
+  10ms   raw acc  eval=0.9960  train=0.9980
+
+[seed 20260742] evalPlan 29c102b7f8e4 trainQueryPlan cfee212339e5
+  proto rows whose query offset == proto offset: 0/448
+  query stores 13.93 GB in 21s
+  1ms    raw acc  eval=0.8493  train=0.8487
+  2.5ms  raw acc  eval=0.9298  train=0.9246
+  10ms   raw acc  eval=0.9972  train=0.9989
+
+wrote /private/tmp/claude-501/-Users-johnelliott-PersonalGitHub/6179ba93-fb7a-4112-b70b-19540b0f4fce/scratchpad/g6_memorization.json (460s)

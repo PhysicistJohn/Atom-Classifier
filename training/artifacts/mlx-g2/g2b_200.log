@@ -1,0 +1,32 @@
+mlx 0.32.0  device=Device(gpu, 0)  TF32 ON (matmul rel err 7.69e-04)  dtype=bf16
+wired limit 22 GB
+train 5440  eval 3264  profiles 34
+resident corpus: eval 10.44 GB c64, train 8.70 GB + clean 1.09 GB fp16 in 56s (peak-active 33 MB)
+memory throttle: active 20.24 GB + 22 GB budget
+params: 1,573,028
+loaded /private/tmp/claude-501/-Users-johnelliott-PersonalGitHub/6179ba93-fb7a-4112-b70b-19540b0f4fce/scratchpad/step0.safetensors (torch) at ep 0; optimizer moments start fresh
+warmup: 6/6 signatures in 51.2s; params untouched (ac13b6317c59f3d1...), steps (0, 0); peaks noaux@20000=23.8GB aux@20000=25.8GB noaux@50000=29.4GB aux@50000=29.6GB noaux@200000=31.9GB aux@200000=32.7GB
+ep 50/300 loss=0.7213 ce=0.4376 recon=0.8144 (6142 ms/ep)
+ep 100/300 loss=0.5638 ce=0.3104 recon=0.7621 (4128 ms/ep)
+ep 150/300 loss=0.3560 ce=0.1053 recon=0.7525 (3137 ms/ep)
+ep 200/300 loss=0.4295 ce=0.2003 recon=0.7305 (2659 ms/ep)
+checkpoint /private/tmp/claude-501/-Users-johnelliott-PersonalGitHub/6179ba93-fb7a-4112-b70b-19540b0f4fce/scratchpad/g2b_ck200.safetensors (+sidecar .json) at ep 200
+wrote /private/tmp/claude-501/-Users-johnelliott-PersonalGitHub/6179ba93-fb7a-4112-b70b-19540b0f4fce/scratchpad/g2_mlx_g2b200.json
+      642.55 real        13.37 user       372.37 sys
+          6508314624  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             2445525  page reclaims
+             1848054  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+             2082532  voluntary context switches
+             2656808  involuntary context switches
+       3791223737635  instructions retired
+       1633183058606  cycles elapsed
+         35594811816  peak memory footprint
