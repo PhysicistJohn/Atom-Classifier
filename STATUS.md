@@ -86,6 +86,14 @@ over-the-air Neptune smoke test.
 
 ## Open items
 
+- **Corpus realism** (2026-08-02, top): real broadcast FM classifies as
+  gsm/cw because corpus `fm`/`am` are single-tone lab stimuli — see
+  `docs/ota-results.md` and `docs/better-test-plan.md`. Fix is new seeded
+  broadcast-realistic profiles in Atom-SignalLab.
+- **Neptune hardware**: RX LO stuck (vendor firmware bug); physical
+  power-cycle needed, then re-verify tuning before trusting captures.
+- Five-seed training replicates in flight
+  (`training/artifacts/seed-replicates-20260802/`).
 - Confidence-head calibration on held-out data (prerequisite for claiming
   the escalation curve, not just the mechanism).
 - G5: port `eval_confusion.py` to MLX; wire Optuna to the MLX trainer.
