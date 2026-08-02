@@ -1,0 +1,839 @@
+{
+ "schema": "atom-classifier.dsp-channel-conformance.v1",
+ "atomDspRevision": "d3b91359925b58a4f7a61b82da4d37d7f36f1b74",
+ "atomDspWorkingTreeClean": true,
+ "source": "sourceAt(i) = e(i)*exp(j*2*pi*i/32), e(i) = 0.5 + 0.25*cos(2*pi*i/1000)",
+ "tdlProfiles": {
+  "tdl-a": [
+   {
+    "normalizedDelay": 0,
+    "powerDb": -13.4
+   },
+   {
+    "normalizedDelay": 0.3819,
+    "powerDb": 0
+   },
+   {
+    "normalizedDelay": 0.4025,
+    "powerDb": -2.2
+   },
+   {
+    "normalizedDelay": 0.5868,
+    "powerDb": -4
+   },
+   {
+    "normalizedDelay": 0.461,
+    "powerDb": -6
+   },
+   {
+    "normalizedDelay": 0.5375,
+    "powerDb": -8.2
+   },
+   {
+    "normalizedDelay": 0.6708,
+    "powerDb": -9.9
+   },
+   {
+    "normalizedDelay": 0.575,
+    "powerDb": -10.5
+   },
+   {
+    "normalizedDelay": 0.7618,
+    "powerDb": -7.5
+   },
+   {
+    "normalizedDelay": 1.5375,
+    "powerDb": -15.9
+   },
+   {
+    "normalizedDelay": 1.8978,
+    "powerDb": -6.6
+   },
+   {
+    "normalizedDelay": 2.2242,
+    "powerDb": -16.7
+   }
+  ],
+  "tdl-b": [
+   {
+    "normalizedDelay": 0,
+    "powerDb": 0
+   },
+   {
+    "normalizedDelay": 0.1072,
+    "powerDb": -2.2
+   },
+   {
+    "normalizedDelay": 0.2155,
+    "powerDb": -4
+   },
+   {
+    "normalizedDelay": 0.2095,
+    "powerDb": -3.2
+   },
+   {
+    "normalizedDelay": 0.287,
+    "powerDb": -9.8
+   },
+   {
+    "normalizedDelay": 0.2986,
+    "powerDb": -1.2
+   },
+   {
+    "normalizedDelay": 0.3752,
+    "powerDb": -3.4
+   },
+   {
+    "normalizedDelay": 0.5055,
+    "powerDb": -5.2
+   },
+   {
+    "normalizedDelay": 0.3681,
+    "powerDb": -7.6
+   },
+   {
+    "normalizedDelay": 0.3697,
+    "powerDb": -3
+   },
+   {
+    "normalizedDelay": 0.57,
+    "powerDb": -8.9
+   },
+   {
+    "normalizedDelay": 0.5283,
+    "powerDb": -9
+   }
+  ],
+  "tdl-d": [
+   {
+    "normalizedDelay": 0,
+    "powerDb": -0.2
+   },
+   {
+    "normalizedDelay": 0.035,
+    "powerDb": -18.8
+   },
+   {
+    "normalizedDelay": 0.612,
+    "powerDb": -21
+   },
+   {
+    "normalizedDelay": 1.363,
+    "powerDb": -22.8
+   },
+   {
+    "normalizedDelay": 1.405,
+    "powerDb": -17.9
+   },
+   {
+    "normalizedDelay": 2.596,
+    "powerDb": -20.1
+   },
+   {
+    "normalizedDelay": 1.775,
+    "powerDb": -21.9
+   },
+   {
+    "normalizedDelay": 4.042,
+    "powerDb": -22.9
+   },
+   {
+    "normalizedDelay": 7.937,
+    "powerDb": -27.8
+   },
+   {
+    "normalizedDelay": 9.424,
+    "powerDb": -23.6
+   },
+   {
+    "normalizedDelay": 9.708,
+    "powerDb": -24.8
+   }
+  ]
+ },
+ "hashCases": [
+  {
+   "seed": 0,
+   "index": 0,
+   "lane": 0,
+   "value": 0
+  },
+  {
+   "seed": 1,
+   "index": 0,
+   "lane": 0,
+   "value": 1753845952
+  },
+  {
+   "seed": 0,
+   "index": 1,
+   "lane": 0,
+   "value": 1834104592
+  },
+  {
+   "seed": 0,
+   "index": 0,
+   "lane": 1,
+   "value": 1753845952
+  },
+  {
+   "seed": 20260731,
+   "index": 12345,
+   "lane": 1852795251,
+   "value": 1777845525
+  },
+  {
+   "seed": 4294967295,
+   "index": 4294967295,
+   "lane": 4294967295,
+   "value": 2175737881
+  },
+  {
+   "seed": 123456789,
+   "index": 1099511627783,
+   "lane": 1952998772,
+   "value": 26282386
+  },
+  {
+   "seed": 42,
+   "index": 4503599627370496,
+   "lane": 99,
+   "value": 3520250864
+  }
+ ],
+ "gaussianCases": [
+  {
+   "seed": 1,
+   "sample": 0,
+   "lane": 0,
+   "value": [
+    -1.1993535267634077,
+    1.0174237252009812
+   ]
+  },
+  {
+   "seed": 20260731,
+   "sample": 999983,
+   "lane": 0,
+   "value": [
+    0.9686554111312048,
+    1.098789267786042
+   ]
+  },
+  {
+   "seed": 7,
+   "sample": 8589934603,
+   "lane": 0,
+   "value": [
+    -0.8271329981390886,
+    -0.4791482179447963
+   ]
+  },
+  {
+   "seed": 7,
+   "sample": 123,
+   "lane": 5,
+   "value": [
+    -1.2874446551031418,
+    1.0590220502411147
+   ]
+  }
+ ],
+ "tdlCases": [
+  {
+   "profile": "tdl-a",
+   "delaySpreadSeconds": 1e-7,
+   "sampleRateHz": 20000000,
+   "taps": [
+    {
+     "delaySamples": 0,
+     "powerDb": -18.29123159211291
+    },
+    {
+     "delaySamples": 1,
+     "powerDb": -0.7504171203852392
+    },
+    {
+     "delaySamples": 2,
+     "powerDb": -12.39123159211291
+    },
+    {
+     "delaySamples": 3,
+     "powerDb": -20.791231592112915
+    },
+    {
+     "delaySamples": 4,
+     "powerDb": -11.086301096867277
+    }
+   ]
+  },
+  {
+   "profile": "tdl-a",
+   "delaySpreadSeconds": 3e-7,
+   "sampleRateHz": 20000000,
+   "taps": [
+    {
+     "delaySamples": 0,
+     "powerDb": -18.291231592112915
+    },
+    {
+     "delaySamples": 2,
+     "powerDb": -2.8430897286306207
+    },
+    {
+     "delaySamples": 3,
+     "powerDb": -7.974495713231022
+    },
+    {
+     "delaySamples": 4,
+     "powerDb": -7.897742074150252
+    },
+    {
+     "delaySamples": 5,
+     "powerDb": -12.391231592112913
+    },
+    {
+     "delaySamples": 9,
+     "powerDb": -20.791231592112915
+    },
+    {
+     "delaySamples": 11,
+     "powerDb": -11.49123159211291
+    },
+    {
+     "delaySamples": 13,
+     "powerDb": -21.59123159211291
+    }
+   ]
+  },
+  {
+   "profile": "tdl-b",
+   "delaySpreadSeconds": 3e-8,
+   "sampleRateHz": 20000000,
+   "taps": [
+    {
+     "delaySamples": 0,
+     "powerDb": 0
+    }
+   ]
+  },
+  {
+   "profile": "tdl-b",
+   "delaySpreadSeconds": 0.000001,
+   "sampleRateHz": 20000000,
+   "taps": [
+    {
+     "delaySamples": 0,
+     "powerDb": -7.016850002813529
+    },
+    {
+     "delaySamples": 2,
+     "powerDb": -9.21685000281353
+    },
+    {
+     "delaySamples": 4,
+     "powerDb": -7.588155350552049
+    },
+    {
+     "delaySamples": 6,
+     "powerDb": -7.655280737953119
+    },
+    {
+     "delaySamples": 7,
+     "powerDb": -8.724022564968372
+    },
+    {
+     "delaySamples": 8,
+     "powerDb": -10.41685000281353
+    },
+    {
+     "delaySamples": 10,
+     "powerDb": -12.216850002813528
+    },
+    {
+     "delaySamples": 11,
+     "powerDb": -12.95626222939524
+    }
+   ]
+  },
+  {
+   "profile": "tdl-d",
+   "delaySpreadSeconds": 3e-7,
+   "sampleRateHz": 20000000,
+   "taps": [
+    {
+     "delaySamples": 0,
+     "powerDb": -0.2615669399836815
+    },
+    {
+     "delaySamples": 4,
+     "powerDb": -21.12110627006094
+    },
+    {
+     "delaySamples": 8,
+     "powerDb": -16.80355949786835
+    },
+    {
+     "delaySamples": 11,
+     "powerDb": -22.02110627006094
+    },
+    {
+     "delaySamples": 16,
+     "powerDb": -20.221106270060943
+    },
+    {
+     "delaySamples": 24,
+     "powerDb": -23.02110627006094
+    },
+    {
+     "delaySamples": 48,
+     "powerDb": -27.921106270060942
+    },
+    {
+     "delaySamples": 57,
+     "powerDb": -23.721106270060943
+    },
+    {
+     "delaySamples": 58,
+     "powerDb": -24.92110627006094
+    }
+   ]
+  },
+  {
+   "profile": "tdl-a",
+   "delaySpreadSeconds": 0,
+   "sampleRateHz": 20000000,
+   "taps": [
+    {
+     "delaySamples": 0,
+     "powerDb": 0
+    }
+   ]
+  }
+ ],
+ "fadingCases": [
+  {
+   "kind": "rayleigh",
+   "kFactorDb": null,
+   "dopplerHz": 50,
+   "seed": 20260731,
+   "tapIndex": 0,
+   "timeSeconds": 0,
+   "value": [
+    1.4967578949089473,
+    -0.40127892346750216
+   ]
+  },
+  {
+   "kind": "rayleigh",
+   "kFactorDb": null,
+   "dopplerHz": 50,
+   "seed": 20260731,
+   "tapIndex": 0,
+   "timeSeconds": 0.0123,
+   "value": [
+    -0.7549451686904247,
+    1.481978928410264
+   ]
+  },
+  {
+   "kind": "rayleigh",
+   "kFactorDb": null,
+   "dopplerHz": 200,
+   "seed": 7,
+   "tapIndex": 3,
+   "timeSeconds": 0.02,
+   "value": [
+    0.210603437596921,
+    -0.24087927359390568
+   ]
+  },
+  {
+   "kind": "rayleigh",
+   "kFactorDb": null,
+   "dopplerHz": 0,
+   "seed": 7,
+   "tapIndex": 1,
+   "timeSeconds": 0.5,
+   "value": [
+    0.2669187123303297,
+    -0.24477665820298214
+   ]
+  },
+  {
+   "kind": "rician",
+   "kFactorDb": 6,
+   "dopplerHz": 30,
+   "seed": 99,
+   "tapIndex": 0,
+   "timeSeconds": 0.011,
+   "value": [
+    -0.26850461606405085,
+    0.666268242248641
+   ]
+  },
+  {
+   "kind": "rician",
+   "kFactorDb": 12,
+   "dopplerHz": 300,
+   "seed": 20260731,
+   "tapIndex": 5,
+   "timeSeconds": 0.00042,
+   "value": [
+    0.6150516520255089,
+    0.8125869983489894
+   ]
+  }
+ ],
+ "noiseCases": [
+  {
+   "noiseFloorDbm": -20,
+   "fullScaleDbm": 0,
+   "value": 0.07071067811865475
+  },
+  {
+   "noiseFloorDbm": -3,
+   "fullScaleDbm": 3,
+   "value": 0.3543928915419707
+  },
+  {
+   "noiseFloorDbm": -95.96488723758827,
+   "fullScaleDbm": -30,
+   "value": 0.00035582842661566715
+  }
+ ],
+ "endToEnd": [
+  {
+   "name": "static-multipath",
+   "configuration": {
+    "noiseFloorDbm": -25,
+    "seed": 20260731,
+    "sampleRateHz": 20000000,
+    "taps": [
+     {
+      "delaySamples": 0,
+      "powerDb": -18.291231592112915
+     },
+     {
+      "delaySamples": 2,
+      "powerDb": -0.9251646084842937
+     },
+     {
+      "delaySamples": 3,
+      "powerDb": -10.417213085913202
+     },
+     {
+      "delaySamples": 6,
+      "powerDb": -20.791231592112915
+     },
+     {
+      "delaySamples": 8,
+      "powerDb": -11.491231592112909
+     },
+     {
+      "delaySamples": 9,
+      "powerDb": -21.59123159211291
+     }
+    ]
+   },
+   "indices": [
+    0,
+    1,
+    2,
+    3,
+    17,
+    5000,
+    5001,
+    5031,
+    5063,
+    399999
+   ],
+   "values": [
+    [
+     0.15845879937215457,
+     0.1017713457053895
+    ],
+    [
+     0.08852160195545,
+     -0.02137348217739641
+    ],
+    [
+     0.6648059101533587,
+     0.07365037230670665
+    ],
+    [
+     0.9826847628369175,
+     0.1807992404649691
+    ],
+    [
+     -1.0307548603726053,
+     0.5316279580645533
+    ],
+    [
+     0.7092291785823436,
+     0.8934834693150124
+    ],
+    [
+     0.4692412113826859,
+     1.1181455571855812
+    ],
+    [
+     0.8875410172211218,
+     0.7712860959491908
+    ],
+    [
+     0.9068420404192903,
+     0.7169542563259452
+    ],
+    [
+     0.7873816405891244,
+     -0.9556726717162964
+    ]
+   ]
+  },
+  {
+   "name": "rayleigh-fading",
+   "configuration": {
+    "noiseFloorDbm": -30,
+    "seed": 42,
+    "sampleRateHz": 20000000,
+    "taps": [
+     {
+      "delaySamples": 0,
+      "powerDb": -3.0735647184229653
+     },
+     {
+      "delaySamples": 1,
+      "powerDb": -2.947943571721292
+     }
+    ],
+    "fading": {
+     "kind": "rayleigh",
+     "dopplerHz": 120
+    }
+   },
+   "indices": [
+    0,
+    1,
+    2,
+    3,
+    17,
+    5000,
+    5001,
+    5031,
+    5063,
+    399999
+   ],
+   "values": [
+    [
+     0.46285156289713936,
+     -0.46214617052660084
+    ],
+    [
+     1.1961675980837234,
+     -0.6665474933379523
+    ],
+    [
+     1.3684639820612097,
+     -0.43280971684600195
+    ],
+    [
+     1.363704226423139,
+     -0.19271808166172782
+    ],
+    [
+     -1.2232268856990924,
+     0.6560621488730989
+    ],
+    [
+     0.8887752782657931,
+     1.0523825392156894
+    ],
+    [
+     0.6544198489348845,
+     1.1910831070675274
+    ],
+    [
+     1.0415807721510142,
+     0.7937351697740204
+    ],
+    [
+     1.081254168878834,
+     0.8164723304450775
+    ],
+    [
+     -0.5319290160133134,
+     -0.099898735369681
+    ]
+   ]
+  },
+  {
+   "name": "rician-los",
+   "configuration": {
+    "noiseFloorDbm": -35,
+    "fullScaleDbm": 0,
+    "seed": 7,
+    "sampleRateHz": 20000000,
+    "taps": [
+     {
+      "delaySamples": 0,
+      "powerDb": -0.2615669399836815
+     },
+     {
+      "delaySamples": 4,
+      "powerDb": -21.12110627006094
+     },
+     {
+      "delaySamples": 8,
+      "powerDb": -16.80355949786835
+     },
+     {
+      "delaySamples": 11,
+      "powerDb": -22.02110627006094
+     },
+     {
+      "delaySamples": 16,
+      "powerDb": -20.221106270060943
+     },
+     {
+      "delaySamples": 24,
+      "powerDb": -23.02110627006094
+     },
+     {
+      "delaySamples": 48,
+      "powerDb": -27.921106270060942
+     },
+     {
+      "delaySamples": 57,
+      "powerDb": -23.721106270060943
+     },
+     {
+      "delaySamples": 58,
+      "powerDb": -24.92110627006094
+     }
+    ],
+    "fading": {
+     "kind": "rician",
+     "kFactorDb": 9,
+     "dopplerHz": 40
+    }
+   },
+   "indices": [
+    0,
+    1,
+    2,
+    3,
+    17,
+    5000,
+    5001,
+    5031,
+    5063,
+    399999
+   ],
+   "values": [
+    [
+     0.5986608701922577,
+     -0.012038868079893555
+    ],
+    [
+     0.5975247965878999,
+     0.13115860421879486
+    ],
+    [
+     0.584481960850977,
+     0.20985751981679784
+    ],
+    [
+     0.4848678702179258,
+     0.3509245769161529
+    ],
+    [
+     -0.6267287285316443,
+     0.14302961226836947
+    ],
+    [
+     0.09340192432236584,
+     0.5631652350664773
+    ],
+    [
+     -0.019828922845873447,
+     0.5707722153577905
+    ],
+    [
+     0.20819549025319667,
+     0.5148495152707561
+    ],
+    [
+     0.18486420281846375,
+     0.5402793679575403
+    ],
+    [
+     0.05327369703779521,
+     -0.9114270263704385
+    ]
+   ]
+  },
+  {
+   "name": "noise-only",
+   "configuration": {
+    "noiseFloorDbm": -20,
+    "seed": 1,
+    "sampleRateHz": 20000000
+   },
+   "indices": [
+    0,
+    1,
+    2,
+    3,
+    17,
+    5000,
+    5001,
+    5031,
+    5063,
+    399999
+   ],
+   "values": [
+    [
+     0.6651928988185594,
+     0.07194272154296923
+    ],
+    [
+     0.6918493165263452,
+     0.13184739734086712
+    ],
+    [
+     0.756107895781077,
+     0.2793010095800537
+    ],
+    [
+     0.6405158830305013,
+     0.5126120409065442
+    ],
+    [
+     -0.710013959941554,
+     -0.1876458138980414
+    ],
+    [
+     0.08265720572131252,
+     0.6898802047281016
+    ],
+    [
+     -0.14076257771570672,
+     0.6810676707566885
+    ],
+    [
+     0.175846610541123,
+     0.6826785096626214
+    ],
+    [
+     0.10916984311532701,
+     0.7972124662985958
+    ],
+    [
+     0.7095925533976476,
+     -0.24409844409322873
+    ]
+   ]
+  }
+ ]
+}

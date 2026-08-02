@@ -56,8 +56,34 @@ Power-cycle the Neptune, then verify tuning actually moves the spectrum
 1 MHz — `docs/ota-results.md` has the procedure). Until then, only the
 frozen FM-band capture is trustworthy real data.
 
+### Track 4 — propagation channel from Atom-DSP (added 2026-08-02)
+
+The corpus's noisy chain had receiver impairments but a static channel —
+no fading, no Doppler, no TDL structure — while Atom-DSP ships a
+propagation model (TR 38.901 TDL-A/B/D, Rayleigh/Rician + Doppler,
+counter-based and split-invariant) built for exactly this producer.
+Adopted via a parity-gated numpy port:
+
+- `tools/gen-dsp-channel-vectors.mjs` pins golden vectors from the
+  TypeScript source of truth (Atom-DSP revision recorded in the JSON);
+- `tools/dsp_channel.py` is the port; `tools/test_dsp_channel_parity.py`
+  gates it (hash integer-exact, floats ≤1e-12, split-invariance, row-path
+  vs scalar reference);
+- stage 2 applies it per row behind `CHANNEL_MODE=on` (off reproduces the
+  pre-channel chain byte-for-byte — verified), draws
+  none/tdl-a/tdl-b/tdl-d at 25/30/25/20%, delay spread logU(30,500) ns,
+  Rayleigh 70% / Rician K∈U(3,12) dB 30%, Doppler logU(1,300) Hz, fading
+  on an exact 256-sample grid with linear interpolation, everything
+  recorded per row in the manifest.
+
+Corpus v3 = Track 1 profiles + `CHANNEL_MODE=on` + fresh seeds.
+
 ## Status log
 
 - 2026-08-02: plan drafted. Five-seed replicates started (Track 3.1) while
   Track 1 awaits owner go-ahead (it adds generators to Atom-SignalLab,
   which has its own provenance discipline).
+- 2026-08-02 (later): replicates superseded by the Optuna study
+  (`training/artifacts/optuna-mlx-20260802/`, baseline re-enqueued every
+  8th trial for variance). Track 4 implemented and verified; channel-on
+  stage 2 costs ~30 s extra per 2,176 rows.

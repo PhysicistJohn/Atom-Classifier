@@ -19,7 +19,8 @@
     "typecheck": "npm run typecheck:observable-training && npm run typecheck:observable-validation",
     "test": "vitest run",
     "audit": "npm audit --audit-level=high",
-    "check": "npm run typecheck && npm run check:observable-training-worker && npm test && npm run check:signal-classifier-model && npm run check:signal-classifier && npm run check:signal-classifier-publication"
+    "check": "npm run typecheck && npm run check:observable-training-worker && npm test && npm run check:signal-classifier-model && npm run check:signal-classifier && npm run check:signal-classifier-publication",
+    "generate:dsp-channel-vectors": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./tools/ts-source-resolve-hook.mjs tools/gen-dsp-channel-vectors.mjs"
   },
   "dependencies": {
     "@atomos/dsp": "file:../Atom-DSP"

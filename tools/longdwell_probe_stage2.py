@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from fractions import Fraction
 from pathlib import Path
 
@@ -27,6 +28,8 @@ import numpy as np
 from scipy.signal import resample_poly
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import dsp_channel as dc  # noqa: E402  (Atom-DSP channel model, numpy parity port)
 CORPUS = Path(
     __import__("os").environ.get(
         "CORPUS_DIR",
@@ -36,6 +39,42 @@ CORPUS = Path(
 TARGET_FS = 20_000_000
 SEED = int(__import__("os").environ.get("IMPAIR_SEED", 20260731))
 EVAL_PER_PROFILE = int(__import__("os").environ.get("EVAL_PER_PROFILE", 96))
+
+# Propagation channel (Atom-DSP model via tools/dsp_channel.py). "off"
+# reproduces the pre-channel (corpus-v2) noisy chain exactly: no extra RNG
+# draws happen, so the receiver-impairment stream is unchanged. "on" applies
+# seeded per-row TDL multipath with Rayleigh/Rician-Doppler fading BEFORE the
+# receiver chain; SNR is then defined on the faded signal.
+CHANNEL_MODE = __import__("os").environ.get("CHANNEL_MODE", "off")
+if CHANNEL_MODE not in ("off", "on"):
+    raise SystemExit(f"CHANNEL_MODE must be off|on, got {CHANNEL_MODE!r}")
+# Fading gains are evaluated exactly on every FADING_GRID_STEP-th absolute
+# sample and linearly interpolated between; recorded in the manifest.
+FADING_GRID_STEP = 256
+
+
+def draw_channel(rng: np.random.Generator) -> tuple:
+    """Per-row propagation-channel draw. Returns (config|None, params)."""
+    profile = rng.choice(["none", "tdl-a", "tdl-b", "tdl-d"],
+                         p=[0.25, 0.30, 0.25, 0.20])
+    if profile == "none":
+        return None, {"profile": "none"}
+    delay_spread_s = 10 ** rng.uniform(np.log10(30e-9), np.log10(500e-9))
+    kind = "rayleigh" if rng.random() < 0.7 else "rician"
+    k_factor_db = float(rng.uniform(3, 12)) if kind == "rician" else None
+    doppler_hz = 10 ** rng.uniform(0, np.log10(300))
+    channel_seed = int(rng.integers(0, 2 ** 32))
+    taps = dc.resolve_tdl_taps(profile, delay_spread_s, TARGET_FS)
+    configuration = dc.ChannelConfiguration(
+        noise_floor_dbm=-math.inf, seed=channel_seed,
+        sample_rate_hz=TARGET_FS, taps=tuple(taps),
+        fading=dc.FadingConfiguration(kind=kind, doppler_hz=doppler_hz,
+                                      k_factor_db=k_factor_db))
+    params = {"profile": profile, "delaySpreadSeconds": delay_spread_s,
+              "fadingKind": kind, "kFactorDb": k_factor_db,
+              "dopplerHz": doppler_hz, "channelSeed": channel_seed,
+              "taps": taps, "fadingGridStep": FADING_GRID_STEP}
+    return configuration, params
 
 
 def impair(x: np.ndarray, rng: np.random.Generator) -> tuple[np.ndarray, dict]:
@@ -120,7 +159,18 @@ def main() -> None:
             x = np.pad(x, (0, out_len - len(x)))
         clean = x[:out_len].astype(np.complex64)
         rng = np.random.default_rng(SEED ^ (index * 2_654_435_761 & 0xFFFFFFFF))
-        noisy, params = impair(clean, rng)
+        channel_params = None
+        faded = clean
+        if CHANNEL_MODE == "on":
+            channel_configuration, channel_params = draw_channel(rng)
+            if channel_configuration is not None:
+                faded = dc.apply_channel_to_row(
+                    clean.astype(np.complex128), channel_configuration,
+                    fading_grid_step=FADING_GRID_STEP,
+                    add_noise=False).astype(np.complex64)
+        noisy, params = impair(faded, rng)
+        if channel_params is not None:
+            params["channel"] = channel_params
         clean_out[index] = clean
         noisy_out[index] = noisy
         manifest_rows.append({
@@ -155,6 +205,12 @@ def main() -> None:
         "durationMs": stage1["durationMs"],
         "hasCleanPairs": True,
         "impairmentSeed": SEED,
+        "channelMode": CHANNEL_MODE,
+        "channelModel": ({
+            "source": "Atom-DSP src/channel.ts via tools/dsp_channel.py "
+                      "(parity-gated numpy port)",
+            "fadingGridStep": FADING_GRID_STEP,
+        } if CHANNEL_MODE == "on" else None),
         # Stage-1 provenance, forwarded verbatim. `diversity` is the per-profile
         # record of what actually varies row to row and what does NOT: it is the
         # only place the corpus states, per profile, how many content
