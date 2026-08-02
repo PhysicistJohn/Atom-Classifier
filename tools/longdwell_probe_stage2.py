@@ -34,7 +34,7 @@ CORPUS = Path(
     )
 )
 TARGET_FS = 20_000_000
-SEED = 20260731
+SEED = int(__import__("os").environ.get("IMPAIR_SEED", 20260731))
 EVAL_PER_PROFILE = int(__import__("os").environ.get("EVAL_PER_PROFILE", 96))
 
 
