@@ -59,6 +59,10 @@ def main() -> int:
     check(diversity is not None,
           "manifest_stage1.json has no diversity block (regenerated with a pre-v2 generator?)")
     diversity = diversity or {}
+    manifest_items = stage1.get("items")
+    check(isinstance(manifest_items, list),
+          "manifest_stage1.json is missing its per-row items needed for diversity checks")
+    manifest_items = manifest_items if isinstance(manifest_items, list) else []
 
     # --- shape -------------------------------------------------------------
     native = (CORPUS / "clean_native.f32").stat().st_size
@@ -102,19 +106,41 @@ def main() -> int:
             check(0 <= zero_rows < rows,
                   f"{profile} has {zero_rows} all-silent rows for {rows} rows; "
                   "an unconditioned capture must retain at least one active window")
-            # All all-zero float32 IQ rows have the same SHA-256. Every non-zero
-            # window must still be distinct, so this exact count catches a repeat
-            # while allowing the one legitimate silence hash.
-            expected_distinct_rows = rows - zero_rows + (1 if zero_rows else 0)
-            check(entry["distinctRowSha256"] == expected_distinct_rows,
-                  f"{profile} has {entry['distinctRowSha256']} distinct row hashes; expected "
-                  f"{expected_distinct_rows} for {rows} rows including {zero_rows} natural "
-                  "silent window(s)")
+            # A rotated all-zero complex row can have distinct *byte* hashes from
+            # signed zeros, even though every sample is numerically silent. The
+            # content hash collapses those rows to one realization. Assert the
+            # meaningful invariant directly: every active row is unique, while
+            # silent raw-byte hashes are reported rather than mistaken for data.
+            profile_items = [item for item in manifest_items
+                             if item.get("profile") == profile]
+            check(len(profile_items) == rows,
+                  f"{profile} has {len(profile_items)} manifest items, expected {rows}")
+            active_items = [item for item in profile_items
+                            if item.get("activeFraction", 0) > 0]
+            silent_items = [item for item in profile_items
+                            if item.get("activeFraction", 0) == 0]
+            check(len(active_items) == rows - zero_rows,
+                  f"{profile} has {len(active_items)} active manifest items, expected "
+                  f"{rows - zero_rows}")
+            check(len(silent_items) == zero_rows,
+                  f"{profile} has {len(silent_items)} silent manifest items, expected "
+                  f"{zero_rows}")
+            active_hashes = {item.get("rowSha256") for item in active_items}
+            silent_hashes = {item.get("rowSha256") for item in silent_items}
+            expected_content_realizations = len(active_items) + (1 if silent_items else 0)
+            check(None not in active_hashes and len(active_hashes) == len(active_items),
+                  f"{profile} has repeated or missing raw hashes among its active rows")
+            if zero_rows:
+                check(None not in silent_hashes and 1 <= len(silent_hashes) <= zero_rows,
+                      f"{profile} has invalid raw-hash accounting for its silent rows")
+            check(entry["distinctRowSha256"] == len(active_hashes) + len(silent_hashes),
+                  f"{profile} diversity summary does not match item-level raw hashes")
             if zero_rows:
                 notes.append(f"{profile}: retained {zero_rows} natural silent 20 ms window(s) "
-                             "because minActiveSamples=0")
+                             f"across {len(silent_hashes)} raw signed-zero hash(es) because "
+                             "minActiveSamples=0")
         else:
-            expected_distinct_rows = rows
+            expected_content_realizations = rows
             check(entry["distinctRowSha256"] == rows,
                   f"{profile} has {entry['distinctRowSha256']} distinct row hashes for {rows} rows "
                   "-- rows are repeating")
@@ -122,9 +148,9 @@ def main() -> int:
                   f"{profile} has {zero_rows} all-silent rows labelled with a protocol")
         realized = entry["contentRealizationsRealized"]
         if entry["contentClass"] == "A":
-            check(realized == expected_distinct_rows,
+            check(realized == expected_content_realizations,
                   f"{profile} is class A but realized {realized} content realizations for "
-                  f"{rows} rows (expected {expected_distinct_rows} after retained silence)")
+                  f"{rows} rows (expected {expected_content_realizations} after retained silence)")
         elif entry["contentClass"] == "B":
             check(realized == 1,
                   f"{profile} is class B (standards-fixed) but reports {realized} content "

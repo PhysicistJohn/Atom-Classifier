@@ -1,5 +1,38 @@
 # Atom-Classifier handoff — v7 / DACS line
 
+## 2026-08-02 current state — production corpus and retraining complete
+
+This section supersedes the older takeover addendum and historical status
+below. The original material remains because it explains the failure modes and
+measurement corrections that the current artifacts inherit.
+
+- The replacement production corpus is complete at
+  `training/artifacts/longdwell-production-corpus-v2/`: 34 profiles × 256 rows,
+  8,704 total 20 ms rows, clean/noisy pairs, no declared content deficits.
+  Its manifest records clean Atom-Classifier `2014019a68f5...` and
+  Atom-SignalLab `12e7eefec060...` source revisions. Natural unconditioned BLE
+  silence is retained: 88 of 256 BLE-advertising rows are silent.
+- The post-regeneration verifier passes all 8,704 rows. Its signed-zero fix is
+  semantic, not an exception: carrier rotation can turn numerical zero into
+  several raw byte hashes, so active-row uniqueness and the single semantic
+  silence realization are checked separately.
+- Two 3,000-episode BF16/TF32 runs completed with zero skipped steps. The
+  short-dwell production candidate is
+  `training/artifacts/sota-v2-2014019-12e7eef-20260801/content_v2_bf16.safetensors`
+  (SHA-256 `1d75a01e6a68936a7facaf4f8bd32c93cedfd46fc98d0cecdc5ecdacd640b281`).
+  Its corrected five-seed mean balanced accuracy is 0.9031 / 0.9549 / 0.9939
+  at 1 / 2.5 / 10 ms; mean minimum-profile recall is 0.2583 / 0.6542 /
+  0.9625. The newer I/Q-BF16/chunk-2 run is faster and slightly stronger at
+  10 ms, but is weaker at 1 and 2.5 ms and therefore does not dominate it.
+- Checkpoints and the 80 GB corpus remain intentionally ignored by Git. Do not
+  infer durability from a clean worktree; preserve or publish every release
+  package separately.
+- A checkpoint alone is not an Atomizer release. DACS is episodic and needs
+  frozen prototypes, a browser encoder export, exact preprocessing, and an
+  upstream open-set gate. `tools/export-dacs-v7-runtime.py` now performs that
+  fail-closed packaging and fixed-prototype five-seed validation. See
+  `docs/dacs-v7-runtime.md`.
+
 **Written:** 2026-07-31, late evening. Repo:
 `/Users/johnelliott/PersonalGitHub/Atom-Classifier`, branch
 `ship/corrected-corpus-classifier`. Run `pwd` before doing anything — an

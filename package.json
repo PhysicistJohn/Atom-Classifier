@@ -12,6 +12,7 @@
     "check:signal-classifier": "tsup tools/validate-signal-lab-classifier.ts --format esm --out-dir dist/tools --platform node --silent && node dist/tools/validate-signal-lab-classifier.js",
     "check:signal-classifier-publication": "node tools/verify-classifier-publication.mjs && node --test tools/verify-classifier-publication.test.mjs",
     "generate:longdwell-probe-corpus": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./tools/ts-source-resolve-hook.mjs tools/generate-longdwell-probe-corpus.mjs",
+    "package:dacs-v7-runtime": ".venv-training/bin/python tools/export-dacs-v7-runtime.py",
     "package:v3-staging-assets": "python3 tools/package-v3-staging-assets.py",
     "typecheck:observable-training": "tsc -p tools/tsconfig.observable-training.json --noEmit",
     "typecheck:observable-validation": "tsc -p tools/tsconfig.observable-validation.json --noEmit",

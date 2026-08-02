@@ -209,7 +209,10 @@ The first two hashes must match and the third must differ. Compare
 `manifest_stage1.json` after excluding `generatedAt` and `elapsedSeconds`;
 all other fields must match for the same source state. Do not require every
 raw row hash to be unique in this unconditioned gate: natural all-zero BLE
-windows share one raw hash and are reported explicitly.
+windows are reported explicitly. Carrier rotation can preserve numerical
+silence while producing signed-zero byte variants, so assert unique hashes for
+active BLE rows and treat its content-hash realization count as the semantic
+silence measure.
 
 The previously recorded `44a42a40b790...` / `5865ab2d1fd5...` values came
 from the historical conditioned, phase-only diagnostic and are not current
@@ -243,9 +246,11 @@ CORPUS_DIR=training/artifacts/longdwell-production-corpus ROWS=32 \
 `tools/verify-longdwell-corpus.py` asserts: `clean.npy`/`noisy.npy` shape and
 dtype agree with both manifests; `clean_native.f32` is exactly `totalBytes`;
 96 eval and 160 train rows per profile; every active row hash is distinct;
-only unconditioned Bluetooth LE may retain its one repeated all-zero hash;
-class-A profiles realize one observed content realization per active row (plus
-the one retained-silence realization when applicable); class-B and
+only unconditioned Bluetooth LE may retain natural silent rows. Its raw bytes
+may contain signed-zero variants after carrier rotation, so the verifier
+checks active-row uniqueness separately from the one retained-silence content
+realization; class-A profiles realize one observed content realization per
+active row (plus the one retained-silence realization when applicable); class-B and
 declared-deficit profiles report exactly 1;
 `offsetMode` and `phaseMode` are both `random`; the provenance fields needed to
 reproduce the corpus are present; and a 32-row spot re-read of `clean.npy` is
