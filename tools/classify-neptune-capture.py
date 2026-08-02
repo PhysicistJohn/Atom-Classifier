@@ -97,6 +97,17 @@ def main() -> None:
     ap.add_argument("--proto-rows-per-class", type=int, default=64)
     ap.add_argument("--windows", type=int, default=5,
                     help="number of window positions per capture per dwell")
+    ap.add_argument("--lowpass-hz", type=float, default=None,
+                    help="FIR-lowpass each capture to +/- this cutoff before "
+                         "classification (channelize a single station, "
+                         "matching the single-signal corpus condition)")
+    ap.add_argument("--shift-hz", type=float, default=0.0,
+                    help="frequency-shift the capture by this much before "
+                         "the lowpass (center an off-tune station)")
+    ap.add_argument("--add-noise-snr-db", type=float, default=None,
+                    help="after channelizing, add full-band AWGN at this "
+                         "SNR relative to the remaining signal power "
+                         "(reproduces the corpus noise condition)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -124,6 +135,23 @@ def main() -> None:
     report = []
     for f in files:
         iq = np.load(f).astype(np.complex64)
+        if args.shift_hz:
+            rate = 20e6
+            iq = (iq * np.exp(-2j * np.pi * args.shift_hz
+                              * np.arange(len(iq)) / rate)
+                  ).astype(np.complex64)
+        if args.lowpass_hz:
+            from scipy.signal import firwin, fftconvolve
+            taps = firwin(1025, args.lowpass_hz, fs=20e6)
+            iq = fftconvolve(iq, taps, mode="same").astype(np.complex64)
+        if args.add_noise_snr_db is not None:
+            sig_p = float(np.mean(np.abs(iq) ** 2))
+            noise_p = sig_p / (10 ** (args.add_noise_snr_db / 10))
+            rng = np.random.default_rng(20260802)
+            iq = (iq + np.sqrt(noise_p / 2)
+                  * (rng.standard_normal(len(iq))
+                     + 1j * rng.standard_normal(len(iq)))
+                  ).astype(np.complex64)
         side = {}
         sj = f.with_name(f.name.replace(".iq.npy", ".json"))
         if sj.exists():

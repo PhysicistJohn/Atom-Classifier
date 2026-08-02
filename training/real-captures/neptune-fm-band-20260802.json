@@ -1,0 +1,17 @@
+{
+ "source": "NeptuneSDR ip:10.0.0.250, RX LO stuck at ~98.283 MHz (vendor firmware defect), 20 Msps, 20 ms, slow_attack AGC",
+ "capturedAt": "2026-08-02",
+ "sampleRateHz": 20000000,
+ "assumedLoHz": 98283000,
+ "verifiedStations": [
+  {"freqMhz": 93.7, "offsetHz": -4590000, "expected": "fm"},
+  {"freqMhz": 95.5, "offsetHz": -2790000, "expected": "fm"},
+  {"freqMhz": 100.1, "offsetHz": 1817000, "expected": "fm"},
+  {"freqMhz": 101.5, "offsetHz": 3253000, "expected": "fm"},
+  {"freqMhz": 101.7, "offsetHz": 3420000, "expected": "fm", "note": "HD Radio sidebands present"},
+  {"freqMhz": 101.9, "offsetHz": 3580000, "expected": "fm"},
+  {"freqMhz": 104.9, "offsetHz": 6615000, "expected": "fm"}
+ ],
+ "spursHz": [2216000],
+ "protocol": "shift each station to DC (--shift-hz <offsetHz>), lowpass 150 kHz, classify; optional --add-noise-snr-db 20"
+}

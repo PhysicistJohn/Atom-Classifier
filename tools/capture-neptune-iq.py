@@ -55,6 +55,9 @@ def main() -> None:
                     help="stream head to discard (buffered stale samples)")
     ap.add_argument("--gain-mode", default="slow_attack",
                     choices=("slow_attack", "fast_attack", "manual"))
+    ap.add_argument("--rf-bandwidth-hz", type=float, default=None,
+                    help="override analog RF bandwidth (default: min(rate, "
+                         "56 MHz)); narrow this to isolate one channel")
     ap.add_argument("--name", required=True)
     ap.add_argument("--out-dir", default=".")
     args = ap.parse_args()
@@ -63,7 +66,8 @@ def main() -> None:
     iio_readdev = find_tool("iio_readdev")
     center_hz = int(round(args.center_mhz * 1e6))
     rate_hz = int(round(args.rate))
-    bw_hz = min(rate_hz, 56_000_000)
+    bw_hz = int(args.rf_bandwidth_hz) if args.rf_bandwidth_hz \
+        else min(rate_hz, 56_000_000)
 
     print(f"tune {center_hz/1e6:.3f} MHz @ {rate_hz/1e6:.3f} Msps "
           f"(bw {bw_hz/1e6:.1f} MHz, {args.gain_mode})", flush=True)

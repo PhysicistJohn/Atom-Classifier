@@ -110,4 +110,12 @@ check ("does it call an FM station fm?"), not a calibrated field
 evaluation. Log every capture's result, including the wrong ones — the
 wrong ones are the interesting data for the next corpus revision.
 
-Results log: `docs/ota-results.md`.
+Results log: `docs/ota-results.md`. First run (2026-08-02): the Neptune's
+LO is stuck at ≈98.283 MHz (vendor firmware bug — power-cycle and re-verify
+tuning with the two-center shift test before trusting captures), and real
+broadcast FM classifies as gsm/cw because the corpus `fm` is single-tone
+lab FM. See `docs/better-test-plan.md` for the corpus-realism fix. The
+frozen real FM-band capture lives at
+`training/real-captures/neptune-fm-band-20260802.iq.npy` with labeled
+stations in its sidecar; channelize with
+`tools/classify-neptune-capture.py --shift-hz <offset> --lowpass-hz 150000`.
