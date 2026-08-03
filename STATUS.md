@@ -4,6 +4,22 @@ Single living status file. Deep history lives in git (`HANDOFF.md`,
 `HANDOFF-HISTORY.md`, `HANDOFF-v3-release.md` were removed in the 2026-08-02
 streamline commit — check them out from history if you need the forensics).
 
+## Update 2026-08-03 — v4 line
+
+Corpus v4 (`training/artifacts/longdwell-production-corpus-v4/`): 36
+profiles (adds `fm-broadcast-mpx`, `am-voice`) × 256 rows, Atom-DSP
+propagation channel ON, seeds 20260804, generated from merged SignalLab
+main (which now includes `broadcast-corpus-iq.ts`; BLE-advertising binding
+is 80 MHz in the plan). Optuna study (84 trials, 11 baseline replicates,
+`optuna-mlx-20260802-v4/`): baseline 0.7479 ± 0.0102; best +2.6 pts; lr
+~1.3e-3, conf_weight ~0.25, worst-dur ~0 won; recon_weight indifferent.
+Working checkpoint: `v4-full-runs-20260803/trial13-params.safetensors`
+(bal 0.784/0.846/0.904; fresh-seed holdout 0.789/0.855/0.910 — no
+memorization). **Real OTA broadcast FM now classifies as `fm`** (see
+`docs/ota-results.md`). Open: `am-voice` trains to 0.000 recall — suspect
+single-mean-prototype vs bimodal class; diagnostic before any v4.1.
+The v2-era "Current state" below is retained as history.
+
 ## Current state (2026-08-02)
 
 Two lines exist; do not confuse them:
