@@ -214,6 +214,8 @@ def export_onnx(encoder: Any, torch: Any, path: Path) -> dict[str, Any]:
         "Shape",
         "Sigmoid",
         "Squeeze",
+        # Semantically a no-op pass-through; newer torch exporters emit it.
+        "Identity",
     }
     operators = {node.op_type for node in model.graph.node}
     if not operators <= allowed:
