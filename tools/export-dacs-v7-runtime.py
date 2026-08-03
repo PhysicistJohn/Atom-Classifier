@@ -364,7 +364,9 @@ def main() -> None:
         raise SystemExit("DACS release corpus does not have clean source provenance")
 
     train_by_class, eval_rows, all_train = split_manifest(manifest)
-    if len(eval_rows) != 3264 or any(
+    # Qualified inventories: v2/v3 (34 profiles) and v4 (36 profiles, adds
+    # fm-broadcast-mpx and am-voice). 96 eval rows per profile either way.
+    if len(eval_rows) not in (3264, 3456) or any(
         len(train_by_class[label]) < PROTOTYPE_ROWS for label in CLASSES
     ):
         raise SystemExit("DACS release corpus split does not match the qualified inventory")
