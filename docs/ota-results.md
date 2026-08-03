@@ -65,6 +65,30 @@ differ most.
 what it was taught. Teaching it real broadcast modulations is the next
 corpus revision — see `docs/better-test-plan.md`.
 
+## 2026-08-03 — v4 model rematch (corpus: channel + broadcast profiles)
+
+Checkpoint `v4-full-runs-20260803/trial13-params.safetensors` (Optuna
+runner-up params; statistically tied with trial-52 params), prototypes from
+corpus v4. Same captures, same channelization:
+
+| target | v2 model | v4 model |
+|---|---|---|
+| FM 104.9 (channelized) | cw 5/5 | **fm** (4/5 at 1 ms, 5/5 at 2.5/10 ms) |
+| FM 101.7, HD Radio (channelized) | gsm 5/5 | **fm 5/5 at every dwell** |
+| LTE 746 / 875.5 (full band) | ofdm ✓ | ofdm ✓ (unchanged) |
+| Wi-Fi 2462 (full band) | ofdm ✓ | ofdm ✓ |
+| airband 135.018 AM voice (channelized) | cw | cw — expected: `am-voice`
+  trained to 0.000 recall (see below) |
+
+The corpus-realism thesis held for FM: adding `fm-broadcast-mpx` (learned
+to 0.76 recall at 10 ms) transferred directly to real off-air broadcast FM,
+HD Radio sidebands and all. `am-voice` did NOT train (0.000 recall at every
+dwell in both full runs); working hypothesis is that its shallow aperiodic
+envelope lands nearer the cw cluster than the single mean class prototype
+that also has to cover deep single-tone analytic AM. Next steps, in order:
+per-profile-prototype diagnostic to confirm, then either deepen the
+modulation range (0.7–0.95) or revisit prototype design.
+
 ## Scoreboard vs the original test intent
 
 | intent | outcome |
