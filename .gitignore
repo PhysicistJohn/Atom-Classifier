@@ -20,3 +20,4 @@ training/**/artifacts/
 *.onnx
 *.npz
 *.npy
+tools/__pycache__/
