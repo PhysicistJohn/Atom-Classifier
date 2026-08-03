@@ -213,6 +213,6 @@
   "profile": "bluetooth-le-advertising-longdwell",
   "cls": "bluetooth",
   "fs": 80000000,
-  "bw": 79000000
+  "bw": 80000000
  }
 ]
