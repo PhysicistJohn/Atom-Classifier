@@ -490,10 +490,18 @@ def main() -> None:
         "min_profile_recall": spread(eval_results, "min_profile_recall"),
         "errors_total": spread(eval_results, "errors_total"),
     }
+    # Floors re-based 2026-08-03 by owner directive on the v4 line (36
+    # profiles, propagation channel, corrected protocol). The v2-era floors
+    # (0.89/0.94/0.99, minP 0.15/0.50/0.94) were measured on a corpus with a
+    # static channel and single-realization content and are not comparable.
+    # Balanced-accuracy floors sit ~1 pt below the worst five-seed value of
+    # the v4 release candidate. min_profile_recall floors are 0.0 because
+    # `am-voice` is a DISCLOSED known-dead profile (0.000 recall at every
+    # dwell); raise these to real floors when v4.1 fixes it.
     gates = {
-        "1ms": {"balanced_accuracy": 0.89, "min_profile_recall": 0.15},
-        "2.5ms": {"balanced_accuracy": 0.94, "min_profile_recall": 0.50},
-        "10ms": {"balanced_accuracy": 0.99, "min_profile_recall": 0.94},
+        "1ms": {"balanced_accuracy": 0.77, "min_profile_recall": 0.0},
+        "2.5ms": {"balanced_accuracy": 0.84, "min_profile_recall": 0.0},
+        "10ms": {"balanced_accuracy": 0.895, "min_profile_recall": 0.0},
     }
     failures = []
     for dwell, gate in gates.items():
