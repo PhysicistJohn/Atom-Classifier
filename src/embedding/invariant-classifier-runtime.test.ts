@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { classifyInvariantRawCapture } from './invariant-classifier-runtime.js';
 import {
@@ -50,17 +50,28 @@ const staging = new URL(
     + 'invariant_fusion_paired_real_v3/',
   import.meta.url,
 );
-const asset = loadInvariantFusionAsset(
-  JSON.parse(
-    readFileSync(new URL('invariant-fusion-weights-v3.json', staging), 'utf8'),
-  ) as unknown,
+// The staging assets are git-ignored training outputs; a fresh clone (CI)
+// does not have them. Skip rather than fail: this suite is a parity check
+// against locally generated artifacts, not a repository invariant.
+const stagingAvailable = existsSync(
+  new URL('invariant-fusion-weights-v3.json', staging),
 );
-const fixture = JSON.parse(
-  readFileSync(
-    new URL('invariant-fusion-e2e-parity-v3.json', staging),
-    'utf8',
-  ),
-) as { cases: EndToEndCase[]; parity_limit: number };
+const asset = stagingAvailable
+  ? loadInvariantFusionAsset(
+    JSON.parse(
+      readFileSync(new URL('invariant-fusion-weights-v3.json', staging), 'utf8'),
+    ) as unknown,
+  )
+  : (null as never);
+const fixture = (stagingAvailable
+  ? JSON.parse(
+    readFileSync(
+      new URL('invariant-fusion-e2e-parity-v3.json', staging),
+      'utf8',
+    ),
+  )
+  : { cases: [], parity_limit: 0 }) as {
+  cases: EndToEndCase[]; parity_limit: number };
 
 function maxError(actual: ArrayLike<number>, expected: number[]): number {
   expect(actual.length).toBe(expected.length);
@@ -71,7 +82,7 @@ function maxError(actual: ArrayLike<number>, expected: number[]): number {
   return maximum;
 }
 
-describe('raw-capture invariant fusion runtime', () => {
+describe.skipIf(!stagingAvailable)('raw-capture invariant fusion runtime', () => {
   it('matches Python end to end across raw lengths, physical scales, and an FFT seam', () => {
     const errors = {
       packed: 0,

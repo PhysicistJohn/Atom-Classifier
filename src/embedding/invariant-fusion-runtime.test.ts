@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   classifyInvariantFusion,
@@ -48,13 +48,23 @@ const staging = process.env.ATOMOS_INVARIANT_FUSION_STAGING_URL
       + 'invariant_fusion_paired_real_v3/',
     import.meta.url,
   );
-const rawAsset = JSON.parse(
-  readFileSync(new URL('invariant-fusion-weights-v3.json', staging), 'utf8'),
-) as unknown;
-const fixture = JSON.parse(
-  readFileSync(new URL('invariant-fusion-parity-v3.json', staging), 'utf8'),
-) as ParityFixture;
-const asset = loadInvariantFusionAsset(rawAsset);
+// Git-ignored training outputs; absent in a fresh clone (CI). Skip, don't fail.
+const stagingAvailable = existsSync(
+  new URL('invariant-fusion-weights-v3.json', staging),
+);
+const rawAsset = stagingAvailable
+  ? JSON.parse(
+    readFileSync(new URL('invariant-fusion-weights-v3.json', staging), 'utf8'),
+  ) as unknown
+  : null;
+const fixture = (stagingAvailable
+  ? JSON.parse(
+    readFileSync(new URL('invariant-fusion-parity-v3.json', staging), 'utf8'),
+  )
+  : { rows: [] }) as ParityFixture;
+const asset = stagingAvailable
+  ? loadInvariantFusionAsset(rawAsset)
+  : (null as never);
 
 function inputs(row: number): {
   inPhase: number[];
@@ -87,7 +97,7 @@ function maxError(actual: ArrayLike<number>, expected: number[]): number {
   return maximum;
 }
 
-describe('invariant paired-real TypeScript runtime', () => {
+describe.skipIf(!stagingAvailable)('invariant paired-real TypeScript runtime', () => {
   it('matches Python branch, fusion, classifier, and weighted-LOF fixtures', () => {
     let modelError = 0;
     let classifierError = 0;
