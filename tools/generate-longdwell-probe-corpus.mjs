@@ -352,6 +352,12 @@ const CONTENT_CLASS = Object.freeze({
   cw: 'B',
   am: 'B',
   fm: 'B',
+
+  // C with a seeded corpus-only generator -- broadcast-realistic analog
+  // counterparts to the closed-form am/fm lab stimuli (see Atom-SignalLab
+  // src/broadcast-corpus-iq.ts and Atom-Classifier docs/ota-results.md).
+  'fm-broadcast-mpx': 'C',
+  'am-voice': 'C',
   'lte-etm1.1': 'B',
   'lte-etm3.1': 'B',
   'lte-etm3.1a': 'B',
@@ -412,6 +418,8 @@ const CORPUS_CONTENT_CAPABILITIES = Object.freeze({
   'gsm-8psk-normal-burst': Object.freeze({ recipe: 'geran-corpus-content-v1' }),
   'gsm-16qam-higher-symbol-rate-burst': Object.freeze({ recipe: 'geran-corpus-content-v1' }),
   'gsm-32qam-higher-symbol-rate-burst': Object.freeze({ recipe: 'geran-corpus-content-v1' }),
+  'fm-broadcast-mpx': Object.freeze({ recipe: 'broadcast-corpus-content-v1' }),
+  'am-voice': Object.freeze({ recipe: 'broadcast-corpus-content-v1' }),
   'wifi-hr-dsss-11m': Object.freeze({ recipe: 'wlan-corpus-content-v1' }),
   'wifi-ofdm-20m': Object.freeze({ recipe: 'wlan-corpus-content-v1' }),
   'wifi6-he-su': Object.freeze({ recipe: 'wlan-corpus-content-v1' }),
@@ -453,6 +461,11 @@ const synthesizeWlanCorpusContentIq = DRY_RUN
   : (await import(pathToFileURL(join(SIGNAL_LAB, 'src/wlan-corpus-iq.ts')).href))
     .synthesizeWlanCorpusContentIq;
 
+const synthesizeBroadcastCorpusContentIq = DRY_RUN
+  ? null
+  : (await import(pathToFileURL(join(SIGNAL_LAB, 'src/broadcast-corpus-iq.ts')).href))
+    .synthesizeBroadcastCorpusContentIq;
+
 const synthesizeOperationalCarrierCorpusIq = DRY_RUN
   ? null
   : (await import(pathToFileURL(join(SIGNAL_LAB, 'src/operational-carrier-iq.ts')).href))
@@ -484,6 +497,20 @@ function synthesizeCorpusChunk(spec, sampleCount, startSampleIndex, contentSeed,
         throw new Error(`${spec.profile} declares a WLAN corpus-content capability but its SignalLab generator is unavailable`);
       }
       return synthesizeWlanCorpusContentIq({
+        profile: spec.profile,
+        sampleRateHz: spec.fs,
+        bandwidthHz: spec.bw,
+        sampleCount,
+        startSampleIndex,
+        contentSeed,
+        contentRowIndex,
+      });
+    }
+    if (capability.recipe === 'broadcast-corpus-content-v1') {
+      if (synthesizeBroadcastCorpusContentIq === null) {
+        throw new Error(`${spec.profile} declares a broadcast corpus-content capability but its SignalLab generator is unavailable`);
+      }
+      return synthesizeBroadcastCorpusContentIq({
         profile: spec.profile,
         sampleRateHz: spec.fs,
         bandwidthHz: spec.bw,

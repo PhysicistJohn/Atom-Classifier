@@ -12,10 +12,22 @@
   "bw": 52000
  },
  {
+  "profile": "am-voice",
+  "cls": "am",
+  "fs": 20000000,
+  "bw": 10000
+ },
+ {
   "profile": "fm",
   "cls": "fm",
   "fs": 20000000,
   "bw": 200000
+ },
+ {
+  "profile": "fm-broadcast-mpx",
+  "cls": "fm",
+  "fs": 20000000,
+  "bw": 256000
  },
  {
   "profile": "gsm-900-loaded-bcch",
